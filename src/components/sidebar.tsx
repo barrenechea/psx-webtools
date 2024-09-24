@@ -44,7 +44,7 @@ export const Sidebar: React.FC = () => {
     <aside
       className={cn(
         "flex h-screen flex-col bg-background/80 backdrop-blur-xl transition-all duration-300 ease-in-out",
-        isExpanded ? "w-64" : "w-16"
+        isExpanded ? "w-64 min-w-72" : "w-16"
       )}
     >
       <div className="flex items-center justify-between p-4">

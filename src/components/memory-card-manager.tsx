@@ -204,7 +204,7 @@ export const MemoryCardManager: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-gray-100 p-4">
-      <div className="flex size-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+      <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         {/* Toolbar */}
         <div className="flex items-center space-x-2 border-b border-gray-200 bg-gray-50 p-2">
           <TooltipProvider>
@@ -266,7 +266,7 @@ export const MemoryCardManager: React.FC = () => {
         {/* Main content */}
         <div className="flex grow overflow-hidden">
           {/* Sidebar */}
-          <div className="flex w-48 flex-col border-r border-gray-200 bg-gray-50">
+          <div className="flex w-64 flex-col border-r border-gray-200 bg-gray-50">
             <ScrollArea className="grow">
               <div className="p-2">
                 {memoryCards.map((card) => (

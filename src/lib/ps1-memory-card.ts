@@ -273,9 +273,7 @@ class PS1MemoryCard {
   }
 
   private getRegion(slotNumber: number): string {
-    const regionCode = this.arrayToString(
-      this.headerData[slotNumber].slice(10, 12)
-    );
+    const regionCode = this.getRegionRaw(slotNumber);
     switch (regionCode) {
       case "BI":
         return "Japan";
