@@ -63,6 +63,19 @@ class PS1MemoryCard {
   private cardLocation: string | null = null;
   private changedFlag = false;
 
+  // New properties to match C# implementation
+  private headerData: Uint8Array[] = Array.from(
+    { length: SLOT_COUNT },
+    () => new Uint8Array(HEADER_SIZE)
+  );
+  private saveData: Uint8Array[] = Array.from(
+    { length: SLOT_COUNT },
+    () => new Uint8Array(BYTES_PER_SLOT)
+  );
+
+  private saveComments: string[] = new Array<string>(SLOT_COUNT).fill("");
+  private masterSlot: number[] = new Array<number>(SLOT_COUNT).fill(0);
+
   constructor() {
     this.rawData = new Uint8Array(TOTAL_CARD_SIZE);
     this.initializeIconData();
@@ -136,9 +149,7 @@ class PS1MemoryCard {
       const comment = this.arrayToString(
         data.slice(64 + 256 * i, 64 + 256 * (i + 1))
       ).replace(/\0/g, "");
-      if (this.saves[i]) {
-        this.saves[i].comment = comment;
-      }
+      this.saveComments[i] = comment;
     }
   }
 
@@ -147,6 +158,7 @@ class PS1MemoryCard {
   }
 
   private loadMemoryCardData(): void {
+    this.loadDataFromRawCard();
     this.loadSlotTypes();
     this.findBrokenLinks();
     this.loadStringData();
@@ -157,10 +169,23 @@ class PS1MemoryCard {
     this.calculateXOR();
   }
 
+  private loadDataFromRawCard(): void {
+    for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
+      // Load header data
+      this.headerData[slotNumber].set(
+        this.rawData.slice(128 + slotNumber * 128, 256 + slotNumber * 128)
+      );
+
+      // Load save data
+      this.saveData[slotNumber].set(
+        this.rawData.slice(8192 + slotNumber * 8192, 16384 + slotNumber * 8192)
+      );
+    }
+  }
+
   private loadSlotTypes(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const headerStart = i * BYTES_PER_SLOT;
-      this.slotTypes[i] = this.rawData[headerStart] as SlotTypes;
+      this.slotTypes[i] = this.headerData[i][0] as SlotTypes;
     }
   }
 
@@ -194,8 +219,7 @@ class PS1MemoryCard {
     let currentSlot = initialSlot;
 
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const headerStart = currentSlot * BYTES_PER_SLOT;
-      const nextSlot = this.rawData[headerStart + 8];
+      const nextSlot = this.headerData[currentSlot][8];
 
       if (nextSlot === 0xff || nextSlot >= SLOT_COUNT) break;
 
@@ -217,15 +241,12 @@ class PS1MemoryCard {
 
   private loadStringData(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const headerStart = i * BYTES_PER_SLOT;
-      const dataStart = headerStart + HEADER_SIZE;
-
-      const region = this.getRegion(headerStart);
-      const productCode = this.getProductCode(headerStart);
-      const identifier = this.getIdentifier(headerStart);
-      const name = this.getSaveName(dataStart);
-      const blockCount = this.getSaveSize(headerStart);
-      const iconFrameCount = this.getIconFrameCount(dataStart);
+      const region = this.getRegion(i);
+      const productCode = this.getProductCode(i);
+      const identifier = this.getIdentifier(i);
+      const name = this.getSaveName(i);
+      const blockCount = this.getSaveSize(i);
+      const iconFrameCount = this.getIconFrameCount(i);
 
       this.saves[i] = {
         slotNumber: i,
@@ -233,18 +254,18 @@ class PS1MemoryCard {
         productCode,
         identifier,
         region,
-        regionRaw: this.getRegionRaw(headerStart),
+        regionRaw: this.getRegionRaw(i),
         blockCount,
         iconFrameCount,
         slotType: this.slotTypes[i],
-        comment: "",
+        comment: this.saveComments[i],
       };
     }
   }
 
-  private getRegion(headerStart: number): string {
+  private getRegion(slotNumber: number): string {
     const regionCode = this.arrayToString(
-      this.rawData.slice(headerStart + 10, headerStart + 12)
+      this.headerData[slotNumber].slice(10, 12)
     );
     switch (regionCode) {
       case "BI":
@@ -258,48 +279,66 @@ class PS1MemoryCard {
     }
   }
 
-  private getRegionRaw(headerStart: number): string {
-    return this.arrayToString(
-      this.rawData.slice(headerStart + 10, headerStart + 12)
-    );
+  private getRegionRaw(slotNumber: number): string {
+    return this.arrayToString(this.headerData[slotNumber].slice(10, 12));
   }
 
-  private getProductCode(headerStart: number): string {
+  private getProductCode(slotNumber: number): string {
     return this.arrayToString(
-      this.rawData.slice(headerStart + 12, headerStart + 22)
+      this.headerData[slotNumber].slice(12, 22)
     ).replace(/\0/g, "");
   }
 
-  private getIdentifier(headerStart: number): string {
+  private getIdentifier(slotNumber: number): string {
     return this.arrayToString(
-      this.rawData.slice(headerStart + 22, headerStart + 30)
+      this.headerData[slotNumber].slice(22, 30)
     ).replace(/\0/g, "");
   }
 
-  private getSaveName(dataStart: number): string {
-    const nameBytes = this.rawData.slice(dataStart + 4, dataStart + 68);
-    const nullTerminator = nameBytes.indexOf(0);
-    return this.decodeUTF16LE(
-      nameBytes.slice(0, nullTerminator !== -1 ? nullTerminator : undefined)
+  private getSaveName(slotNumber: number): string {
+    const nameBytes = this.saveData[slotNumber].slice(4, 68);
+    let nullTerminator = nameBytes.findIndex(
+      (byte, index) =>
+        index % 2 === 0 && byte === 0 && nameBytes[index + 1] === 0
     );
+    if (nullTerminator === -1) nullTerminator = 64;
+
+    // First, try Shift-JIS decoding
+    try {
+      const shiftJisDecoder = new TextDecoder("shift-jis");
+      const decodedName = shiftJisDecoder.decode(
+        nameBytes.slice(0, nullTerminator)
+      );
+      return this.normalizeFullWidthChars(decodedName);
+    } catch (error) {
+      console.warn("Failed to decode save name using Shift-JIS:", error);
+    }
+
+    // If Shift-JIS fails, fall back to UTF-16LE
+    try {
+      const utf16Decoder = new TextDecoder("utf-16le");
+      return utf16Decoder.decode(nameBytes.slice(0, nullTerminator));
+    } catch (error) {
+      console.error("Failed to decode save name:", error);
+      return "Unknown";
+    }
   }
 
-  private decodeUTF16LE(bytes: Uint8Array): string {
-    const decoder = new TextDecoder("utf-16le");
-    return decoder.decode(bytes);
+  private normalizeFullWidthChars(input: string): string {
+    return input.normalize("NFKC");
   }
 
-  private getSaveSize(headerStart: number): number {
+  private getSaveSize(slotNumber: number): number {
     return (
-      (this.rawData[headerStart + 4] |
-        (this.rawData[headerStart + 5] << 8) |
-        (this.rawData[headerStart + 6] << 16)) /
+      (this.headerData[slotNumber][4] |
+        (this.headerData[slotNumber][5] << 8) |
+        (this.headerData[slotNumber][6] << 16)) /
       1024
     );
   }
 
-  private getIconFrameCount(dataStart: number): number {
-    switch (this.rawData[dataStart + 2]) {
+  private getIconFrameCount(slotNumber: number): number {
+    switch (this.saveData[slotNumber][2]) {
       case 0x11:
         return 1;
       case 0x12:
@@ -313,18 +352,17 @@ class PS1MemoryCard {
 
   private loadSaveSize(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const headerStart = i * BYTES_PER_SLOT;
-      this.saves[i].blockCount = this.getSaveSize(headerStart);
+      this.saves[i].blockCount = this.getSaveSize(i);
     }
   }
 
   private loadPalette(): void {
     for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
-      const paletteStart = slotNumber * BYTES_PER_SLOT + HEADER_SIZE + 96;
+      const paletteStart = 96;
       for (let colorIndex = 0; colorIndex < 16; colorIndex++) {
         const colorValue =
-          this.rawData[paletteStart + colorIndex * 2] |
-          (this.rawData[paletteStart + colorIndex * 2 + 1] << 8);
+          this.saveData[slotNumber][paletteStart + colorIndex * 2] |
+          (this.saveData[slotNumber][paletteStart + colorIndex * 2 + 1] << 8);
         const r = ((colorValue & 0x1f) << 3) | ((colorValue & 0x1f) >> 2);
         const g =
           (((colorValue >> 5) & 0x1f) << 3) | (((colorValue >> 5) & 0x1f) >> 2);
@@ -343,12 +381,13 @@ class PS1MemoryCard {
         this.slotTypes[slotNumber] === SlotTypes.Initial ||
         this.slotTypes[slotNumber] === SlotTypes.DeletedInitial
       ) {
-        const iconDataStart = slotNumber * BYTES_PER_SLOT + HEADER_SIZE + 128;
+        const iconDataStart = 128;
         for (let iconNumber = 0; iconNumber < 3; iconNumber++) {
           const iconStart = iconDataStart + iconNumber * 128;
           for (let y = 0; y < ICON_SIZE; y++) {
             for (let x = 0; x < ICON_SIZE / 2; x++) {
-              const pixelData = this.rawData[iconStart + y * 8 + x];
+              const pixelData =
+                this.saveData[slotNumber][iconStart + y * 8 + x];
               this.iconData[slotNumber][iconNumber][y * ICON_SIZE + x * 2] =
                 pixelData & 0xf;
               this.iconData[slotNumber][iconNumber][y * ICON_SIZE + x * 2 + 1] =
@@ -362,19 +401,17 @@ class PS1MemoryCard {
 
   private loadIconFrames(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const dataStart = i * BYTES_PER_SLOT + HEADER_SIZE;
-      this.saves[i].iconFrameCount = this.getIconFrameCount(dataStart);
+      this.saves[i].iconFrameCount = this.getIconFrameCount(i);
     }
   }
 
   private calculateXOR(): void {
     for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
-      const headerStart = slotNumber * BYTES_PER_SLOT;
       let xorChecksum = 0;
       for (let i = 0; i < 127; i++) {
-        xorChecksum ^= this.rawData[headerStart + i];
+        xorChecksum ^= this.headerData[slotNumber][i];
       }
-      this.rawData[headerStart + 127] = xorChecksum;
+      this.headerData[slotNumber][127] = xorChecksum;
     }
   }
 
@@ -393,22 +430,22 @@ class PS1MemoryCard {
     for (const slot of saveSlots) {
       switch (this.slotTypes[slot]) {
         case SlotTypes.Initial:
-          this.rawData[slot * BYTES_PER_SLOT] = SlotTypes.DeletedInitial;
+          this.headerData[slot][0] = SlotTypes.DeletedInitial;
           break;
         case SlotTypes.MiddleLink:
-          this.rawData[slot * BYTES_PER_SLOT] = SlotTypes.DeletedMiddleLink;
+          this.headerData[slot][0] = SlotTypes.DeletedMiddleLink;
           break;
         case SlotTypes.EndLink:
-          this.rawData[slot * BYTES_PER_SLOT] = SlotTypes.DeletedEndLink;
+          this.headerData[slot][0] = SlotTypes.DeletedEndLink;
           break;
         case SlotTypes.DeletedInitial:
-          this.rawData[slot * BYTES_PER_SLOT] = SlotTypes.Initial;
+          this.headerData[slot][0] = SlotTypes.Initial;
           break;
         case SlotTypes.DeletedMiddleLink:
-          this.rawData[slot * BYTES_PER_SLOT] = SlotTypes.MiddleLink;
+          this.headerData[slot][0] = SlotTypes.MiddleLink;
           break;
         case SlotTypes.DeletedEndLink:
-          this.rawData[slot * BYTES_PER_SLOT] = SlotTypes.EndLink;
+          this.headerData[slot][0] = SlotTypes.EndLink;
           break;
       }
     }
@@ -429,11 +466,11 @@ class PS1MemoryCard {
   }
 
   private formatSlot(slotNumber: number): void {
-    const slotStart = slotNumber * BYTES_PER_SLOT;
-    this.rawData.fill(0, slotStart, slotStart + BYTES_PER_SLOT);
-    this.rawData[slotStart] = SlotTypes.Formatted;
-    this.rawData[slotStart + 8] = 0xff;
-    this.rawData[slotStart + 9] = 0xff;
+    this.headerData[slotNumber].fill(0);
+    this.saveData[slotNumber].fill(0);
+    this.headerData[slotNumber][0] = SlotTypes.Formatted;
+    this.headerData[slotNumber][8] = 0xff;
+    this.headerData[slotNumber][9] = 0xff;
   }
 
   public getSaveBytes(slotNumber: number): Uint8Array {
@@ -442,19 +479,12 @@ class PS1MemoryCard {
     const saveBytes = new Uint8Array(saveSize);
 
     // Copy header
-    saveBytes.set(
-      this.rawData.slice(
-        slotNumber * BYTES_PER_SLOT,
-        slotNumber * BYTES_PER_SLOT + HEADER_SIZE
-      ),
-      0
-    );
+    saveBytes.set(this.headerData[slotNumber], 0);
 
     // Copy data
     for (let i = 0; i < saveSlots.length; i++) {
-      const dataStart = saveSlots[i] * BYTES_PER_SLOT + HEADER_SIZE;
       saveBytes.set(
-        this.rawData.slice(dataStart, dataStart + BYTES_PER_SLOT),
+        this.saveData[saveSlots[i]],
         HEADER_SIZE + i * BYTES_PER_SLOT
       );
     }
@@ -473,44 +503,38 @@ class PS1MemoryCard {
     }
 
     // Copy header
-    this.rawData.set(
-      saveBytes.slice(0, HEADER_SIZE),
-      slotNumber * BYTES_PER_SLOT
-    );
+    this.headerData[slotNumber].set(saveBytes.slice(0, HEADER_SIZE));
 
     // Set save size in header
     const saveSize = saveBytes.length - HEADER_SIZE;
-    this.rawData[slotNumber * BYTES_PER_SLOT + 4] = saveSize & 0xff;
-    this.rawData[slotNumber * BYTES_PER_SLOT + 5] = (saveSize >> 8) & 0xff;
-    this.rawData[slotNumber * BYTES_PER_SLOT + 6] = (saveSize >> 16) & 0xff;
+    this.headerData[slotNumber][4] = saveSize & 0xff;
+    this.headerData[slotNumber][5] = (saveSize >> 8) & 0xff;
+    this.headerData[slotNumber][6] = (saveSize >> 16) & 0xff;
 
     // Copy data
     for (let i = 0; i < requiredSlots; i++) {
       const srcStart = HEADER_SIZE + i * BYTES_PER_SLOT;
-      const dstStart = freeSlots[i] * BYTES_PER_SLOT + HEADER_SIZE;
-      this.rawData.set(
-        saveBytes.slice(srcStart, srcStart + BYTES_PER_SLOT),
-        dstStart
+      this.saveData[freeSlots[i]].set(
+        saveBytes.slice(srcStart, srcStart + BYTES_PER_SLOT)
       );
     }
 
     // Set slot types and links
     for (let i = 0; i < requiredSlots; i++) {
-      const slotStart = freeSlots[i] * BYTES_PER_SLOT;
       if (i === 0) {
-        this.rawData[slotStart] = SlotTypes.Initial;
+        this.headerData[freeSlots[i]][0] = SlotTypes.Initial;
       } else if (i === requiredSlots - 1) {
-        this.rawData[slotStart] = SlotTypes.EndLink;
+        this.headerData[freeSlots[i]][0] = SlotTypes.EndLink;
       } else {
-        this.rawData[slotStart] = SlotTypes.MiddleLink;
+        this.headerData[freeSlots[i]][0] = SlotTypes.MiddleLink;
       }
 
       if (i < requiredSlots - 1) {
-        this.rawData[slotStart + 8] = freeSlots[i + 1];
-        this.rawData[slotStart + 9] = 0x00;
+        this.headerData[freeSlots[i]][8] = freeSlots[i + 1];
+        this.headerData[freeSlots[i]][9] = 0x00;
       } else {
-        this.rawData[slotStart + 8] = 0xff;
-        this.rawData[slotStart + 9] = 0xff;
+        this.headerData[freeSlots[i]][8] = 0xff;
+        this.headerData[freeSlots[i]][9] = 0xff;
       }
     }
 
@@ -552,10 +576,17 @@ class PS1MemoryCard {
         region = region.padEnd(2, " ").slice(0, 2);
     }
 
-    const headerStart = slotNumber * BYTES_PER_SLOT + 10;
-    this.rawData.set(new TextEncoder().encode(region), headerStart);
-    this.rawData.set(new TextEncoder().encode(productCode), headerStart + 2);
-    this.rawData.set(new TextEncoder().encode(identifier), headerStart + 12);
+    const headerStart = 10;
+    const encoder = new TextEncoder();
+    this.headerData[slotNumber].set(encoder.encode(region), headerStart);
+    this.headerData[slotNumber].set(
+      encoder.encode(productCode),
+      headerStart + 2
+    );
+    this.headerData[slotNumber].set(
+      encoder.encode(identifier),
+      headerStart + 12
+    );
 
     this.loadStringData();
     this.calculateXOR();
@@ -564,14 +595,12 @@ class PS1MemoryCard {
 
   public getIconBytes(slotNumber: number): Uint8Array {
     const iconBytes = new Uint8Array(416);
-    const srcStart = slotNumber * BYTES_PER_SLOT + HEADER_SIZE + 96;
-    iconBytes.set(this.rawData.slice(srcStart, srcStart + 416));
+    iconBytes.set(this.saveData[slotNumber].slice(96, 512));
     return iconBytes;
   }
 
   public setIconBytes(slotNumber: number, iconBytes: Uint8Array): void {
-    const dstStart = slotNumber * BYTES_PER_SLOT + HEADER_SIZE + 96;
-    this.rawData.set(iconBytes.slice(0, 416), dstStart);
+    this.saveData[slotNumber].set(iconBytes.slice(0, 416), 96);
     this.loadPalette();
     this.loadIcons();
     this.changedFlag = true;
@@ -631,10 +660,10 @@ class PS1MemoryCard {
     header[21] = 0x4d;
 
     for (let i = 0; i < SLOT_COUNT; i++) {
-      header[22 + i] = this.rawData[i * BYTES_PER_SLOT];
-      header[38 + i] = this.rawData[i * BYTES_PER_SLOT + 8];
-      if (this.saves[i]?.comment) {
-        const commentBytes = new TextEncoder().encode(this.saves[i].comment);
+      header[22 + i] = this.headerData[i][0];
+      header[38 + i] = this.headerData[i][8];
+      if (this.saveComments[i]) {
+        const commentBytes = new TextEncoder().encode(this.saveComments[i]);
         header.set(commentBytes, 64 + 256 * i);
       }
     }
@@ -686,13 +715,14 @@ class PS1MemoryCard {
       default: {
         // Action Replay
         const arHeader = new Uint8Array(54);
-        const productCodeBytes = new TextEncoder().encode(
+        const encoder = new TextEncoder();
+        const productCodeBytes = encoder.encode(
           this.saves[slotNumber].productCode
         );
-        const identifierBytes = new TextEncoder().encode(
+        const identifierBytes = encoder.encode(
           this.saves[slotNumber].identifier
         );
-        const nameBytes = new TextEncoder().encode(this.saves[slotNumber].name);
+        const nameBytes = encoder.encode(this.saves[slotNumber].name);
         arHeader.set(productCodeBytes, 0);
         arHeader.set(identifierBytes, 10);
         arHeader.set(nameBytes, 21);
@@ -765,8 +795,7 @@ class PS1MemoryCard {
         saveData = this.concatUint8Arrays(header, inputData.slice(54));
       }
 
-      const success = this.setSaveBytes(slotNumber, saveData);
-      return success;
+      return this.setSaveBytes(slotNumber, saveData);
     } catch (error) {
       console.error("Failed to open single save:", error);
       return false;
