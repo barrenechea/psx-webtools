@@ -3,7 +3,7 @@ const SLOT_COUNT = 15;
 const BYTES_PER_SLOT = 8192;
 const HEADER_SIZE = 128;
 const ICON_SIZE = 16;
-const TOTAL_CARD_SIZE = SLOT_COUNT * BYTES_PER_SLOT;
+const TOTAL_CARD_SIZE = 131072; // 128 KB
 
 // Enums
 export enum CardTypes {
@@ -800,6 +800,25 @@ class PS1MemoryCard {
       console.error("Failed to open single save:", error);
       return false;
     }
+  }
+
+  public getIconData(slotNumber: number): number[] {
+    if (this.iconData[slotNumber]?.[0]) {
+      return this.iconData[slotNumber][0];
+    }
+    return new Array<number>(16 * 16).fill(0); // Return a blank icon if no data is available
+  }
+
+  public getIconPalette(
+    slotNumber: number
+  ): [number, number, number, number][] {
+    if (this.iconPalette[slotNumber]) {
+      // Set alpha to 255 (fully opaque) for all colors except the first one (usually transparent)
+      return this.iconPalette[slotNumber].map(([r, g, b], index) =>
+        index === 0 ? [r, g, b, 0] : [r, g, b, 255]
+      );
+    }
+    return new Array<[number, number, number, number]>(16).fill([0, 0, 0, 0]); // Return a blank palette if no data is available
   }
 }
 
