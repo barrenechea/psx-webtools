@@ -6,8 +6,10 @@ import { Sidebar } from "@/components/sidebar";
 export const Route = createRootRoute({
   component: () => (
     <>
-      <Sidebar />
-      <Outlet />
+      <div className="flex w-full flex-row">
+        <Sidebar />
+        <Outlet />
+      </div>
       <TanStackRouterDevtools />
     </>
   ),

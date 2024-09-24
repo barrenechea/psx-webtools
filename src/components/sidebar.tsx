@@ -2,9 +2,9 @@ import { Link } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
-  CreditCard,
-  FileText,
   Home,
+  MemoryStickIcon,
+  MonitorPlayIcon,
 } from "lucide-react";
 import React, { useState } from "react";
 
@@ -43,7 +43,7 @@ export const Sidebar: React.FC = () => {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 flex h-screen flex-col bg-background/80 backdrop-blur-xl transition-all duration-300 ease-in-out",
+        "flex h-screen flex-col bg-background/80 backdrop-blur-xl transition-all duration-300 ease-in-out",
         isExpanded ? "w-64" : "w-16"
       )}
     >
@@ -79,13 +79,13 @@ export const Sidebar: React.FC = () => {
         />
         <NavItem
           to="/exe-loader"
-          icon={<FileText className="size-4" />}
+          icon={<MonitorPlayIcon className="size-4" />}
           label="EXE Loader"
           isActive={false}
         />
         <NavItem
           to="/memory-card"
-          icon={<CreditCard className="size-4" />}
+          icon={<MemoryStickIcon className="size-4" />}
           label="Memory Card"
           isActive={false}
         />
