@@ -164,7 +164,7 @@ export function useMemCARDuino(): UseMemCARDuinoReturn {
       const checksum = response[128];
       const status = response[129];
 
-      if (status !== MCinoResponses.GOOD) {
+      if (status !== MCinoResponses.GOOD as number) {
         appendLog(`Failed to read frame ${frameNumber}: Bad status`);
         return null;
       }
@@ -201,7 +201,7 @@ export function useMemCARDuino(): UseMemCARDuinoReturn {
       );
 
       const response = await readResponse(1, reader);
-      const success = response[0] === MCinoResponses.GOOD;
+      const success = response[0] === MCinoResponses.GOOD as number;
 
       if (success) {
         appendLog(`Successfully wrote frame ${frameNumber}`);

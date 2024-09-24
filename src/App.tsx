@@ -1,8 +1,8 @@
 import { ThemeProvider } from "next-themes";
 
 import { EXELoader } from "./components/exe-loader";
-import { Header } from "./components/header";
 import { MemCARDuinoReader } from "./components/memcarduino";
+import { Sidebar } from "./components/sidebar";
 import { LogsProvider } from "./contexts/logs-context";
 import { SerialProvider } from "./contexts/serial-context";
 
@@ -12,7 +12,7 @@ const App = () => {
       <LogsProvider>
         <SerialProvider>
           <div className="min-h-screen">
-            <Header />
+            <Sidebar />
             <main className="mx-auto mt-8 max-w-4xl space-y-8 p-6">
               <EXELoader />
               <MemCARDuinoReader />
