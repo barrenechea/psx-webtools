@@ -45,6 +45,19 @@ interface PS1BlockIconProps {
   iconPalette: [number, number, number, number][];
 }
 
+const getRegionFlag = (region: string): string => {
+  switch (region) {
+    case "America":
+      return "🇺🇸";
+    case "Europe":
+      return "🇪🇺";
+    case "Japan":
+      return "🇯🇵";
+    default:
+      return "🏴";
+  }
+};
+
 const PS1BlockIcon: React.FC<PS1BlockIconProps> = ({
   iconData,
   iconPalette,
@@ -102,7 +115,9 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
                 {slot.productCode}
               </p>
             </div>
-            <span className="mr-2 shrink-0 text-sm">{slot.region}</span>
+            <span className="mr-2 shrink-0 text-sm">
+              {getRegionFlag(slot.region)}
+            </span>
             <span className="shrink-0 text-xs text-gray-400">
               {slot.identifier}
             </span>
@@ -170,11 +185,11 @@ export const MemoryCardManager: React.FC = () => {
     );
   };
 
-  const handleSaveMemoryCard = () => {
+  const handleSaveMemoryCard = async () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
-        const success = card.saveMemoryCard(
+        const success = await card.saveMemoryCard(
           `memory_card_${Date.now()}.mcr`,
           CardTypes.Raw
         );
@@ -237,7 +252,7 @@ export const MemoryCardManager: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={handleSaveMemoryCard}
+                  onClick={() => void handleSaveMemoryCard()}
                   disabled={selectedCard === null}
                 >
                   <FolderIcon className="size-4" />

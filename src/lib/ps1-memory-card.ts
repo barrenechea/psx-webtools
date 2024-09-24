@@ -76,6 +76,15 @@ class PS1MemoryCard {
   private saveComments: string[] = new Array<string>(SLOT_COUNT).fill("");
   private masterSlot: number[] = new Array<number>(SLOT_COUNT).fill(0);
 
+  private readonly saveKey = new Uint8Array([
+    0xab, 0x5a, 0xbc, 0x9f, 0xc1, 0xf4, 0x9d, 0xe6, 0xa0, 0x51, 0xdb, 0xae,
+    0xfa, 0x51, 0x88, 0x59,
+  ]);
+  private readonly saveIv = new Uint8Array([
+    0xb3, 0x0f, 0xfe, 0xed, 0xb7, 0xdc, 0x5e, 0xb7, 0x13, 0x3d, 0xa6, 0x0d,
+    0x1b, 0x6b, 0x2c, 0xdc,
+  ]);
+
   constructor() {
     this.rawData = new Uint8Array(TOTAL_CARD_SIZE);
     this.initializeIconData();
@@ -314,10 +323,10 @@ class PS1MemoryCard {
       console.warn("Failed to decode save name using Shift-JIS:", error);
     }
 
-    // If Shift-JIS fails, fall back to UTF-16LE
+    // If Shift-JIS fails, fall back to ASCII
     try {
-      const utf16Decoder = new TextDecoder("utf-16le");
-      return utf16Decoder.decode(nameBytes.slice(0, nullTerminator));
+      const asciiDecoder = new TextDecoder("ascii");
+      return asciiDecoder.decode(nameBytes.slice(0, nullTerminator));
     } catch (error) {
       console.error("Failed to decode save name:", error);
       return "Unknown";
@@ -606,7 +615,10 @@ class PS1MemoryCard {
     this.changedFlag = true;
   }
 
-  public saveMemoryCard(fileName: string, cardType: CardTypes): boolean {
+  public async saveMemoryCard(
+    fileName: string,
+    cardType: CardTypes
+  ): Promise<boolean> {
     let outputData: Uint8Array;
 
     switch (cardType) {
@@ -617,7 +629,7 @@ class PS1MemoryCard {
         outputData = this.concatUint8Arrays(this.getVgsHeader(), this.rawData);
         break;
       case CardTypes.Vmp:
-        outputData = this.makeVmpCard();
+        outputData = await this.makeVmpCard();
         break;
       case CardTypes.Mcx:
         outputData = this.makeMcxCard();
@@ -682,10 +694,137 @@ class PS1MemoryCard {
     return header;
   }
 
-  private makeVmpCard(): Uint8Array {
-    // Implement VMP card creation logic
-    // This is a placeholder and should be replaced with actual VMP card creation
-    return this.rawData;
+  private async createAesKey(key: Uint8Array): Promise<CryptoKey> {
+    return await crypto.subtle.importKey(
+      "raw",
+      key,
+      { name: "AES-CBC" },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+
+  private async aesEcbProcessBlock(
+    block: Uint8Array,
+    key: CryptoKey,
+    encrypt: boolean
+  ): Promise<Uint8Array> {
+    const iv = new Uint8Array(16); // Zero IV for ECB
+    const result = await crypto.subtle[encrypt ? "encrypt" : "decrypt"](
+      { name: "AES-CBC", iv },
+      key,
+      block
+    );
+    return new Uint8Array(result).slice(0, 16);
+  }
+
+  private async aesEcbProcess(
+    data: Uint8Array,
+    key: Uint8Array,
+    encrypt: boolean
+  ): Promise<Uint8Array> {
+    const cryptoKey = await this.createAesKey(key);
+    const blockSize = 16;
+    const result = new Uint8Array(data.length);
+
+    for (let i = 0; i < data.length; i += blockSize) {
+      const block = data.slice(i, i + blockSize);
+      const processedBlock = await this.aesEcbProcessBlock(
+        block,
+        cryptoKey,
+        encrypt
+      );
+      result.set(processedBlock, i);
+    }
+
+    return result;
+  }
+
+  private async aesEcbEncrypt(
+    toEncrypt: Uint8Array,
+    key: Uint8Array
+  ): Promise<Uint8Array> {
+    return this.aesEcbProcess(toEncrypt, key, true);
+  }
+
+  private async aesEcbDecrypt(
+    toDecrypt: Uint8Array,
+    key: Uint8Array
+  ): Promise<Uint8Array> {
+    return this.aesEcbProcess(toDecrypt, key, false);
+  }
+
+  private xorWithIv(destBuffer: Uint8Array, iv: Uint8Array): void {
+    for (let i = 0; i < 16; i++) {
+      destBuffer[i] ^= iv[i];
+    }
+  }
+
+  private async makeVmpCard(): Promise<Uint8Array> {
+    const vmpCard = new Uint8Array(0x20080);
+    vmpCard[1] = 0x50; // 'P'
+    vmpCard[2] = 0x4d; // 'M'
+    vmpCard[3] = 0x56; // 'V'
+    vmpCard[4] = 0x80; // header length
+
+    vmpCard.set(this.rawData, 0x80);
+
+    const saltSeed = new Uint8Array(
+      await crypto.subtle.digest("SHA-1", vmpCard)
+    );
+    vmpCard.set(saltSeed.subarray(0, 0x14), 0x0c);
+    vmpCard.set(await this.getHmac(vmpCard, saltSeed), 0x20);
+    return vmpCard;
+  }
+
+  private async getHmac(
+    data: Uint8Array,
+    saltSeed: Uint8Array
+  ): Promise<Uint8Array> {
+    const buffer = new Uint8Array(0x14);
+    const salt = new Uint8Array(0x40);
+    const temp = new Uint8Array(0x14);
+    const hash1 = new Uint8Array(data.length + 0x40);
+    const hash2 = new Uint8Array(0x54);
+
+    buffer.set(saltSeed.subarray(0, 0x14));
+    buffer.set(
+      await this.aesEcbDecrypt(buffer.subarray(0, 0x10), this.saveKey)
+    );
+    salt.set(buffer.subarray(0, 0x10));
+    buffer.set(saltSeed.subarray(0, 0x10));
+    buffer.set(
+      await this.aesEcbEncrypt(buffer.subarray(0, 0x14), this.saveKey)
+    );
+
+    salt.set(buffer.subarray(0, 0x10), 0x10);
+    this.xorWithIv(salt, this.saveIv);
+    buffer.fill(0xff, 0x14);
+    buffer.set(saltSeed.subarray(0x10, 0x14), 0);
+    temp.set(salt.subarray(0x10, 0x24));
+    this.xorWithIv(temp, buffer);
+    salt.set(temp.subarray(0, 0x10), 0x10);
+    temp.set(salt.subarray(0, 0x14));
+    salt.fill(0, 0x14);
+    salt.set(temp.subarray(0, 0x14));
+
+    for (let i = 0; i < salt.length; i++) {
+      salt[i] ^= 0x36;
+    }
+
+    hash1.set(salt.subarray(0, 0x40));
+    hash1.set(data, 0x40);
+    const sha1Hash1 = await crypto.subtle.digest("SHA-1", hash1);
+    buffer.set(new Uint8Array(sha1Hash1));
+
+    for (let i = 0; i < salt.length; i++) {
+      salt[i] ^= 0x6a;
+    }
+
+    hash2.set(salt.subarray(0, 0x40));
+    hash2.set(buffer.subarray(0, 0x14), 0x40);
+    const sha1Hash2 = await crypto.subtle.digest("SHA-1", hash2);
+    return new Uint8Array(sha1Hash2);
   }
 
   private makeMcxCard(): Uint8Array {
@@ -694,11 +833,11 @@ class PS1MemoryCard {
     return this.rawData;
   }
 
-  public saveSingleSave(
+  public async saveSingleSave(
     fileName: string,
     slotNumber: number,
     saveType: SingleSaveTypes
-  ): boolean {
+  ): Promise<boolean> {
     const saveData = this.getSaveBytes(slotNumber);
     let outputData: Uint8Array;
 
@@ -710,7 +849,7 @@ class PS1MemoryCard {
         outputData = saveData.slice(HEADER_SIZE);
         break;
       case SingleSaveTypes.Psv:
-        outputData = this.makePsvSave(saveData);
+        outputData = await this.makePsvSave(saveData);
         break;
       default: {
         // Action Replay
@@ -749,11 +888,29 @@ class PS1MemoryCard {
     }
   }
 
-  private makePsvSave(saveData: Uint8Array): Uint8Array {
-    // Implement PSV save creation logic
-    // This is a placeholder and should be replaced with actual PSV save creation
-    const psvHeader = new TextEncoder().encode("PSV");
-    return this.concatUint8Arrays(psvHeader, saveData);
+  private async makePsvSave(save: Uint8Array): Promise<Uint8Array> {
+    const psvSave = new Uint8Array(save.length + 4);
+    psvSave[1] = 0x56; // 'V'
+    psvSave[2] = 0x53; // 'S'
+    psvSave[3] = 0x50; // 'P'
+    psvSave[0x38] = 0x14;
+    psvSave[0x3c] = 1;
+    psvSave[0x44] = 0x84;
+    psvSave[0x49] = 2;
+    psvSave[0x5d] = 0x20;
+    psvSave[0x60] = 3;
+    psvSave[0x61] = 0x90;
+
+    psvSave.set(save.subarray(0x0a, 0x2a), 0x64);
+    new DataView(psvSave.buffer).setUint32(0x40, save.length - 0x80, true);
+    psvSave.set(save.subarray(0x80), 0x84);
+
+    const saltSeed = new Uint8Array(
+      await crypto.subtle.digest("SHA-1", psvSave)
+    );
+    psvSave.set(saltSeed.subarray(0, 0x14), 0x08);
+    psvSave.set(await this.getHmac(psvSave, saltSeed), 0x1c);
+    return psvSave;
   }
 
   public async openSingleSave(
