@@ -1,3 +1,12 @@
+import { AesCbcDecrypt, getHmac } from "@/lib/crypto-utils";
+import {
+  generateSaltSeed,
+  mcxIv,
+  mcxKey,
+  saveIv,
+  saveKey,
+} from "@/lib/ps1-keys";
+
 // Constants
 const SLOT_COUNT = 15;
 const BYTES_PER_SLOT = 8192;
@@ -76,15 +85,6 @@ class PS1MemoryCard {
   private saveComments: string[] = new Array<string>(SLOT_COUNT).fill("");
   private masterSlot: number[] = new Array<number>(SLOT_COUNT).fill(0);
 
-  private readonly saveKey = new Uint8Array([
-    0xab, 0x5a, 0xbc, 0x9f, 0xc1, 0xf4, 0x9d, 0xe6, 0xa0, 0x51, 0xdb, 0xae,
-    0xfa, 0x51, 0x88, 0x59,
-  ]);
-  private readonly saveIv = new Uint8Array([
-    0xb3, 0x0f, 0xfe, 0xed, 0xb7, 0xdc, 0x5e, 0xb7, 0x13, 0x3d, 0xa6, 0x0d,
-    0x1b, 0x6b, 0x2c, 0xdc,
-  ]);
-
   constructor() {
     this.rawData = new Uint8Array(TOTAL_CARD_SIZE);
     this.initializeIconData();
@@ -106,23 +106,16 @@ class PS1MemoryCard {
     const arrayBuffer = await file.arrayBuffer();
     const fileData = new Uint8Array(arrayBuffer);
 
-    // Determine card type and extract raw data
-    if (this.isGmeFormat(fileData)) {
-      this.cardType = CardTypes.Gme;
-      this.rawData = fileData.slice(3904, 3904 + TOTAL_CARD_SIZE);
+    const { cardType, startOffset } = await this.determineCardType(fileData);
+    this.cardType = cardType;
+
+    // Extract raw data based on the determined offset
+    this.rawData = fileData.slice(startOffset, startOffset + TOTAL_CARD_SIZE);
+
+    if (this.cardType === CardTypes.Gme) {
       this.loadGMEComments(fileData);
-    } else if (this.isVgsFormat(fileData)) {
-      this.cardType = CardTypes.Vgs;
-      this.rawData = fileData.slice(64, 64 + TOTAL_CARD_SIZE);
-    } else if (this.isVmpFormat(fileData)) {
-      this.cardType = CardTypes.Vmp;
-      this.rawData = fileData.slice(128, 128 + TOTAL_CARD_SIZE);
-    } else if (this.isMcxFormat(fileData)) {
-      this.cardType = CardTypes.Mcx;
-      this.rawData = this.decryptMcxCard(fileData);
-    } else {
-      this.cardType = CardTypes.Raw;
-      this.rawData = fileData.slice(0, TOTAL_CARD_SIZE);
+    } else if (this.cardType === CardTypes.Mcx) {
+      this.rawData = await this.decryptMcxCard(fileData);
     }
 
     this.cardName = file.name;
@@ -130,27 +123,58 @@ class PS1MemoryCard {
     this.loadMemoryCardData();
   }
 
-  private isGmeFormat(data: Uint8Array): boolean {
-    return this.arrayToString(data.slice(0, 11)) === "123-456-STD";
+  private async determineCardType(data: Uint8Array): Promise<{
+    cardType: CardTypes;
+    startOffset: number;
+  }> {
+    const fileSize = data.length;
+    const headerString = this.getHeaderString(data);
+
+    switch (headerString) {
+      case "MC":
+        return { cardType: CardTypes.Raw, startOffset: 0 };
+      case "123-456-STD":
+        return { cardType: CardTypes.Gme, startOffset: 3904 };
+      case "VgsM":
+        return { cardType: CardTypes.Vgs, startOffset: 64 };
+      case "PMV":
+        return { cardType: CardTypes.Vmp, startOffset: 128 };
+      default:
+        if (await this.isMcxCard(data)) {
+          return { cardType: CardTypes.Mcx, startOffset: 128 };
+        } else if (
+          fileSize === 134976 &&
+          data[3904] === 77 &&
+          data[3905] === 67
+        ) {
+          // 'M' and 'C'
+          return { cardType: CardTypes.Gme, startOffset: 3904 };
+        } else {
+          throw new Error(
+            `'${this.cardName}' is not a supported Memory Card format.`
+          );
+        }
+    }
   }
 
-  private isVgsFormat(data: Uint8Array): boolean {
-    return this.arrayToString(data.slice(0, 4)) === "VgsM";
+  private getHeaderString(data: Uint8Array): string {
+    const headerBytes = data.slice(0, 11);
+    const trimmedBytes = headerBytes.filter(
+      // added 0x80 for PMV
+      (byte) => byte !== 0x0 && byte !== 0x1 && byte !== 0x3f && byte !== 0x80
+    );
+    return new TextDecoder("ascii").decode(trimmedBytes);
   }
 
-  private isVmpFormat(data: Uint8Array): boolean {
-    return this.arrayToString(data.slice(0, 3)) === "PMV";
-  }
-
-  private isMcxFormat(data: Uint8Array): boolean {
-    const decrypted = this.decryptMcxCard(data);
+  private async isMcxCard(data: Uint8Array): Promise<boolean> {
+    const decrypted = await this.decryptMcxCard(data);
     return this.arrayToString(decrypted.slice(0x80, 0x82)) === "MC";
   }
 
-  private decryptMcxCard(data: Uint8Array): Uint8Array {
-    // Implement MCX decryption here
-    // This is a placeholder and should be replaced with actual decryption logic
-    return data.slice(0, TOTAL_CARD_SIZE);
+  private decryptMcxCard(rawCard: Uint8Array): Promise<Uint8Array> {
+    const mcxCard = new Uint8Array(0x200a0);
+    mcxCard.set(rawCard.subarray(0, mcxCard.length));
+    return AesCbcDecrypt(mcxCard, mcxKey, mcxIv);
   }
 
   private loadGMEComments(data: Uint8Array): void {
@@ -692,72 +716,6 @@ class PS1MemoryCard {
     return header;
   }
 
-  private async createAesKey(key: Uint8Array): Promise<CryptoKey> {
-    return await crypto.subtle.importKey(
-      "raw",
-      key,
-      { name: "AES-CBC" },
-      false,
-      ["encrypt", "decrypt"]
-    );
-  }
-
-  private async aesEcbProcessBlock(
-    block: Uint8Array,
-    key: CryptoKey,
-    encrypt: boolean
-  ): Promise<Uint8Array> {
-    const iv = new Uint8Array(16); // Zero IV for ECB
-    const result = await crypto.subtle[encrypt ? "encrypt" : "decrypt"](
-      { name: "AES-CBC", iv },
-      key,
-      block
-    );
-    return new Uint8Array(result).slice(0, 16);
-  }
-
-  private async aesEcbProcess(
-    data: Uint8Array,
-    key: Uint8Array,
-    encrypt: boolean
-  ): Promise<Uint8Array> {
-    const cryptoKey = await this.createAesKey(key);
-    const blockSize = 16;
-    const result = new Uint8Array(data.length);
-
-    for (let i = 0; i < data.length; i += blockSize) {
-      const block = data.slice(i, i + blockSize);
-      const processedBlock = await this.aesEcbProcessBlock(
-        block,
-        cryptoKey,
-        encrypt
-      );
-      result.set(processedBlock, i);
-    }
-
-    return result;
-  }
-
-  private async aesEcbEncrypt(
-    toEncrypt: Uint8Array,
-    key: Uint8Array
-  ): Promise<Uint8Array> {
-    return this.aesEcbProcess(toEncrypt, key, true);
-  }
-
-  private async aesEcbDecrypt(
-    toDecrypt: Uint8Array,
-    key: Uint8Array
-  ): Promise<Uint8Array> {
-    return this.aesEcbProcess(toDecrypt, key, false);
-  }
-
-  private xorWithIv(destBuffer: Uint8Array, iv: Uint8Array): void {
-    for (let i = 0; i < 16; i++) {
-      destBuffer[i] ^= iv[i];
-    }
-  }
-
   private async makeVmpCard(): Promise<Uint8Array> {
     const vmpCard = new Uint8Array(0x20080);
     vmpCard[1] = 0x50; // 'P'
@@ -767,62 +725,10 @@ class PS1MemoryCard {
 
     vmpCard.set(this.rawData, 0x80);
 
-    const saltSeed = new Uint8Array(
-      await crypto.subtle.digest("SHA-1", vmpCard)
-    );
+    const saltSeed = await generateSaltSeed(vmpCard);
     vmpCard.set(saltSeed.subarray(0, 0x14), 0x0c);
-    vmpCard.set(await this.getHmac(vmpCard, saltSeed), 0x20);
+    vmpCard.set(await getHmac(vmpCard, saltSeed, saveKey, saveIv), 0x20);
     return vmpCard;
-  }
-
-  private async getHmac(
-    data: Uint8Array,
-    saltSeed: Uint8Array
-  ): Promise<Uint8Array> {
-    const buffer = new Uint8Array(0x14);
-    const salt = new Uint8Array(0x40);
-    const temp = new Uint8Array(0x14);
-    const hash1 = new Uint8Array(data.length + 0x40);
-    const hash2 = new Uint8Array(0x54);
-
-    buffer.set(saltSeed.subarray(0, 0x14));
-    buffer.set(
-      await this.aesEcbDecrypt(buffer.subarray(0, 0x10), this.saveKey)
-    );
-    salt.set(buffer.subarray(0, 0x10));
-    buffer.set(saltSeed.subarray(0, 0x10));
-    buffer.set(
-      await this.aesEcbEncrypt(buffer.subarray(0, 0x14), this.saveKey)
-    );
-
-    salt.set(buffer.subarray(0, 0x10), 0x10);
-    this.xorWithIv(salt, this.saveIv);
-    buffer.fill(0xff, 0x14);
-    buffer.set(saltSeed.subarray(0x10, 0x14), 0);
-    temp.set(salt.subarray(0x10, 0x24));
-    this.xorWithIv(temp, buffer);
-    salt.set(temp.subarray(0, 0x10), 0x10);
-    temp.set(salt.subarray(0, 0x14));
-    salt.fill(0, 0x14);
-    salt.set(temp.subarray(0, 0x14));
-
-    for (let i = 0; i < salt.length; i++) {
-      salt[i] ^= 0x36;
-    }
-
-    hash1.set(salt.subarray(0, 0x40));
-    hash1.set(data, 0x40);
-    const sha1Hash1 = await crypto.subtle.digest("SHA-1", hash1);
-    buffer.set(new Uint8Array(sha1Hash1));
-
-    for (let i = 0; i < salt.length; i++) {
-      salt[i] ^= 0x6a;
-    }
-
-    hash2.set(salt.subarray(0, 0x40));
-    hash2.set(buffer.subarray(0, 0x14), 0x40);
-    const sha1Hash2 = await crypto.subtle.digest("SHA-1", hash2);
-    return new Uint8Array(sha1Hash2);
   }
 
   private makeMcxCard(): Uint8Array {
@@ -903,11 +809,9 @@ class PS1MemoryCard {
     new DataView(psvSave.buffer).setUint32(0x40, save.length - 0x80, true);
     psvSave.set(save.subarray(0x80), 0x84);
 
-    const saltSeed = new Uint8Array(
-      await crypto.subtle.digest("SHA-1", psvSave)
-    );
+    const saltSeed = await generateSaltSeed(psvSave);
     psvSave.set(saltSeed.subarray(0, 0x14), 0x08);
-    psvSave.set(await this.getHmac(psvSave, saltSeed), 0x1c);
+    psvSave.set(await getHmac(psvSave, saltSeed, saveKey, saveIv), 0x1c);
     return psvSave;
   }
 
