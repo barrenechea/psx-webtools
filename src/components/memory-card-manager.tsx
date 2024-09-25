@@ -2,7 +2,8 @@ import {
   ArrowRightIcon,
   CopyIcon,
   CpuIcon,
-  FolderIcon,
+  FileIcon,
+  SaveIcon,
   TrashIcon,
   UsbIcon,
 } from "lucide-react";
@@ -208,7 +209,8 @@ export const MemoryCardManager: React.FC = () => {
         {/* Toolbar */}
         <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-2">
           <h1 className="pl-2 font-light text-muted-foreground">
-            Memory Card Manager
+            Memory Card Manager{" "}
+            <span className="text-xs text-red-500">Alpha</span>
           </h1>
           <TooltipProvider>
             <div className="flex space-x-2">
@@ -263,7 +265,7 @@ export const MemoryCardManager: React.FC = () => {
                     onClick={() => void handleSaveMemoryCard()}
                     disabled={selectedCard === null}
                   >
-                    <FolderIcon className="size-4" />
+                    <SaveIcon className="size-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Save memory card</TooltipContent>
@@ -276,7 +278,7 @@ export const MemoryCardManager: React.FC = () => {
         <div className="flex grow overflow-hidden">
           {/* Sidebar */}
           <div className="flex w-64 flex-col border-r border-gray-200 bg-gray-50">
-            <ScrollArea className="grow">
+            <ScrollArea className="grow" type="auto">
               <div className="p-2">
                 {memoryCards.map((card) => (
                   <Button
@@ -289,8 +291,8 @@ export const MemoryCardManager: React.FC = () => {
                     }`}
                     onClick={() => setSelectedCard(card.id)}
                   >
-                    <FolderIcon className="mr-2 size-4" />
-                    {card.name}
+                    <FileIcon className="mr-2 size-4" />
+                    <span className="max-w-44 truncate">{card.name}</span>
                   </Button>
                 ))}
               </div>
@@ -301,7 +303,7 @@ export const MemoryCardManager: React.FC = () => {
                 className="w-full justify-start"
                 onClick={handleFileOpen}
               >
-                <FolderIcon className="mr-2 size-4" />
+                <FileIcon className="mr-2 size-4" />
                 Open from file
               </Button>
               <Button
@@ -346,7 +348,7 @@ export const MemoryCardManager: React.FC = () => {
                     }"`}
                   </p>
                 </div>
-                <ScrollArea className="grow">
+                <ScrollArea className="grow" type="auto">
                   <div className="p-4">
                     {memoryCards
                       .find((card) => card.id === selectedCard)

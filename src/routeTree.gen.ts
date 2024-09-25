@@ -17,7 +17,9 @@ import { Route as rootRoute } from './routes/__root'
 // Create Virtual Routes
 
 const IndexLazyImport = createFileRoute('/')()
-const MemoryCardIndexLazyImport = createFileRoute('/memory-card/')()
+const MemoryCardManagerIndexLazyImport = createFileRoute(
+  '/memory-card-manager/',
+)()
 
 // Create/Update Routes
 
@@ -26,11 +28,13 @@ const IndexLazyRoute = IndexLazyImport.update({
   getParentRoute: () => rootRoute,
 } as any).lazy(() => import('./routes/index.lazy').then((d) => d.Route))
 
-const MemoryCardIndexLazyRoute = MemoryCardIndexLazyImport.update({
-  path: '/memory-card/',
-  getParentRoute: () => rootRoute,
-} as any).lazy(() =>
-  import('./routes/memory-card/index.lazy').then((d) => d.Route),
+const MemoryCardManagerIndexLazyRoute = MemoryCardManagerIndexLazyImport.update(
+  {
+    path: '/memory-card-manager/',
+    getParentRoute: () => rootRoute,
+  } as any,
+).lazy(() =>
+  import('./routes/memory-card-manager/index.lazy').then((d) => d.Route),
 )
 
 // Populate the FileRoutesByPath interface
@@ -44,11 +48,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexLazyImport
       parentRoute: typeof rootRoute
     }
-    '/memory-card/': {
-      id: '/memory-card/'
-      path: '/memory-card'
-      fullPath: '/memory-card'
-      preLoaderRoute: typeof MemoryCardIndexLazyImport
+    '/memory-card-manager/': {
+      id: '/memory-card-manager/'
+      path: '/memory-card-manager'
+      fullPath: '/memory-card-manager'
+      preLoaderRoute: typeof MemoryCardManagerIndexLazyImport
       parentRoute: typeof rootRoute
     }
   }
@@ -58,37 +62,37 @@ declare module '@tanstack/react-router' {
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexLazyRoute
-  '/memory-card': typeof MemoryCardIndexLazyRoute
+  '/memory-card-manager': typeof MemoryCardManagerIndexLazyRoute
 }
 
 export interface FileRoutesByTo {
   '/': typeof IndexLazyRoute
-  '/memory-card': typeof MemoryCardIndexLazyRoute
+  '/memory-card-manager': typeof MemoryCardManagerIndexLazyRoute
 }
 
 export interface FileRoutesById {
   __root__: typeof rootRoute
   '/': typeof IndexLazyRoute
-  '/memory-card/': typeof MemoryCardIndexLazyRoute
+  '/memory-card-manager/': typeof MemoryCardManagerIndexLazyRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/memory-card'
+  fullPaths: '/' | '/memory-card-manager'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/memory-card'
-  id: '__root__' | '/' | '/memory-card/'
+  to: '/' | '/memory-card-manager'
+  id: '__root__' | '/' | '/memory-card-manager/'
   fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
   IndexLazyRoute: typeof IndexLazyRoute
-  MemoryCardIndexLazyRoute: typeof MemoryCardIndexLazyRoute
+  MemoryCardManagerIndexLazyRoute: typeof MemoryCardManagerIndexLazyRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexLazyRoute: IndexLazyRoute,
-  MemoryCardIndexLazyRoute: MemoryCardIndexLazyRoute,
+  MemoryCardManagerIndexLazyRoute: MemoryCardManagerIndexLazyRoute,
 }
 
 export const routeTree = rootRoute
@@ -104,14 +108,14 @@ export const routeTree = rootRoute
       "filePath": "__root.tsx",
       "children": [
         "/",
-        "/memory-card/"
+        "/memory-card-manager/"
       ]
     },
     "/": {
       "filePath": "index.lazy.tsx"
     },
-    "/memory-card/": {
-      "filePath": "memory-card/index.lazy.tsx"
+    "/memory-card-manager/": {
+      "filePath": "memory-card-manager/index.lazy.tsx"
     }
   }
 }
