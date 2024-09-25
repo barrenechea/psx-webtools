@@ -95,7 +95,7 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
     <Card
       className={`mb-2 cursor-pointer ${
         isSelected
-          ? "border-blue-500 bg-blue-100"
+          ? "border-gray-200 bg-gray-100"
           : "border-transparent hover:bg-gray-50"
       }`}
       onClick={() => onClick(index)}
@@ -206,60 +206,69 @@ export const MemoryCardManager: React.FC = () => {
     <div className="flex h-screen w-full items-center justify-center bg-gray-100 p-4">
       <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         {/* Toolbar */}
-        <div className="flex items-center space-x-2 border-b border-gray-200 bg-gray-50 p-2">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-2">
+          <h1 className="pl-2 font-light text-muted-foreground">
+            Memory Card Manager
+          </h1>
           <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleCopyMove("copy")}
-                  disabled={selectedSlot === null}
-                >
-                  <CopyIcon className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Copy to other card</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleCopyMove("move")}
-                  disabled={selectedSlot === null}
-                >
-                  <ArrowRightIcon className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Move to other card</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleDelete}
-                  disabled={selectedSlot === null}
-                >
-                  <TrashIcon className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Delete save</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => void handleSaveMemoryCard()}
-                  disabled={selectedCard === null}
-                >
-                  <FolderIcon className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Save memory card</TooltipContent>
-            </Tooltip>
+            <div className="flex space-x-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleCopyMove("copy")}
+                    disabled={selectedSlot === null}
+                  >
+                    <CopyIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Copy to other card
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleCopyMove("move")}
+                    disabled={selectedSlot === null}
+                  >
+                    <ArrowRightIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Move to other card
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleDelete}
+                    disabled={selectedSlot === null}
+                  >
+                    <TrashIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Delete save</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => void handleSaveMemoryCard()}
+                    disabled={selectedCard === null}
+                  >
+                    <FolderIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Save memory card</TooltipContent>
+              </Tooltip>
+            </div>
           </TooltipProvider>
         </div>
 
@@ -275,7 +284,7 @@ export const MemoryCardManager: React.FC = () => {
                     variant="ghost"
                     className={`mb-1 w-full justify-start ${
                       selectedCard === card.id
-                        ? "bg-blue-100 text-blue-800"
+                        ? "cursor-default bg-gray-200 text-gray-800 hover:bg-gray-200"
                         : "hover:bg-gray-100"
                     }`}
                     onClick={() => setSelectedCard(card.id)}
