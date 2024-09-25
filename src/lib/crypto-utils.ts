@@ -1,4 +1,12 @@
-export async function AesCbcDecrypt(
+/**
+ * Decrypts data using AES-CBC algorithm.
+ * @param data - The encrypted data as a Uint8Array.
+ * @param mcxKey - The key used for decryption as a Uint8Array.
+ * @param mcxIv - The initialization vector used for decryption as a Uint8Array.
+ * @returns A Promise that resolves to the decrypted data as a Uint8Array.
+ * @throws Will throw an error if decryption fails.
+ */
+export async function aesCbcDecrypt(
   data: Uint8Array,
   mcxKey: Uint8Array,
   mcxIv: Uint8Array
@@ -21,14 +29,29 @@ export async function AesCbcDecrypt(
   }
 }
 
+/**
+ * Converts a string to a Uint8Array.
+ * @param str - The input string to convert.
+ * @returns A Uint8Array representation of the input string.
+ */
 export function stringToUint8Array(str: string): Uint8Array {
   return new TextEncoder().encode(str);
 }
 
+/**
+ * Converts a Uint8Array to a string.
+ * @param array - The Uint8Array to convert.
+ * @returns A string representation of the input Uint8Array.
+ */
 export function uint8ArrayToString(array: Uint8Array): string {
   return new TextDecoder().decode(array);
 }
 
+/**
+ * Creates an AES CryptoKey from a Uint8Array.
+ * @param key - The key as a Uint8Array.
+ * @returns A Promise that resolves to a CryptoKey.
+ */
 export async function createAesKey(key: Uint8Array): Promise<CryptoKey> {
   return await crypto.subtle.importKey("raw", key, { name: "AES-CBC" }, false, [
     "encrypt",
@@ -36,6 +59,13 @@ export async function createAesKey(key: Uint8Array): Promise<CryptoKey> {
   ]);
 }
 
+/**
+ * Processes a single block using AES-ECB mode.
+ * @param block - The block to process as a Uint8Array.
+ * @param key - The CryptoKey to use for encryption/decryption.
+ * @param encrypt - Boolean indicating whether to encrypt (true) or decrypt (false).
+ * @returns A Promise that resolves to the processed block as a Uint8Array.
+ */
 export async function aesEcbProcessBlock(
   block: Uint8Array,
   key: CryptoKey,
@@ -50,6 +80,13 @@ export async function aesEcbProcessBlock(
   return new Uint8Array(result).slice(0, 16);
 }
 
+/**
+ * Processes data using AES-ECB mode.
+ * @param data - The data to process as a Uint8Array.
+ * @param key - The key as a Uint8Array.
+ * @param encrypt - Boolean indicating whether to encrypt (true) or decrypt (false).
+ * @returns A Promise that resolves to the processed data as a Uint8Array.
+ */
 export async function aesEcbProcess(
   data: Uint8Array,
   key: Uint8Array,
@@ -68,6 +105,12 @@ export async function aesEcbProcess(
   return result;
 }
 
+/**
+ * Encrypts data using AES-ECB mode.
+ * @param toEncrypt - The data to encrypt as a Uint8Array.
+ * @param key - The key as a Uint8Array.
+ * @returns A Promise that resolves to the encrypted data as a Uint8Array.
+ */
 export async function aesEcbEncrypt(
   toEncrypt: Uint8Array,
   key: Uint8Array
@@ -75,6 +118,12 @@ export async function aesEcbEncrypt(
   return aesEcbProcess(toEncrypt, key, true);
 }
 
+/**
+ * Decrypts data using AES-ECB mode.
+ * @param toDecrypt - The data to decrypt as a Uint8Array.
+ * @param key - The key as a Uint8Array.
+ * @returns A Promise that resolves to the decrypted data as a Uint8Array.
+ */
 export async function aesEcbDecrypt(
   toDecrypt: Uint8Array,
   key: Uint8Array
@@ -82,12 +131,25 @@ export async function aesEcbDecrypt(
   return aesEcbProcess(toDecrypt, key, false);
 }
 
+/**
+ * Performs an XOR operation between a destination buffer and an IV.
+ * @param destBuffer - The destination buffer to XOR with the IV.
+ * @param iv - The initialization vector.
+ */
 export function xorWithIv(destBuffer: Uint8Array, iv: Uint8Array): void {
   for (let i = 0; i < 16; i++) {
     destBuffer[i] ^= iv[i];
   }
 }
 
+/**
+ * Generates an HMAC for PlayStation 1 memory card data.
+ * @param data - The data to generate the HMAC for.
+ * @param saltSeed - The salt seed for HMAC generation.
+ * @param saveKey - The key used for save data encryption.
+ * @param saveIv - The initialization vector used for save data encryption.
+ * @returns A Promise that resolves to the generated HMAC as a Uint8Array.
+ */
 export async function getHmac(
   data: Uint8Array,
   saltSeed: Uint8Array,

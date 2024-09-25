@@ -1,4 +1,4 @@
-import { AesCbcDecrypt, getHmac } from "@/lib/crypto-utils";
+import { aesCbcDecrypt, getHmac } from "@/lib/crypto-utils";
 import {
   generateSaltSeed,
   mcxIv,
@@ -174,7 +174,7 @@ class PS1MemoryCard {
   private decryptMcxCard(rawCard: Uint8Array): Promise<Uint8Array> {
     const mcxCard = new Uint8Array(0x200a0);
     mcxCard.set(rawCard.subarray(0, mcxCard.length));
-    return AesCbcDecrypt(mcxCard, mcxKey, mcxIv);
+    return aesCbcDecrypt(mcxCard, mcxKey, mcxIv);
   }
 
   private loadGMEComments(data: Uint8Array): void {
