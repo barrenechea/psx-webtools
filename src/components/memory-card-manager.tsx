@@ -3,6 +3,7 @@ import {
   CopyIcon,
   CpuIcon,
   FileIcon,
+  InfoIcon,
   SaveIcon,
   TrashIcon,
   UsbIcon,
@@ -400,9 +401,26 @@ export const MemoryCardManager: React.FC = () => {
                 </div>
                 {sidebarOpen && (
                   <div className="flex w-80 flex-col border-l border-border bg-card">
-                    <div className="flex items-center justify-between bg-muted px-4 py-5">
+                    <div className="flex items-center justify-between bg-muted p-4">
                       <div className="flex-row">
-                        <h2 className="mb-1 font-semibold">Game Details</h2>
+                        <div className="flex flex-row items-center">
+                          <p className="font-semibold">Game Details</p>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <InfoIcon className="size-3 text-muted-foreground" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  Game details provided by The PlayStation
+                                  DataCenter
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {selectedGameId}
                         </p>
