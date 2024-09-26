@@ -43,7 +43,7 @@ export const Sidebar: React.FC = () => {
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col bg-background/80 backdrop-blur-xl transition-all duration-300 ease-in-out",
+        "flex h-screen flex-col bg-background backdrop-blur-xl transition-all duration-300 ease-in-out shadow-lg",
         isExpanded ? "w-64 min-w-72" : "w-16"
       )}
     >

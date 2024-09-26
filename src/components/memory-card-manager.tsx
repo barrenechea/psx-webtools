@@ -309,8 +309,8 @@ export const MemoryCardManager: React.FC = () => {
                     variant="ghost"
                     className={`mb-1 w-full justify-start ${
                       selectedCard === card.id
-                        ? "cursor-default bg-accent text-accent-foreground hover:bg-accent"
-                        : "hover:bg-accent hover:text-accent-foreground"
+                        ? "cursor-default bg-gray-300 hover:bg-gray-300"
+                        : "bg-gray-100 hover:bg-gray-200"
                     }`}
                     onClick={() => setSelectedCard(card.id)}
                   >
