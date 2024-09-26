@@ -49,7 +49,7 @@ This project is built using React, Vite, and TypeScript. To set up the developme
 
 ## License
 
-This project is licensed under the Mozilla Public License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
