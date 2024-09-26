@@ -17,23 +17,27 @@ interface NavItemProps {
   to: string;
   icon: React.ReactNode;
   label: string;
-  isActive: boolean;
+  isExpanded: boolean;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ to, icon, label, isActive }) => (
-  <Link to={to} className="w-full">
-    <Button
-      variant="ghost"
-      className={cn(
-        "w-full justify-start",
-        isActive
-          ? "bg-accent text-accent-foreground"
-          : "hover:bg-accent hover:text-accent-foreground"
-      )}
-    >
+const NavItem: React.FC<NavItemProps> = ({ to, icon, label, isExpanded }) => (
+  <Link
+    to={to}
+    className={cn(
+      "group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
+      isExpanded ? "justify-start" : "justify-center"
+    )}
+    activeProps={{
+      className: "bg-accent text-accent-foreground",
+    }}
+    inactiveProps={{
+      className: "hover:bg-accent/50 hover:text-accent-foreground",
+    }}
+  >
+    <span className={cn("flex items-center", isExpanded && "mr-3")}>
       {icon}
-      <span className="ml-2">{label}</span>
-    </Button>
+    </span>
+    {isExpanded && <span>{label}</span>}
   </Link>
 );
 
@@ -43,22 +47,27 @@ export const Sidebar: React.FC = () => {
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col bg-background backdrop-blur-xl transition-all duration-300 ease-in-out shadow-lg",
-        isExpanded ? "w-64 min-w-72" : "w-16"
+        "flex h-screen flex-col transition-all duration-300 ease-in-out",
+        "bg-background/80 backdrop-blur-xl",
+        "border-r border-border/50",
+        isExpanded ? "w-64" : "w-20"
       )}
     >
       <div className="flex items-center justify-between p-4">
-        {isExpanded && (
-          <>
-            <PSLogo className="mr-2 size-8" />
-            <h1 className="text-lg font-semibold">PS1 WebTools</h1>
-          </>
-        )}
+        <div className="flex items-center space-x-3">
+          <PSLogo className="size-8" />
+          {isExpanded && (
+            <h1 className="text-lg font-semibold text-foreground">
+              PS1 WebTools
+            </h1>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setIsExpanded(!isExpanded)}
           aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          className="rounded-full hover:bg-accent/10"
         >
           {isExpanded ? (
             <ChevronLeft className="size-4" />
@@ -68,33 +77,37 @@ export const Sidebar: React.FC = () => {
         </Button>
       </div>
 
-      <Separator />
+      <Separator className="my-2 opacity-50" />
 
-      <nav className="flex-1 space-y-1 p-4">
+      <nav className="flex-1 space-y-1 p-2">
         <NavItem
           to="/"
-          icon={<Home className="size-4" />}
+          icon={<Home className="size-5" />}
           label="Home"
-          isActive={false} // You'll need to implement active state logic
+          isExpanded={isExpanded}
         />
-        <NavItem
+        {/* <NavItem
           to="/exe-loader"
-          icon={<MonitorPlayIcon className="size-4" />}
+          icon={<MonitorPlayIcon className="size-5" />}
           label="EXE Loader"
-          isActive={false}
-        />
+          isExpanded={isExpanded}
+        /> */}
         <NavItem
           to="/memory-card-manager"
-          icon={<MemoryStickIcon className="size-4" />}
+          icon={<MemoryStickIcon className="size-5" />}
           label="Memory Card"
-          isActive={false}
+          isExpanded={isExpanded}
         />
       </nav>
 
       {isExpanded && (
-        <div className="p-4 text-xs text-muted-foreground">
-          © 2024 Sebastián Barrenechea
-        </div>
+        <>
+          <Separator className="mt-2 opacity-50" />
+
+          <div className="p-4 text-center text-xs text-muted-foreground">
+            © 2024 Sebastian Barrenechea
+          </div>
+        </>
       )}
     </aside>
   );
