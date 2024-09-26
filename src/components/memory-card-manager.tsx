@@ -6,18 +6,21 @@ import {
   SaveIcon,
   TrashIcon,
   UsbIcon,
+  XIcon,
 } from "lucide-react";
 import React, { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useGameData } from "@/hooks/use-game-data";
 import PS1MemoryCard, {
   CardTypes,
   SaveInfo,
@@ -136,6 +139,15 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedCard, setSelectedCard] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+
+  const {
+    gameData,
+    isLoading,
+    error: gameDataError,
+  } = useGameData("PS1", selectedRegion ?? "", selectedGameId ?? "");
 
   const handleFileOpen = () => {
     try {
@@ -203,14 +215,24 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
+  const handleSlotClick = (index: number) => {
+    setSelectedSlot(selectedSlot === index ? null : index);
+    setSidebarOpen(true);
+    const selectedSave = memoryCards
+      .find((card) => card.id === selectedCard)
+      ?.card.getSaves()[index];
+    setSelectedGameId(selectedSave?.productCode ?? null);
+    setSelectedRegion(selectedSave?.region ?? null);
+  };
+
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-gray-100 p-4">
-      <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+    <div className="flex h-screen w-full items-center justify-center bg-muted p-4">
+      <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl bg-card shadow-xl">
         {/* Toolbar */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-2">
+        <div className="flex items-center justify-between border-b border-border bg-muted p-2">
           <h1 className="pl-2 font-light text-muted-foreground">
             Memory Card Manager{" "}
-            <span className="text-xs text-red-500">Alpha</span>
+            <span className="text-xs text-destructive">Alpha</span>
           </h1>
           <TooltipProvider>
             <div className="flex space-x-2">
@@ -277,7 +299,7 @@ export const MemoryCardManager: React.FC = () => {
         {/* Main content */}
         <div className="flex grow overflow-hidden">
           {/* Sidebar */}
-          <div className="flex w-64 flex-col border-r border-gray-200 bg-gray-50">
+          <div className="flex w-64 flex-col border-r border-border bg-muted">
             <ScrollArea className="grow" type="auto">
               <div className="p-2">
                 {memoryCards.map((card) => (
@@ -286,8 +308,8 @@ export const MemoryCardManager: React.FC = () => {
                     variant="ghost"
                     className={`mb-1 w-full justify-start ${
                       selectedCard === card.id
-                        ? "cursor-default bg-gray-200 text-gray-800 hover:bg-gray-200"
-                        : "hover:bg-gray-100"
+                        ? "cursor-default bg-accent text-accent-foreground hover:bg-accent"
+                        : "hover:bg-accent hover:text-accent-foreground"
                     }`}
                     onClick={() => setSelectedCard(card.id)}
                   >
@@ -297,7 +319,7 @@ export const MemoryCardManager: React.FC = () => {
                 ))}
               </div>
             </ScrollArea>
-            <div className="space-y-1 border-t border-gray-200 p-2">
+            <div className="space-y-1 border-t border-border p-2">
               <Button
                 variant="ghost"
                 className="w-full justify-start"
@@ -334,50 +356,134 @@ export const MemoryCardManager: React.FC = () => {
           </div>
 
           {/* Card content */}
-          <div className="flex grow flex-col">
+          <div className="flex grow flex-row">
             {selectedCard ? (
               <>
-                <div className="border-b border-gray-200 bg-gray-50 p-4">
-                  <h2 className="mb-1 text-lg font-semibold">
-                    {memoryCards.find((card) => card.id === selectedCard)?.name}
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    {`Opened via file "${
-                      memoryCards.find((card) => card.id === selectedCard)
-                        ?.source
-                    }"`}
-                  </p>
-                </div>
-                <ScrollArea className="grow" type="auto">
-                  <div className="p-4">
-                    {memoryCards
-                      .find((card) => card.id === selectedCard)
-                      ?.card.getSaves()
-                      .map((save, index) => {
-                        const card = memoryCards.find(
-                          (c) => c.id === selectedCard
-                        )?.card;
-                        return (
-                          <MemoryCardSlot
-                            key={index}
-                            slot={save}
-                            index={index}
-                            isSelected={selectedSlot === index}
-                            onClick={(index) =>
-                              setSelectedSlot(
-                                selectedSlot === index ? null : index
-                              )
-                            }
-                            iconData={card?.getIconData(index) ?? []}
-                            iconPalette={card?.getIconPalette(index) ?? []}
-                          />
-                        );
-                      })}
+                <div className="flex grow flex-col">
+                  <div className="border-b border-border bg-muted p-4">
+                    <h2 className="mb-1 text-lg font-semibold">
+                      {
+                        memoryCards.find((card) => card.id === selectedCard)
+                          ?.name
+                      }
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {`Opened via file "${
+                        memoryCards.find((card) => card.id === selectedCard)
+                          ?.source
+                      }"`}
+                    </p>
                   </div>
-                </ScrollArea>
+                  <ScrollArea className="grow" type="auto">
+                    <div className="p-4">
+                      {memoryCards
+                        .find((card) => card.id === selectedCard)
+                        ?.card.getSaves()
+                        .map((save, index) => {
+                          const card = memoryCards.find(
+                            (c) => c.id === selectedCard
+                          )?.card;
+                          return (
+                            <MemoryCardSlot
+                              key={index}
+                              slot={save}
+                              index={index}
+                              isSelected={selectedSlot === index}
+                              onClick={handleSlotClick}
+                              iconData={card?.getIconData(index) ?? []}
+                              iconPalette={card?.getIconPalette(index) ?? []}
+                            />
+                          );
+                        })}
+                    </div>
+                  </ScrollArea>
+                </div>
+                {sidebarOpen && (
+                  <div className="flex w-80 flex-col border-l border-border bg-card">
+                    <div className="flex items-center justify-between bg-muted p-4">
+                      <h3 className="text-sm font-semibold">Game Details</h3>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setSidebarOpen(false)}
+                        className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      >
+                        <XIcon className="size-4" />
+                      </Button>
+                    </div>
+                    <Separator />
+                    <ScrollArea className="grow">
+                      <div className="space-y-6 p-4">
+                        {isLoading ? (
+                          <div className="flex h-full items-center justify-center">
+                            <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                          </div>
+                        ) : gameDataError ? (
+                          <div className="text-center text-destructive">
+                            {gameDataError}
+                          </div>
+                        ) : gameData ? (
+                          <>
+                            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
+                              {gameData.cover ? (
+                                <img
+                                  src={gameData.cover}
+                                  alt="Game cover"
+                                  className="size-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex size-full items-center justify-center text-muted-foreground">
+                                  No cover available
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <h4 className="mb-1 text-sm font-semibold">
+                                {gameData.officialTitle}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">
+                                Developed by {gameData.developer}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Published by {gameData.publisher}
+                              </p>
+                            </div>
+                            <Separator />
+                            <div className="space-y-3">
+                              <div>
+                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                  Genre / Style
+                                </p>
+                                <p className="text-sm">{gameData.genre}</p>
+                              </div>
+                              <div>
+                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                  Release Date
+                                </p>
+                                <p className="text-sm">
+                                  {gameData.releaseDate}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                  Discs
+                                </p>
+                                <p className="text-sm">{gameData.discs}</p>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center text-muted-foreground">
+                            Select a game to view details
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
               </>
             ) : (
-              <div className="flex grow flex-col items-center justify-center p-4 text-gray-500">
+              <div className="flex grow flex-col items-center justify-center p-4 text-muted-foreground">
                 <p className="mb-4 text-lg">No memory card selected</p>
                 <p className="text-sm">
                   Open a memory card file or connect a device to get started
@@ -388,7 +494,7 @@ export const MemoryCardManager: React.FC = () => {
         </div>
 
         {/* Status bar */}
-        <div className="border-t border-gray-200 bg-gray-50 p-2 text-sm text-gray-600">
+        <div className="border-t border-border bg-muted p-2 text-sm text-muted-foreground">
           {error ??
             (selectedCard
               ? `${
