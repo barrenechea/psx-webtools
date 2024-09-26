@@ -227,7 +227,7 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-muted p-4">
+    <div className="flex h-screen w-full items-center justify-center p-4">
       <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl bg-card shadow-xl">
         {/* Toolbar */}
         <div className="flex items-center justify-between border-b border-border bg-muted p-2">
