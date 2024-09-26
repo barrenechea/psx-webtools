@@ -69,8 +69,8 @@ class PS1MemoryCard {
   private iconPalette: IconPalette[] = [];
   private iconData: SlotIconData[] = [];
   private cardName: string | null = null;
-  private cardLocation: string | null = null;
-  private changedFlag = false;
+  //private cardLocation: string | null = null;
+  //private changedFlag = false;
 
   // New properties to match C# implementation
   private headerData: Uint8Array[] = Array.from(
@@ -83,7 +83,7 @@ class PS1MemoryCard {
   );
 
   private saveComments: string[] = new Array<string>(SLOT_COUNT).fill("");
-  private masterSlot: number[] = new Array<number>(SLOT_COUNT).fill(0);
+  //private masterSlot: number[] = new Array<number>(SLOT_COUNT).fill(0);
 
   constructor() {
     this.rawData = new Uint8Array(TOTAL_CARD_SIZE);
@@ -119,7 +119,7 @@ class PS1MemoryCard {
     }
 
     this.cardName = file.name;
-    this.cardLocation = URL.createObjectURL(file);
+    //this.cardLocation = URL.createObjectURL(file);
     this.loadMemoryCardData();
   }
 
@@ -482,7 +482,7 @@ class PS1MemoryCard {
     }
 
     this.loadMemoryCardData();
-    this.changedFlag = true;
+    //this.changedFlag = true;
   }
 
   public formatSave(slotNumber: number): void {
@@ -493,7 +493,7 @@ class PS1MemoryCard {
     }
 
     this.loadMemoryCardData();
-    this.changedFlag = true;
+    //this.changedFlag = true;
   }
 
   private formatSlot(slotNumber: number): void {
@@ -570,7 +570,7 @@ class PS1MemoryCard {
     }
 
     this.loadMemoryCardData();
-    this.changedFlag = true;
+    //this.changedFlag = true;
     return true;
   }
 
@@ -621,7 +621,7 @@ class PS1MemoryCard {
 
     this.loadStringData();
     this.calculateXOR();
-    this.changedFlag = true;
+    //this.changedFlag = true;
   }
 
   public getIconBytes(slotNumber: number): Uint8Array {
@@ -634,7 +634,7 @@ class PS1MemoryCard {
     this.saveData[slotNumber].set(iconBytes.slice(0, 416), 96);
     this.loadPalette();
     this.loadIcons();
-    this.changedFlag = true;
+    //this.changedFlag = true;
   }
 
   public async saveMemoryCard(
@@ -670,7 +670,7 @@ class PS1MemoryCard {
       URL.revokeObjectURL(url);
 
       this.cardName = fileName;
-      this.changedFlag = false;
+      //this.changedFlag = false;
       return true;
     } catch (error) {
       console.error("Failed to save memory card:", error);
