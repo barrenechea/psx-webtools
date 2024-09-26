@@ -400,8 +400,13 @@ export const MemoryCardManager: React.FC = () => {
                 </div>
                 {sidebarOpen && (
                   <div className="flex w-80 flex-col border-l border-border bg-card">
-                    <div className="flex items-center justify-between bg-muted p-4">
-                      <h3 className="text-sm font-semibold">Game Details</h3>
+                    <div className="flex items-center justify-between bg-muted px-4 py-5">
+                      <div className="flex-row">
+                        <h2 className="mb-1 font-semibold">Game Details</h2>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedGameId}
+                        </p>
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon"
