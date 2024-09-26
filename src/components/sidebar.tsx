@@ -93,7 +93,7 @@ export const Sidebar: React.FC = () => {
 
       {isExpanded && (
         <div className="p-4 text-xs text-muted-foreground">
-          © 2024 PS1 WebTools
+          © 2024 Sebastián Barrenechea
         </div>
       )}
     </aside>

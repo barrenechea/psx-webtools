@@ -1,7 +1,16 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/router-devtools";
+import { lazy, Suspense } from "react";
 
 import { Sidebar } from "@/components/sidebar";
+
+const TanStackRouterDevtools = import.meta.env.PROD
+  ? () => null // Render nothing in production
+  : lazy(() =>
+      // Lazy load in development
+      import("@tanstack/router-devtools").then((res) => ({
+        default: res.TanStackRouterDevtools,
+      }))
+    );
 
 export const Route = createRootRoute({
   component: () => (
@@ -10,7 +19,9 @@ export const Route = createRootRoute({
         <Sidebar />
         <Outlet />
       </div>
-      <TanStackRouterDevtools />
+      <Suspense>
+        <TanStackRouterDevtools position="bottom-right" />
+      </Suspense>
     </>
   ),
 });
