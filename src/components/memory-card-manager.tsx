@@ -9,7 +9,7 @@ import {
   UsbIcon,
   XIcon,
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useGameData } from "@/hooks/use-game-data";
+import { useMemcarduino } from "@/hooks/use-memcarduino";
 import PS1MemoryCard, {
   CardTypes,
   SaveInfo,
@@ -31,7 +32,7 @@ import PS1MemoryCard, {
 interface MemoryCard {
   id: number;
   name: string;
-  type: "file";
+  type: "file" | "device";
   source: string;
   card: PS1MemoryCard;
 }
@@ -142,11 +143,66 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
 
+  const [speed, setSpeed] = useState(1); // 1 for 38400, 0 for 115200
+  const {
+    isConnected,
+    error: connectionError,
+    connect,
+    disconnect,
+    readMemoryCard,
+    writeMemoryCard,
+  } = useMemcarduino();
+
+  useEffect(() => {
+    if (connectionError) {
+      setError(connectionError);
+    }
+  }, [connectionError]);
+
   const {
     gameData,
     isLoading,
     error: gameDataError,
   } = useGameData("PS1", selectedRegion ?? "", selectedGameId ?? "");
+
+  const handleConnect = async () => {
+    await connect("", speed);
+  };
+
+  const handleDisconnect = async () => {
+    await disconnect();
+  };
+
+  const handleReadFromDevice = async () => {
+    const card = await readMemoryCard();
+    if (card) {
+      const newMemoryCard: MemoryCard = {
+        id: Date.now(),
+        name: "MemCARDuino Read",
+        type: "device",
+        source: "MemCARDuino",
+        card: card,
+      };
+
+      setMemoryCards([...memoryCards, newMemoryCard]);
+      setSelectedCard(newMemoryCard.id);
+      setError(null);
+    }
+  };
+
+  const handleWriteToDevice = async () => {
+    if (selectedCard !== null) {
+      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      if (card) {
+        const success = await writeMemoryCard(card);
+        if (success) {
+          setError(null);
+        } else {
+          setError("Failed to write memory card to device");
+        }
+      }
+    }
+  };
 
   const handleFileOpen = () => {
     try {
@@ -231,7 +287,7 @@ export const MemoryCardManager: React.FC = () => {
         <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
           <h1 className="pl-2 font-light text-muted-foreground">
             Memory Card Manager{" "}
-            <span className="text-xs text-destructive">Alpha</span>
+            <span className="text-xs text-destructive dark:text-red-400">Alpha</span>
           </h1>
           <TooltipProvider>
             <div className="flex space-x-2">
@@ -294,7 +350,6 @@ export const MemoryCardManager: React.FC = () => {
             </div>
           </TooltipProvider>
         </div>
-
         {/* Main content */}
         <div className="flex grow overflow-hidden">
           {/* Sidebar */}
@@ -355,6 +410,48 @@ export const MemoryCardManager: React.FC = () => {
                 <CpuIcon className="mr-2 size-4" />
                 Connect Serial device
               </Button>
+              <select
+                value={speed}
+                onChange={(e) => setSpeed(Number(e.target.value))}
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              >
+                <option value={0}>115200 baud</option>
+                <option value={1}>38400 baud</option>
+              </select>
+              {isConnected ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-card/80"
+                    onClick={() => void handleDisconnect()}
+                  >
+                    Disconnect MemCARDuino
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-card/80"
+                    onClick={() => void handleReadFromDevice()}
+                  >
+                    Read from MemCARDuino
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-card/80"
+                    onClick={() => void handleWriteToDevice()}
+                    disabled={selectedCard === null}
+                  >
+                    Write to MemCARDuino
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-card/80"
+                  onClick={() => void handleConnect()}
+                >
+                  Connect MemCARDuino
+                </Button>
+              )}
             </div>
           </div>
 

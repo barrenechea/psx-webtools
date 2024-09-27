@@ -102,6 +102,25 @@ class PS1MemoryCard {
     );
   }
 
+  public getRawData(offset: number, length: number): Uint8Array {
+    return this.rawData.slice(offset, offset + length);
+  }
+
+  public setRawData(offset: number, data: Uint8Array): void {
+    this.rawData.set(data, offset);
+    this.loadMemoryCardData();
+  }
+
+  public loadFromRawData(data: Uint8Array): void {
+    if (data.length !== TOTAL_CARD_SIZE) {
+      throw new Error(
+        `Invalid data size. Expected ${TOTAL_CARD_SIZE} bytes, got ${data.length} bytes.`
+      );
+    }
+    this.rawData = data;
+    this.loadMemoryCardData();
+  }
+
   async loadFromFile(file: File): Promise<void> {
     const arrayBuffer = await file.arrayBuffer();
     const fileData = new Uint8Array(arrayBuffer);

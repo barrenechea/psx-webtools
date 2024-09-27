@@ -1,225 +1,90 @@
 import { useCallback, useState } from "react";
 
-import { useLogs } from "@/hooks/use-logs";
+import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
+import PS1MemoryCard from "@/lib/ps1-memory-card";
 
-enum MCinoCommands {
-  GETID = 0xa0,
-  GETVER = 0xa1,
-  MCR = 0xa2,
-  MCW = 0xa3,
-  PSINFO = 0xb0,
-  PSBIOS = 0xb1,
-  PSTIME = 0xb2,
-}
+export function useMemcarduino() {
+  const [memcarduino, setMemcarduino] = useState<MemCARDuino | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-enum MCinoResponses {
-  ERROR = 0xe0,
-  GOOD = 0x47,
-  BADCHECKSUM = 0x4e,
-  BADSECTOR = 0xff,
-}
-
-interface UseMemCARDuinoReturn {
-  connect: (baudRate: number) => Promise<void>;
-  disconnect: () => Promise<void>;
-  isConnected: boolean;
-  firmwareVersion: string | null;
-  readFrame: (frameNumber: number) => Promise<Uint8Array | null>;
-  writeFrame: (frameNumber: number, frameData: Uint8Array) => Promise<boolean>;
-}
-
-export function useMemCARDuino(): UseMemCARDuinoReturn {
-  const [port, setPort] = useState<SerialPort | null>(null);
-  const [reader, setReader] =
-    useState<ReadableStreamDefaultReader<Uint8Array> | null>(null);
-  const [writer, setWriter] =
-    useState<WritableStreamDefaultWriter<Uint8Array> | null>(null);
-  const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const { appendLog } = useLogs();
-
-  const sendCommand = useCallback(
-    async (
-      command: MCinoCommands,
-      currentWriter: WritableStreamDefaultWriter<Uint8Array>
-    ) => {
-      await currentWriter.write(new Uint8Array([command]));
-    },
-    []
-  );
-
-  const readResponse = useCallback(
-    async (
-      length: number,
-      currentReader: ReadableStreamDefaultReader<Uint8Array>
-    ): Promise<Uint8Array> => {
-      let buffer = new Uint8Array(0);
-      while (buffer.length < length) {
-        const { value, done } = await currentReader.read();
-        if (done) break;
-        buffer = new Uint8Array([...buffer, ...value]);
+  const connect = useCallback(async (portInfo: string, speed: number) => {
+    try {
+      const mcduino = new MemCARDuino();
+      const result = await mcduino.start(portInfo, speed);
+      if (result === null) {
+        setMemcarduino(mcduino);
+        setIsConnected(true);
+        setError(null);
+      } else {
+        setError(result);
       }
-      if (buffer.length < length) throw new Error("Incomplete response");
-      return buffer.slice(0, length);
-    },
-    []
-  );
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
 
   const disconnect = useCallback(async () => {
-    if (reader) {
-      await reader.cancel();
-      setReader(null);
+    if (memcarduino) {
+      await memcarduino.stop();
+      setMemcarduino(null);
+      setIsConnected(false);
     }
-    if (writer) {
-      await writer.close();
-      setWriter(null);
-    }
-    if (port) {
-      await port.close();
-      setPort(null);
-    }
-    setFirmwareVersion(null);
-    setIsConnected(false);
-    appendLog("Disconnected from MemCARDuino");
-  }, [appendLog]);
+  }, [memcarduino]);
 
-  const connect = useCallback(
-    async (baudRate: number) => {
+  const readMemoryCard =
+    useCallback(async (): Promise<PS1MemoryCard | null> => {
+      if (!memcarduino) {
+        setError("MemCARDuino not connected");
+        return null;
+      }
+
       try {
-        const selectedPort = await navigator.serial.requestPort();
-        await selectedPort.open({
-          baudRate,
-          dataBits: 8,
-          stopBits: 2,
-          parity: "none",
-        });
-
-        if (!selectedPort.readable || !selectedPort.writable) {
-          throw new Error("Serial port is not readable or writable");
+        const card = new PS1MemoryCard();
+        for (let i = 0; i < 1024; i++) {
+          const frame = await memcarduino.readMemoryCardFrame(i);
+          if (frame === null) {
+            throw new Error(`Failed to read frame ${i}`);
+          }
+          card.setRawData(i * 128, frame);
         }
+        return card;
+      } catch (err) {
+        setError((err as Error).message);
+        return null;
+      }
+    }, [memcarduino]);
 
-        const portReader = selectedPort.readable.getReader();
-        const portWriter = selectedPort.writable.getWriter();
+  const writeMemoryCard = useCallback(
+    async (card: PS1MemoryCard): Promise<boolean> => {
+      if (!memcarduino) {
+        setError("MemCARDuino not connected");
+        return false;
+      }
 
-        // Toggle DTR to reset Arduino
-        await selectedPort.setSignals({ dataTerminalReady: false });
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        await selectedPort.setSignals({ dataTerminalReady: true });
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        // Set RTS and DTR
-        await selectedPort.setSignals({
-          dataTerminalReady: true,
-          requestToSend: true,
-        });
-
-        // Check if this is MemCARDuino
-        await sendCommand(MCinoCommands.GETID, portWriter);
-        let idResponse = await readResponse(6, portReader);
-
-        if (new TextDecoder().decode(idResponse) !== "MCDINO") {
-          // Try again with DTR enabled (for Arduino Leonardo or Micro)
-          await selectedPort.setSignals({ dataTerminalReady: true });
-          await sendCommand(MCinoCommands.GETID, portWriter);
-          idResponse = await readResponse(6, portReader);
-
-          if (new TextDecoder().decode(idResponse) !== "MCDINO") {
-            throw new Error("MemCARDuino not detected");
+      try {
+        for (let i = 0; i < 1024; i++) {
+          const frame = card.getRawData(i * 128, 128);
+          const success = await memcarduino.writeMemoryCardFrame(i, frame);
+          if (!success) {
+            throw new Error(`Failed to write frame ${i}`);
           }
         }
-
-        // Get firmware version
-        await sendCommand(MCinoCommands.GETVER, portWriter);
-        const versionResponse = await readResponse(1, portReader);
-        const version = versionResponse[0];
-
-        // Now that we've confirmed the connection, update the state
-        setPort(selectedPort);
-        setReader(portReader);
-        setWriter(portWriter);
-        setFirmwareVersion(`${version >> 4}.${version & 0xf}`);
-        setIsConnected(true);
-
-        appendLog(`Connected to MemCARDuino at ${baudRate} bps`);
-      } catch (error) {
-        appendLog(`Failed to connect: ${(error as Error).message}`);
-        await disconnect();
+        return true;
+      } catch (err) {
+        setError((err as Error).message);
+        return false;
       }
     },
-    [appendLog, sendCommand, readResponse, disconnect]
-  );
-
-  const readFrame = useCallback(
-    async (frameNumber: number): Promise<Uint8Array | null> => {
-      if (!writer || !reader) throw new Error("Not connected");
-
-      const frameMsb = (frameNumber >> 8) & 0xff;
-      const frameLsb = frameNumber & 0xff;
-
-      await sendCommand(MCinoCommands.MCR, writer);
-      await writer.write(new Uint8Array([frameMsb, frameLsb]));
-
-      const response = await readResponse(130, reader);
-      const frameData = response.slice(0, 128);
-      const checksum = response[128];
-      const status = response[129];
-
-      if (status !== MCinoResponses.GOOD as number) {
-        appendLog(`Failed to read frame ${frameNumber}: Bad status`);
-        return null;
-      }
-
-      let calculatedChecksum = frameMsb ^ frameLsb;
-      for (const byte of frameData) calculatedChecksum ^= byte;
-
-      if (calculatedChecksum !== checksum) {
-        appendLog(`Failed to read frame ${frameNumber}: Checksum mismatch`);
-        return null;
-      }
-
-      appendLog(`Successfully read frame ${frameNumber}`);
-      return frameData;
-    },
-    [writer, reader, sendCommand, readResponse, appendLog]
-  );
-
-  const writeFrame = useCallback(
-    async (frameNumber: number, frameData: Uint8Array): Promise<boolean> => {
-      if (!writer || !reader) throw new Error("Not connected");
-      if (frameData.length !== 128)
-        throw new Error("Invalid frame data length");
-
-      const frameMsb = (frameNumber >> 8) & 0xff;
-      const frameLsb = frameNumber & 0xff;
-
-      let checksum = frameMsb ^ frameLsb;
-      for (const byte of frameData) checksum ^= byte;
-
-      await sendCommand(MCinoCommands.MCW, writer);
-      await writer.write(
-        new Uint8Array([frameMsb, frameLsb, ...frameData, checksum])
-      );
-
-      const response = await readResponse(1, reader);
-      const success = response[0] === MCinoResponses.GOOD as number;
-
-      if (success) {
-        appendLog(`Successfully wrote frame ${frameNumber}`);
-      } else {
-        appendLog(`Failed to write frame ${frameNumber}`);
-      }
-
-      return success;
-    },
-    [writer, reader, sendCommand, readResponse, appendLog]
+    [memcarduino]
   );
 
   return {
+    isConnected,
+    error,
     connect,
     disconnect,
-    isConnected,
-    firmwareVersion,
-    readFrame,
-    writeFrame,
+    readMemoryCard,
+    writeMemoryCard,
   };
 }
