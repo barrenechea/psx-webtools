@@ -13,6 +13,7 @@ import React, { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import PS1BlockIcon from "@/components/ui/ps1-icon";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -46,11 +47,6 @@ interface MemoryCardSlotProps {
   iconPalette: [number, number, number, number][];
 }
 
-interface PS1BlockIconProps {
-  iconData: number[];
-  iconPalette: [number, number, number, number][];
-}
-
 const getRegionFlag = (region: string): string => {
   switch (region) {
     case "America":
@@ -62,31 +58,6 @@ const getRegionFlag = (region: string): string => {
     default:
       return "🏴";
   }
-};
-
-const PS1BlockIcon: React.FC<PS1BlockIconProps> = ({
-  iconData,
-  iconPalette,
-}) => {
-  return (
-    <div className="mr-2 size-8 shrink-0">
-      <svg width="32" height="32" viewBox="0 0 16 16">
-        {iconData.map((colorIndex, i) => {
-          const [r, g, b, a] = iconPalette[colorIndex] || [0, 0, 0, 0];
-          return (
-            <rect
-              key={i}
-              x={(i % 16) * 1}
-              y={Math.floor(i / 16) * 1}
-              width="1"
-              height="1"
-              fill={`rgba(${r},${g},${b},${a / 255})`}
-            />
-          );
-        })}
-      </svg>
-    </div>
-  );
 };
 
 const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
@@ -143,7 +114,7 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
 
-  const [speed, setSpeed] = useState(1); // 1 for 38400, 0 for 115200
+  const [speed, setSpeed] = useState(0); // 0 for 115200, 1 for 38400
   const {
     isConnected,
     error: connectionError,
@@ -287,7 +258,9 @@ export const MemoryCardManager: React.FC = () => {
         <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
           <h1 className="pl-2 font-light text-muted-foreground">
             Memory Card Manager{" "}
-            <span className="text-xs text-destructive dark:text-red-400">Alpha</span>
+            <span className="text-xs text-destructive dark:text-red-400">
+              Alpha
+            </span>
           </h1>
           <TooltipProvider>
             <div className="flex space-x-2">
