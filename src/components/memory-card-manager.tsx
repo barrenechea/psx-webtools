@@ -371,7 +371,11 @@ export const MemoryCardManager: React.FC = () => {
                       setSidebarOpen(false);
                     }}
                   >
-                    <FileIcon className="mr-2 size-4" />
+                    {card.type === "device" ? (
+                      <CpuIcon className="mr-2 size-4" />
+                    ) : (
+                      <FileIcon className="mr-2 size-4" />
+                    )}
                     <span className="max-w-44 truncate">{card.name}</span>
                   </Button>
                 ))}

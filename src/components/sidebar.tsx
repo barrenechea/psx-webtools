@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Home,
   MemoryStickIcon,
-  MonitorPlayIcon,
 } from "lucide-react";
 import React, { useState } from "react";
 
