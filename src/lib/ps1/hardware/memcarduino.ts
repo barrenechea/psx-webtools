@@ -48,7 +48,7 @@ export class MemCARDuino extends HardwareInterface {
   }
 
   override async start(
-    portInfo: string,
+    _portInfo: string,
     speed: number
   ): Promise<string | null> {
     const portBaudRate = speed === 1 ? 38400 : 115200;
