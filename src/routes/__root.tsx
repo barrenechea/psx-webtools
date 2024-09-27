@@ -18,7 +18,7 @@ export const Route = createRootRoute({
       <div className="flex w-full flex-row">
         <Sidebar />
         <div className="relative flex-1">
-          <div className="absolute inset-0 animate-background-shine bg-gradient-shine bg-400%" />
+          <div className="absolute inset-0 animate-background-shine bg-gradient-shine bg-400% dark:bg-gradient-shine-dark" />
           <div className="relative z-10 h-full overflow-auto">
             <Outlet />
           </div>

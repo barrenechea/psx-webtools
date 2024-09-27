@@ -69,8 +69,10 @@ export default {
         "gradient-conic":
           "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
         "gradient-shine":
-		"linear-gradient(to right, #b3e6e2, #99c7e6, #ffc2cc, #b3e6e2)",
-	},
+          "linear-gradient(to right, #b3e6e2, #99c7e6, #ffc2cc, #b3e6e2)",
+        "gradient-shine-dark":
+          "linear-gradient(to right, #1a3f3d, #1a2f3f, #3f1a1f, #1a3f3d)",
+      },
       backgroundSize: {
         "400%": "400%",
       },
