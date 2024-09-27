@@ -437,81 +437,77 @@ export const MemoryCardManager: React.FC = () => {
                       </Button>
                     </div>
                     <Separator />
-                    <ScrollArea className="grow">
-                      <div className="space-y-6 p-4">
-                        {isLoading ? (
-                          <div className="flex h-full items-center justify-center">
-                            <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                    {isLoading ? (
+                      <div className="flex h-full items-center justify-center">
+                        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                      </div>
+                    ) : gameDataError ? (
+                      <div className="text-center text-destructive">
+                        {gameDataError}
+                      </div>
+                    ) : gameData ? (
+                      <ScrollArea className="grow">
+                        <div className="space-y-6 p-4">
+                          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
+                            {gameData.cover ? (
+                              <img
+                                src={gameData.cover}
+                                alt="Game cover"
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex size-full items-center justify-center text-muted-foreground">
+                                No cover available
+                              </div>
+                            )}
                           </div>
-                        ) : gameDataError ? (
-                          <div className="text-center text-destructive">
-                            {gameDataError}
+                          <div>
+                            <h4 className="mb-1 text-sm font-semibold">
+                              {gameData.officialTitle}
+                            </h4>
+                            <p className="text-xs text-muted-foreground">
+                              Developed by {gameData.developer}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Published by {gameData.publisher}
+                            </p>
                           </div>
-                        ) : gameData ? (
-                          <>
-                            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
-                              {gameData.cover ? (
-                                <img
-                                  src={gameData.cover}
-                                  alt="Game cover"
-                                  className="size-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex size-full items-center justify-center text-muted-foreground">
-                                  No cover available
-                                </div>
-                              )}
+                          <Separator />
+                          <div className="space-y-3">
+                            <div>
+                              <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                Genre / Style
+                              </p>
+                              <p className="text-sm">{gameData.genre}</p>
                             </div>
                             <div>
-                              <h4 className="mb-1 text-sm font-semibold">
-                                {gameData.officialTitle}
-                              </h4>
-                              <p className="text-xs text-muted-foreground">
-                                Developed by {gameData.developer}
+                              <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                Release Date
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                Published by {gameData.publisher}
+                              <p className="text-sm">{gameData.releaseDate}</p>
+                            </div>
+                            <div>
+                              <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                Discs
                               </p>
+                              <p className="text-sm">{gameData.discs}</p>
                             </div>
-                            <Separator />
-                            <div className="space-y-3">
-                              <div>
-                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
-                                  Genre / Style
-                                </p>
-                                <p className="text-sm">{gameData.genre}</p>
-                              </div>
-                              <div>
-                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
-                                  Release Date
-                                </p>
-                                <p className="text-sm">
-                                  {gameData.releaseDate}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
-                                  Discs
-                                </p>
-                                <p className="text-sm">{gameData.discs}</p>
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
-                            <div className="mb-4 size-16 rounded-full bg-muted/50 p-4">
-                              <FileIcon className="size-8" />
-                            </div>
-                            <p className="text-lg font-semibold">
-                              Empty Slot Selected
-                            </p>
-                            <p className="mt-2 text-sm">
-                              Select a save slot to view game details
-                            </p>
                           </div>
-                        )}
+                        </div>
+                      </ScrollArea>
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center p-4 pb-16 text-center text-muted-foreground">
+                        <div className="mb-4 size-16 rounded-full bg-muted/50 p-4">
+                          <FileIcon className="size-8" />
+                        </div>
+                        <p className="text-lg font-semibold">
+                          Empty Slot Selected
+                        </p>
+                        <p className="mt-2 text-sm">
+                          Select a save slot to view game details
+                        </p>
                       </div>
-                    </ScrollArea>
+                    )}
                   </div>
                 )}
               </>
