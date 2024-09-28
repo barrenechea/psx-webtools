@@ -5,6 +5,8 @@ import { ThemeProvider } from "next-themes";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
+import { LoadingDialogProvider } from "@/contexts/loading-dialog-context";
+
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
 
@@ -25,7 +27,9 @@ if (!rootElement.innerHTML) {
   root.render(
     <StrictMode>
       <ThemeProvider attribute="class">
-        <RouterProvider router={router} />
+        <LoadingDialogProvider>
+          <RouterProvider router={router} />
+        </LoadingDialogProvider>
       </ThemeProvider>
     </StrictMode>
   );

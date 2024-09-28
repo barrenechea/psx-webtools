@@ -114,9 +114,14 @@ export abstract class HardwareInterface {
     return returnVal >>> 0; // Convert to 32-bit unsigned integer
   }
 
-  start(port: string, speed: number): Promise<string | null> {
+  start(
+    port: string,
+    speed: number,
+    onStatusUpdate: (status: string) => void
+  ): Promise<string | null> {
     console.error(port);
     console.error(speed);
+    console.error(onStatusUpdate);
     return Promise.resolve("This interface is not yet supported");
   }
 

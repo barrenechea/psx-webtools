@@ -49,44 +49,43 @@ export class MemCARDuino extends HardwareInterface {
 
   override async start(
     _portInfo: string,
-    speed: number
+    speed: number,
+    onStatusUpdate: (status: string) => void
   ): Promise<string | null> {
     const portBaudRate = speed === 1 ? 38400 : 115200;
 
     try {
+      onStatusUpdate("Requesting serial port access...");
       this.port = await navigator.serial.requestPort();
+
+      onStatusUpdate(`Opening port at ${portBaudRate} baud...`);
       await this.port.open({ baudRate: portBaudRate });
 
       this.reader = this.port.readable?.getReader() ?? null;
       this.writer = this.port.writable?.getWriter() ?? null;
 
       // Reset Arduino and set it to serial mode
+      onStatusUpdate("Resetting MemCARDuino...");
       await this.port.setSignals({ dataTerminalReady: true });
       await this.port.setSignals({ dataTerminalReady: false });
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Check if this is MCino
+      onStatusUpdate("Checking for MemCARDuino...");
       await this.sendDataToPort(MCinoCommands.GETID);
       const readData = await this.readDataFromPort(6);
 
       if (new TextDecoder().decode(readData) !== "MCDINO") {
-        // Maybe this is Arduino Leonardo or Micro
-        await this.port.setSignals({ dataTerminalReady: true });
-
-        // Repeat GETID command
-        await this.sendDataToPort(MCinoCommands.GETID);
-        const retryData = await this.readDataFromPort(6);
-
-        if (new TextDecoder().decode(retryData) !== "MCDINO") {
-          return `MemCARDuino was not detected on the selected port.`;
-        }
+        return "MemCARDuino was not detected on the selected port.";
       }
 
-      // Get the firmware version
+      onStatusUpdate("Getting firmware version...");
       await this.sendDataToPort(MCinoCommands.GETVER);
       const versionData = await this.readDataFromPort(1);
       this.firmwareVersion = versionData[0];
 
+      onStatusUpdate(
+        `MemCARDuino detected. Firmware version: ${this.firmware()}`
+      );
       return null; // Success
     } catch (error) {
       return (error as Error).message;

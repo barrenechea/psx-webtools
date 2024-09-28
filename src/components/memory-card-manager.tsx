@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
-import { LoadingProgressDialog } from "@/components/loading-progress-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import PS1BlockIcon from "@/components/ui/ps1-icon";
@@ -23,6 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useGameData } from "@/hooks/use-game-data";
 import { useMemcarduino } from "@/hooks/use-memcarduino";
 import PS1MemoryCard, {
@@ -114,7 +114,7 @@ export const MemoryCardManager: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [isReading, setIsReading] = useState(false);
+  const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
 
   const [speed, setSpeed] = useState(0); // 0 for 115200, 1 for 38400
   const {
@@ -124,6 +124,7 @@ export const MemoryCardManager: React.FC = () => {
     disconnect,
     readMemoryCard,
     writeMemoryCard,
+    firmwareVersion,
   } = useMemcarduino();
 
   useEffect(() => {
@@ -139,7 +140,24 @@ export const MemoryCardManager: React.FC = () => {
   } = useGameData("PS1", selectedRegion ?? "", selectedGameId ?? "");
 
   const handleConnect = async () => {
-    await connect("", speed);
+    showDialog("Connecting to MemCARDuino", "Initializing connection...");
+
+    try {
+      const connected = await connect("", speed, (status) => {
+        updateDialog(status);
+      });
+
+      if (!connected) throw new Error("Failed to connect to MemCARDuino");
+
+      updateDialog(
+        "Connected successfully!",
+        `MemCARDuino v${firmwareVersion} connected`
+      );
+      setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+    } catch (err) {
+      setError((err as Error).message);
+      hideDialog();
+    }
   };
 
   const handleDisconnect = async () => {
@@ -147,10 +165,13 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleReadFromDevice = async () => {
-    setIsReading(true);
+    showDialog("Reading Memory Card", "Reading memory card data...");
     setError(null);
 
-    const card = await readMemoryCard();
+    const card = await readMemoryCard((progress) => {
+      updateDialog(`Reading memory card... ${Math.round(progress * 100)}%`);
+    });
+
     if (card) {
       const newMemoryCard: MemoryCard = {
         id: Date.now(),
@@ -162,10 +183,12 @@ export const MemoryCardManager: React.FC = () => {
 
       setMemoryCards([...memoryCards, newMemoryCard]);
       setSelectedCard(newMemoryCard.id);
+      updateDialog("Memory card read successfully!");
+      setTimeout(hideDialog, 1000); // Hide dialog after 1 second
     } else {
       setError("Failed to read memory card");
+      hideDialog();
     }
-    setIsReading(false);
   };
 
   const handleWriteToDevice = async () => {
@@ -618,7 +641,6 @@ export const MemoryCardManager: React.FC = () => {
               : "No memory card selected")}
         </div>
       </div>
-      <LoadingProgressDialog isOpen={isReading} />
     </div>
   );
 };

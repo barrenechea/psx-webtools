@@ -11,24 +11,30 @@ import { Progress } from "@/components/ui/progress";
 
 interface LoadingProgressDialogProps {
   isOpen: boolean;
+  title: string;
+  status: string;
+  additionalInfo?: string;
 }
 
 export const LoadingProgressDialog: React.FC<LoadingProgressDialogProps> = ({
   isOpen,
+  title,
+  status,
+  additionalInfo,
 }) => {
   return (
     <AlertDialog open={isOpen}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Reading Memory Card</AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
         </AlertDialogHeader>
         <AlertDialogDescription asChild>
           <div>
-            <div className="mb-2">
-              Please wait while we read your memory card...
-            </div>
+            <div className="mb-2">{status}</div>
             <Progress className="w-full" />
-            <div className="mt-2 text-right">In progress...</div>
+            {additionalInfo && (
+              <div className="mt-2 text-right">{additionalInfo}</div>
+            )}
           </div>
         </AlertDialogDescription>
       </AlertDialogContent>

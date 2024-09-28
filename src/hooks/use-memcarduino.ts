@@ -7,22 +7,34 @@ export function useMemcarduino() {
   const [memcarduino, setMemcarduino] = useState<MemCARDuino | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
 
-  const connect = useCallback(async (portInfo: string, speed: number) => {
-    try {
-      const mcduino = new MemCARDuino();
-      const result = await mcduino.start(portInfo, speed);
-      if (result === null) {
-        setMemcarduino(mcduino);
-        setIsConnected(true);
-        setError(null);
-      } else {
-        setError(result);
+  const connect = useCallback(
+    async (
+      portInfo: string,
+      speed: number,
+      onStatusUpdate: (status: string) => void
+    ): Promise<boolean> => {
+      try {
+        const mcduino = new MemCARDuino();
+        const result = await mcduino.start(portInfo, speed, onStatusUpdate);
+        if (result === null) {
+          setMemcarduino(mcduino);
+          setIsConnected(true);
+          setError(null);
+          setFirmwareVersion(mcduino.firmware());
+          return true;
+        } else {
+          setError(result);
+          return false;
+        }
+      } catch (err) {
+        setError((err as Error).message);
+        return false;
       }
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }, []);
+    },
+    []
+  );
 
   const disconnect = useCallback(async () => {
     if (memcarduino) {
@@ -32,8 +44,10 @@ export function useMemcarduino() {
     }
   }, [memcarduino]);
 
-  const readMemoryCard =
-    useCallback(async (): Promise<PS1MemoryCard | null> => {
+  const readMemoryCard = useCallback(
+    async (
+      onProgress?: (progress: number) => void
+    ): Promise<PS1MemoryCard | null> => {
       if (!memcarduino) {
         setError("MemCARDuino not connected");
         return null;
@@ -51,13 +65,19 @@ export function useMemcarduino() {
             throw new Error(`Failed to read frame ${i}`);
           }
           card.setRawData(i * 128, frame);
+
+          if (onProgress) {
+            onProgress((i + 1) / 1024);
+          }
         }
         return card;
       } catch (err) {
         setError((err as Error).message);
         return null;
       }
-    }, [memcarduino]);
+    },
+    [memcarduino]
+  );
 
   const writeMemoryCard = useCallback(
     async (card: PS1MemoryCard): Promise<boolean> => {
@@ -90,5 +110,6 @@ export function useMemcarduino() {
     disconnect,
     readMemoryCard,
     writeMemoryCard,
+    firmwareVersion,
   };
 }
