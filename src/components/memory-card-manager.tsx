@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
+import { LoadingProgressDialog } from "@/components/loading-progress-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import PS1BlockIcon from "@/components/ui/ps1-icon";
@@ -113,6 +114,7 @@ export const MemoryCardManager: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const [isReading, setIsReading] = useState(false);
 
   const [speed, setSpeed] = useState(0); // 0 for 115200, 1 for 38400
   const {
@@ -145,6 +147,9 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleReadFromDevice = async () => {
+    setIsReading(true);
+    setError(null);
+
     const card = await readMemoryCard();
     if (card) {
       const newMemoryCard: MemoryCard = {
@@ -157,8 +162,10 @@ export const MemoryCardManager: React.FC = () => {
 
       setMemoryCards([...memoryCards, newMemoryCard]);
       setSelectedCard(newMemoryCard.id);
-      setError(null);
+    } else {
+      setError("Failed to read memory card");
     }
+    setIsReading(false);
   };
 
   const handleWriteToDevice = async () => {
@@ -445,7 +452,10 @@ export const MemoryCardManager: React.FC = () => {
                       }
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      {`Opened via file "${
+                      {`Opened via ${
+                        memoryCards.find((card) => card.id === selectedCard)
+                          ?.type
+                      } "${
                         memoryCards.find((card) => card.id === selectedCard)
                           ?.source
                       }"`}
@@ -608,6 +618,7 @@ export const MemoryCardManager: React.FC = () => {
               : "No memory card selected")}
         </div>
       </div>
+      <LoadingProgressDialog isOpen={isReading} />
     </div>
   );
 };

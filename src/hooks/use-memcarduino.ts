@@ -41,6 +41,10 @@ export function useMemcarduino() {
 
       try {
         const card = new PS1MemoryCard();
+
+        // Delay to play nice with WebSerial - damn you Virtual DOM!
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         for (let i = 0; i < 1024; i++) {
           const frame = await memcarduino.readMemoryCardFrame(i);
           if (frame === null) {

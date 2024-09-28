@@ -23,7 +23,7 @@ function Index() {
             </p>
 
             <div className="space-y-4">
-              <h2 className="text-2xl font-semibold">Features:</h2>
+              <h2 className="text-2xl font-semibold">Features (for now):</h2>
               <ul className="list-inside list-disc space-y-2 text-muted-foreground">
                 <li>
                   Memory Card Manager: View, edit, and organize your PS1 memory
