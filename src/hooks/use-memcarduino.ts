@@ -114,6 +114,9 @@ export function useMemcarduino() {
       }
 
       try {
+        // Delay to play nice with WebSerial - damn you Virtual DOM!
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         for (let i = 0; i < 1024; i++) {
           const frame = card.getRawData(i * 128, 128);
           const success = await memcarduino.writeMemoryCardFrame(i, frame);
