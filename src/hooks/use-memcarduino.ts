@@ -104,7 +104,10 @@ export function useMemcarduino() {
   );
 
   const writeMemoryCard = useCallback(
-    async (card: PS1MemoryCard): Promise<boolean> => {
+    async (
+      card: PS1MemoryCard,
+      onProgress?: (progress: number) => void
+    ): Promise<boolean> => {
       if (!memcarduino) {
         setError("MemCARDuino not connected");
         return false;
@@ -116,6 +119,10 @@ export function useMemcarduino() {
           const success = await memcarduino.writeMemoryCardFrame(i, frame);
           if (!success) {
             throw new Error(`Failed to write frame ${i}`);
+          }
+
+          if (onProgress) {
+            onProgress((i + 1) / 1024);
           }
         }
         return true;

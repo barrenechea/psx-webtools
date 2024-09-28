@@ -179,7 +179,7 @@ export const MemoryCardManager: React.FC = () => {
     try {
       const card = await readMemoryCard((progress) => {
         updateDialog(
-          "Reading memory card, please wait...",
+          `Reading memory card... ${Math.round(progress * 100)}%`,
           undefined,
           progress
         );
@@ -211,11 +211,27 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
-        const success = await writeMemoryCard(card);
-        if (success) {
-          setError(null);
-        } else {
-          setError("Failed to write memory card to device");
+        showDialog("Writing to Memory Card", "Preparing to write data...");
+        setError(null);
+
+        try {
+          const success = await writeMemoryCard(card, (progress) => {
+            updateDialog(
+              `Writing to memory card... ${Math.round(progress * 100)}%`,
+              undefined,
+              progress
+            );
+          });
+
+          if (success) {
+            updateDialog("Memory card write successful!");
+            setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+          } else {
+            throw new Error("Failed to write memory card to device");
+          }
+        } catch (err) {
+          setError((err as Error).message);
+          hideDialog();
         }
       }
     }
