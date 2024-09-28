@@ -168,25 +168,33 @@ export const MemoryCardManager: React.FC = () => {
     showDialog("Reading Memory Card", "Reading memory card data...");
     setError(null);
 
-    const card = await readMemoryCard((progress) => {
-      updateDialog(`Reading memory card... ${Math.round(progress * 100)}%`);
-    });
+    try {
+      const card = await readMemoryCard((progress) => {
+        updateDialog(
+          "Reading memory card, please wait...",
+          undefined,
+          progress
+        );
+      });
 
-    if (card) {
-      const newMemoryCard: MemoryCard = {
-        id: Date.now(),
-        name: "MemCARDuino Read",
-        type: "device",
-        source: "MemCARDuino",
-        card: card,
-      };
+      if (card) {
+        const newMemoryCard: MemoryCard = {
+          id: Date.now(),
+          name: "MemCARDuino Read",
+          type: "device",
+          source: "MemCARDuino",
+          card: card,
+        };
 
-      setMemoryCards([...memoryCards, newMemoryCard]);
-      setSelectedCard(newMemoryCard.id);
-      updateDialog("Memory card read successfully!");
-      setTimeout(hideDialog, 1000); // Hide dialog after 1 second
-    } else {
-      setError("Failed to read memory card");
+        setMemoryCards([...memoryCards, newMemoryCard]);
+        setSelectedCard(newMemoryCard.id);
+        updateDialog("Memory card read successfully!");
+        setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+      } else {
+        throw new Error("Failed to read memory card");
+      }
+    } catch (err) {
+      setError((err as Error).message);
       hideDialog();
     }
   };

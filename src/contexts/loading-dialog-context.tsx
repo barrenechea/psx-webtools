@@ -1,10 +1,14 @@
-import React, { createContext, ReactNode,useContext, useState } from "react";
+import React, { createContext, ReactNode, useContext, useState } from "react";
 
 import { LoadingProgressDialog } from "@/components/loading-progress-dialog";
 
 interface LoadingDialogContextType {
   showDialog: (title: string, status: string, additionalInfo?: string) => void;
-  updateDialog: (status: string, additionalInfo?: string) => void;
+  updateDialog: (
+    status: string,
+    additionalInfo?: string,
+    progress?: number
+  ) => void;
   hideDialog: () => void;
 }
 
@@ -31,6 +35,7 @@ export const LoadingDialogProvider: React.FC<{ children: ReactNode }> = ({
   const [additionalInfo, setAdditionalInfo] = useState<string | undefined>(
     undefined
   );
+  const [progress, setProgress] = useState<number | undefined>(undefined);
 
   const showDialog = (
     newTitle: string,
@@ -40,12 +45,18 @@ export const LoadingDialogProvider: React.FC<{ children: ReactNode }> = ({
     setTitle(newTitle);
     setStatus(newStatus);
     setAdditionalInfo(newAdditionalInfo);
+    setProgress(undefined);
     setIsOpen(true);
   };
 
-  const updateDialog = (newStatus: string, newAdditionalInfo?: string) => {
+  const updateDialog = (
+    newStatus: string,
+    newAdditionalInfo?: string,
+    newProgress?: number
+  ) => {
     setStatus(newStatus);
     setAdditionalInfo(newAdditionalInfo);
+    setProgress(newProgress);
   };
 
   const hideDialog = () => {
@@ -62,6 +73,7 @@ export const LoadingDialogProvider: React.FC<{ children: ReactNode }> = ({
         title={title}
         status={status}
         additionalInfo={additionalInfo}
+        progress={progress}
       />
     </LoadingDialogContext.Provider>
   );

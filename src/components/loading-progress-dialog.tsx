@@ -14,6 +14,7 @@ interface LoadingProgressDialogProps {
   title: string;
   status: string;
   additionalInfo?: string;
+  progress?: number; // New prop for progress value
 }
 
 export const LoadingProgressDialog: React.FC<LoadingProgressDialogProps> = ({
@@ -21,6 +22,7 @@ export const LoadingProgressDialog: React.FC<LoadingProgressDialogProps> = ({
   title,
   status,
   additionalInfo,
+  progress,
 }) => {
   return (
     <AlertDialog open={isOpen}>
@@ -31,7 +33,10 @@ export const LoadingProgressDialog: React.FC<LoadingProgressDialogProps> = ({
         <AlertDialogDescription asChild>
           <div>
             <div className="mb-2">{status}</div>
-            <Progress className="w-full" />
+            <Progress
+              className="w-full"
+              value={progress !== undefined ? progress * 100 : undefined}
+            />
             {additionalInfo && (
               <div className="mt-2 text-right">{additionalInfo}</div>
             )}
