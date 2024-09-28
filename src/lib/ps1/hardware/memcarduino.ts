@@ -50,11 +50,9 @@ export class MemCARDuino extends HardwareInterface {
 
   override async start(
     _portInfo: string,
-    speed: number,
+    portBaudRate: number,
     onStatusUpdate: (status: string) => void
   ): Promise<string | null> {
-    const portBaudRate = speed === 38400 ? 38400 : 115200;
-
     try {
       onStatusUpdate("Requesting serial port access...");
       this.port = await navigator.serial.requestPort();

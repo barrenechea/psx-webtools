@@ -4,6 +4,7 @@ import {
   CpuIcon,
   FileIcon,
   InfoIcon,
+  MemoryStickIcon,
   SaveIcon,
   TrashIcon,
   UsbIcon,
@@ -13,6 +14,14 @@ import React, { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import PS1BlockIcon from "@/components/ui/ps1-icon";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -407,7 +416,7 @@ export const MemoryCardManager: React.FC = () => {
                     }}
                   >
                     {card.type === "device" ? (
-                      <CpuIcon className="mr-2 size-4" />
+                      <MemoryStickIcon className="mr-2 size-4" />
                     ) : (
                       <FileIcon className="mr-2 size-4" />
                     )}
@@ -425,30 +434,38 @@ export const MemoryCardManager: React.FC = () => {
                 <FileIcon className="mr-2 size-4" />
                 Open from file
               </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start hover:bg-card/80"
-                onClick={() =>
-                  setError(
-                    "USB device connection is not implemented in this version."
-                  )
-                }
-              >
-                <UsbIcon className="mr-2 size-4" />
-                Connect USB device
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start hover:bg-card/80"
-                onClick={() =>
-                  setError(
-                    "Serial device connection is not implemented in this version."
-                  )
-                }
-              >
-                <CpuIcon className="mr-2 size-4" />
-                Connect Serial device
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-card/80"
+                  >
+                    <MemoryStickIcon className="mr-2 size-4" />
+                    Connect a device
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right">
+                  <DropdownMenuLabel>
+                    <div className="flex items-center">
+                      <UsbIcon className="mr-2 size-4" />
+                      USB Devices
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem disabled>
+                    No USB devices available
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>
+                    <div className="flex items-center">
+                      <CpuIcon className="mr-2 size-4" />
+                      Serial Devices
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem onSelect={() => void handleConnect()}>
+                    MemCARDuino
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               {isConnected ? (
                 <>
                   <Button
@@ -474,15 +491,7 @@ export const MemoryCardManager: React.FC = () => {
                     Write to MemCARDuino
                   </Button>
                 </>
-              ) : (
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-card/80"
-                  onClick={() => void handleConnect()}
-                >
-                  Connect MemCARDuino
-                </Button>
-              )}
+              ) : null}
             </div>
           </div>
 
