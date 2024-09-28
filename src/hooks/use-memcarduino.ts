@@ -36,13 +36,24 @@ export function useMemcarduino() {
     []
   );
 
-  const disconnect = useCallback(async () => {
-    if (memcarduino) {
-      await memcarduino.stop();
-      setMemcarduino(null);
-      setIsConnected(false);
-    }
-  }, [memcarduino]);
+  const disconnect = useCallback(
+    async (onStatusUpdate: (status: string) => void) => {
+      if (memcarduino) {
+        try {
+          onStatusUpdate("Closing connection...");
+          await memcarduino.stop();
+          onStatusUpdate("Disconnected successfully.");
+          setMemcarduino(null);
+          setIsConnected(false);
+          setFirmwareVersion(null);
+        } catch (err) {
+          setError((err as Error).message);
+          onStatusUpdate(`Error disconnecting: ${(err as Error).message}`);
+        }
+      }
+    },
+    [memcarduino]
+  );
 
   const readMemoryCard = useCallback(
     async (

@@ -161,7 +161,22 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleDisconnect = async () => {
-    await disconnect();
+    showDialog(
+      "Disconnecting from MemCARDuino",
+      "Initializing disconnection..."
+    );
+
+    try {
+      await disconnect((status) => {
+        updateDialog(status);
+      });
+
+      updateDialog("Disconnected successfully!");
+      setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+    } catch (err) {
+      setError((err as Error).message);
+      hideDialog();
+    }
   };
 
   const handleReadFromDevice = async () => {
