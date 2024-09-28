@@ -116,7 +116,6 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
 
-  const [speed, setSpeed] = useState(0); // 0 for 115200, 1 for 38400
   const {
     isConnected,
     error: connectionError,
@@ -143,16 +142,10 @@ export const MemoryCardManager: React.FC = () => {
     showDialog("Connecting to MemCARDuino", "Initializing connection...");
 
     try {
-      const connected = await connect("", speed, (status) => {
+      await connect("", (status) => {
         updateDialog(status);
       });
 
-      if (!connected) throw new Error("Failed to connect to MemCARDuino");
-
-      updateDialog(
-        "Connected successfully!",
-        `MemCARDuino v${firmwareVersion} connected`
-      );
       setTimeout(hideDialog, 1000); // Hide dialog after 1 second
     } catch (err) {
       setError((err as Error).message);
@@ -440,14 +433,6 @@ export const MemoryCardManager: React.FC = () => {
                 <CpuIcon className="mr-2 size-4" />
                 Connect Serial device
               </Button>
-              <select
-                value={speed}
-                onChange={(e) => setSpeed(Number(e.target.value))}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-              >
-                <option value={0}>115200 baud</option>
-                <option value={1}>38400 baud</option>
-              </select>
               {isConnected ? (
                 <>
                   <Button
@@ -455,7 +440,7 @@ export const MemoryCardManager: React.FC = () => {
                     className="w-full justify-start hover:bg-card/80"
                     onClick={() => void handleDisconnect()}
                   >
-                    Disconnect MemCARDuino
+                    Disconnect MemCARDuino v{firmwareVersion}
                   </Button>
                   <Button
                     variant="ghost"

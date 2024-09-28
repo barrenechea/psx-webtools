@@ -23,6 +23,7 @@ export class MemCARDuino extends HardwareInterface {
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private interfaceName = "MemCARDuino";
   private firmwareVersion = 0;
+  private currentBaudRate = 0;
 
   private static readonly PocketCommandsMin: number = 0x08;
   private static readonly PocketUnsupported: string =
@@ -52,7 +53,7 @@ export class MemCARDuino extends HardwareInterface {
     speed: number,
     onStatusUpdate: (status: string) => void
   ): Promise<string | null> {
-    const portBaudRate = speed === 1 ? 38400 : 115200;
+    const portBaudRate = speed === 38400 ? 38400 : 115200;
 
     try {
       onStatusUpdate("Requesting serial port access...");
@@ -60,6 +61,7 @@ export class MemCARDuino extends HardwareInterface {
 
       onStatusUpdate(`Opening port at ${portBaudRate} baud...`);
       await this.port.open({ baudRate: portBaudRate });
+      this.currentBaudRate = portBaudRate;
 
       this.reader = this.port.readable?.getReader() ?? null;
       this.writer = this.port.writable?.getWriter() ?? null;
@@ -90,6 +92,10 @@ export class MemCARDuino extends HardwareInterface {
     } catch (error) {
       return (error as Error).message;
     }
+  }
+
+  getBaudRate(): number {
+    return this.currentBaudRate;
   }
 
   override async stop(): Promise<void> {
