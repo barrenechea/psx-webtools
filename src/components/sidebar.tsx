@@ -94,7 +94,7 @@ export const Sidebar: React.FC = () => {
         <NavItem
           to="/memory-card-manager"
           icon={<MemoryStickIcon className="size-5" />}
-          label="Memory Card"
+          label="Memory Card Manager"
           isExpanded={isExpanded}
         />
       </nav>

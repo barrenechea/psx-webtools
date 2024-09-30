@@ -93,6 +93,7 @@ export class MemCARDuino extends HardwareInterface {
       );
       return null; // Success
     } catch (error) {
+      if (this.port) await this.port.close();
       return (error as Error).message;
     }
   }

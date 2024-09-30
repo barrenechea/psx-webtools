@@ -220,7 +220,7 @@ export const MemoryCardManager: React.FC = () => {
           id: Date.now(),
           name: "MemCARDuino Read",
           type: "device",
-          source: "MemCARDuino",
+          source: `MemCARDuino v${firmwareVersion}`,
           card: card,
         };
 
@@ -497,7 +497,7 @@ export const MemoryCardManager: React.FC = () => {
                     className="w-full justify-start hover:bg-card/80"
                     onClick={() => void handleDisconnect()}
                   >
-                    Disconnect MemCARDuino v{firmwareVersion}
+                    Disconnect MemCARDuino
                   </Button>
                   <Button
                     variant="ghost"
