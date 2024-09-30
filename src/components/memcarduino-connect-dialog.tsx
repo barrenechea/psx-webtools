@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -20,7 +22,16 @@ import {
 interface MemcarduinoConnectDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnect: (deviceType: string, connectionMode: string) => Promise<void>;
+  onConnect: (
+    deviceType: string,
+    connectionMode: string,
+    saveSettings: boolean
+  ) => Promise<void>;
+}
+
+interface SavedSettings {
+  deviceType: string;
+  connectionMode: string;
 }
 
 export const MemcarduinoConnectDialog: React.FC<
@@ -28,10 +39,31 @@ export const MemcarduinoConnectDialog: React.FC<
 > = ({ isOpen, onOpenChange, onConnect }) => {
   const [deviceType, setDeviceType] = useState<string>("");
   const [connectionMode, setConnectionMode] = useState<string>("");
+  const [saveSettings, setSaveSettings] = useState(false);
+
+  useEffect(() => {
+    const savedSettings = localStorage.getItem("memcarduinoSettings");
+    if (savedSettings) {
+      const {
+        deviceType: savedDeviceType,
+        connectionMode: savedConnectionMode,
+      } = JSON.parse(savedSettings) as SavedSettings;
+      setDeviceType(savedDeviceType);
+      setConnectionMode(savedConnectionMode);
+    }
+  }, []);
 
   const handleConnect = async () => {
     if (deviceType && connectionMode) {
-      await onConnect(deviceType, connectionMode);
+      await onConnect(deviceType, connectionMode, saveSettings);
+      if (saveSettings) {
+        localStorage.setItem(
+          "memcarduinoSettings",
+          JSON.stringify({ deviceType, connectionMode })
+        );
+      } else {
+        localStorage.removeItem("memcarduinoSettings");
+      }
     }
   };
 
@@ -74,6 +106,17 @@ export const MemcarduinoConnectDialog: React.FC<
             Note: If you purchased a reader from AliExpress, it's very likely to
             use an Arduino Nano in Legacy mode.
           </p>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="saveSettings"
+              checked={saveSettings}
+              onCheckedChange={(checked) => setSaveSettings(checked as boolean)}
+            />
+            <Label htmlFor="saveSettings">
+              Save settings for next connection
+            </Label>
+          </div>
         </div>
         <DialogFooter>
           <Button
