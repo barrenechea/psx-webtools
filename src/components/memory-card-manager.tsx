@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
+import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -124,6 +125,7 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
+  const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
 
   const {
     isConnected,
@@ -147,18 +149,37 @@ export const MemoryCardManager: React.FC = () => {
     error: gameDataError,
   } = useGameData("PS1", selectedRegion ?? "", selectedGameId ?? "");
 
-  const handleConnect = async () => {
+  const handleConnect = async (deviceType: string, connectionMode: string) => {
     showDialog("Connecting to MemCARDuino", "Initializing connection...");
 
     try {
-      await connect("", (status) => {
+      const baudRate = connectionMode === "fast" ? 115200 : 38400;
+      const signalsConfig = getSignalsConfig(deviceType);
+
+      await connect(deviceType, baudRate, signalsConfig, (status) => {
         updateDialog(status);
       });
 
       setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+      setIsConnectDialogOpen(false); // Close the connect dialog
     } catch (err) {
       setError((err as Error).message);
       hideDialog();
+    }
+  };
+
+  const getSignalsConfig = (deviceType: string): SerialOutputSignals[] => {
+    switch (deviceType) {
+      case "esp8266_esp32":
+        return [];
+      case "rpi_pico":
+        return [];
+      case "arduino_nano":
+        return [{ dataTerminalReady: true }, { dataTerminalReady: false }];
+      case "arduino_leonardo_micro":
+        return []
+      default:
+        return [];
     }
   };
 
@@ -434,6 +455,7 @@ export const MemoryCardManager: React.FC = () => {
                 <FileIcon className="mr-2 size-4" />
                 Open from file
               </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -461,12 +483,14 @@ export const MemoryCardManager: React.FC = () => {
                       Serial Devices
                     </div>
                   </DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={() => void handleConnect()}>
+                  <DropdownMenuItem
+                    onSelect={() => setIsConnectDialogOpen(true)}
+                  >
                     MemCARDuino
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              {isConnected ? (
+              {isConnected && (
                 <>
                   <Button
                     variant="ghost"
@@ -491,7 +515,7 @@ export const MemoryCardManager: React.FC = () => {
                     Write to MemCARDuino
                   </Button>
                 </>
-              ) : null}
+              )}
             </div>
           </div>
 
@@ -674,6 +698,11 @@ export const MemoryCardManager: React.FC = () => {
               : "No memory card selected")}
         </div>
       </div>
+      <MemcarduinoConnectDialog
+        isOpen={isConnectDialogOpen}
+        onOpenChange={setIsConnectDialogOpen}
+        onConnect={handleConnect}
+      />
     </div>
   );
 };

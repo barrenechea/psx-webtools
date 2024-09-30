@@ -49,26 +49,31 @@ export class MemCARDuino extends HardwareInterface {
   }
 
   override async start(
-    _portInfo: string,
-    portBaudRate: number,
+    deviceType: string,
+    baudRate: number,
+    signalsConfig: SerialOutputSignals[],
     onStatusUpdate: (status: string) => void
   ): Promise<string | null> {
     try {
       onStatusUpdate("Requesting serial port access...");
       this.port = await navigator.serial.requestPort();
 
-      onStatusUpdate(`Opening port at ${portBaudRate} baud...`);
-      await this.port.open({ baudRate: portBaudRate });
-      this.currentBaudRate = portBaudRate;
+      onStatusUpdate(`Opening port at ${baudRate} baud...`);
+      await this.port.open({ baudRate, bufferSize: 256 });
+      this.currentBaudRate = baudRate;
 
       this.reader = this.port.readable?.getReader() ?? null;
       this.writer = this.port.writable?.getWriter() ?? null;
 
-      // Reset Arduino and set it to serial mode
-      onStatusUpdate("Resetting MemCARDuino...");
-      await this.port.setSignals({ dataTerminalReady: true });
-      await this.port.setSignals({ dataTerminalReady: false });
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Set device-specific signals
+      onStatusUpdate(`Setting device-specific signals for ${deviceType}...`);
+      for (const signal of signalsConfig) {
+        await this.port.setSignals(signal);
+      }
+
+      // Add a delay based on the device type
+      const delayMs = this.getDeviceDelay(deviceType);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
 
       onStatusUpdate("Checking for MemCARDuino...");
       await this.sendDataToPort(MCinoCommands.GETID);
@@ -89,6 +94,20 @@ export class MemCARDuino extends HardwareInterface {
       return null; // Success
     } catch (error) {
       return (error as Error).message;
+    }
+  }
+
+  private getDeviceDelay(deviceType: string): number {
+    switch (deviceType) {
+      case "esp8266_esp32":
+        return 1000;
+      case "rpi_pico":
+        return 0;
+      case "arduino_nano":
+      case "arduino_leonardo_micro":
+        return 2000;
+      default:
+        return 2000; // Default 2 seconds delay
     }
   }
 
@@ -115,15 +134,38 @@ export class MemCARDuino extends HardwareInterface {
     await this.writer.write(new Uint8Array([command]));
   }
 
-  private async readDataFromPort(count: number): Promise<Uint8Array> {
+  private createTimeoutPromise(ms: number): Promise<never> {
+    return new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Operation timed out after ${ms}ms`)),
+        ms
+      )
+    );
+  }
+
+  private async readDataFromPort(
+    count: number,
+    timeout = 5000
+  ): Promise<Uint8Array> {
     if (!this.reader) throw new Error("Port not opened");
     const result = new Uint8Array(count);
     let offset = 0;
     while (offset < count) {
-      const { value, done } = await this.reader.read();
-      if (done) break;
-      result.set(value, offset);
-      offset += value.length;
+      try {
+        const { value, done } = await Promise.race([
+          this.reader.read(),
+          this.createTimeoutPromise(timeout),
+        ]);
+        if (done) break;
+        result.set(value, offset);
+        offset += value.length;
+      } catch (error) {
+        console.error(
+          `Error reading data from port: ${(error as Error).message}`
+        );
+        this.reader.releaseLock();
+        return new Uint8Array(0);
+      }
     }
     return result.slice(0, offset);
   }

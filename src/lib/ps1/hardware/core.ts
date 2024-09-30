@@ -117,10 +117,12 @@ export abstract class HardwareInterface {
   start(
     port: string,
     speed: number,
+    signalsConfig: SerialOutputSignals[],
     onStatusUpdate: (status: string) => void
   ): Promise<string | null> {
     console.error(port);
     console.error(speed);
+    console.error(signalsConfig);
     console.error(onStatusUpdate);
     return Promise.resolve("This interface is not yet supported");
   }

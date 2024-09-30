@@ -10,40 +10,35 @@ export function useMemcarduino() {
   const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
 
   const connect = useCallback(
-    async (portInfo: string, onStatusUpdate: (status: string) => void) => {
-      const tryConnect = async (speed: number): Promise<MemCARDuino | null> => {
-        try {
-          const mcduino = new MemCARDuino();
-          onStatusUpdate(`Attempting connection at ${speed} baud...`);
-          const result = await mcduino.start(portInfo, speed, onStatusUpdate);
-          if (result === null) {
-            return mcduino;
-          }
-        } catch (err) {
-          console.error(`Connection failed at ${speed} baud:`, err);
-        }
-        return null;
-      };
-
-      // Try 115200 baud first
-      let mcduino = await tryConnect(115200);
-
-      // If 115200 fails, try 38400
-      if (!mcduino) {
-        onStatusUpdate("High-speed connection failed. Trying legacy speed...");
-        mcduino = await tryConnect(38400);
-      }
-
-      if (mcduino) {
-        setMemcarduino(mcduino);
-        setIsConnected(true);
-        setError(null);
-        setFirmwareVersion(mcduino.firmware());
-        onStatusUpdate(
-          `Connected successfully at ${mcduino.getBaudRate()} baud.`
+    async (
+      deviceType: string,
+      baudRate: number,
+      signalsConfig: SerialOutputSignals[],
+      onStatusUpdate: (status: string) => void
+    ) => {
+      try {
+        const mcduino = new MemCARDuino();
+        onStatusUpdate(`Attempting connection at ${baudRate} baud...`);
+        const result = await mcduino.start(
+          deviceType,
+          baudRate,
+          signalsConfig,
+          onStatusUpdate
         );
-      } else {
-        throw new Error("Failed to connect at both fast and legacy speeds.");
+        if (result === null) {
+          setMemcarduino(mcduino);
+          setIsConnected(true);
+          setError(null);
+          setFirmwareVersion(mcduino.firmware());
+          onStatusUpdate(
+            `Connected successfully at ${mcduino.getBaudRate()} baud.`
+          );
+        } else {
+          throw new Error(result);
+        }
+      } catch (err) {
+        setError((err as Error).message);
+        throw err;
       }
     },
     []
