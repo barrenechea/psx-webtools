@@ -45,6 +45,7 @@
     "@vitejs/plugin-react-swc": "^3.7.1",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.11.1",
+    "eslint-plugin-react-compiler": "^0.0.0-experimental-939a02d-20240930",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.12",
     "eslint-plugin-simple-import-sort": "^12.1.1",
