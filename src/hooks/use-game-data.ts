@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface GameData {
   commonTitle: string;
@@ -21,44 +21,44 @@ export function useGameData(platform: string, region: string, gameId: string) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchGameData = async () => {
-      if (!platform || !region || !gameId) {
-        setGameData(null);
-        setError(null);
-        return;
-      }
-
-      setIsLoading(true);
+  const fetchGameData = useCallback(async () => {
+    if (!platform || !region || !gameId) {
+      setGameData(null);
       setError(null);
+      return;
+    }
 
-      try {
-        const apiRegion = mapRegionToApi(region);
-        const response = await fetch(
-          `https://psxdata.barrenechea.cl/${apiRegion}/${gameId}.json`
-        );
+    setIsLoading(true);
+    setError(null);
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch game data");
-        }
+    try {
+      const apiRegion = mapRegionToApi(region);
+      const response = await fetch(
+        `https://psxdata.barrenechea.cl/${apiRegion}/${gameId}.json`
+      );
 
-        const data = (await response.json()) as GameData;
-        setGameData({
-          ...data,
-          cover: data.cover
-            ? `https://psxdata.barrenechea.cl/${apiRegion}/covers/${gameId}.${data.cover.split(".").pop()}`
-            : null,
-        });
-      } catch (err) {
-        setError((err as Error).message);
-        setGameData(null);
-      } finally {
-        setIsLoading(false);
+      if (!response.ok) {
+        throw new Error("Failed to fetch game data");
       }
-    };
 
-    void fetchGameData();
+      const data = (await response.json()) as GameData;
+      setGameData({
+        ...data,
+        cover: data.cover
+          ? `https://psxdata.barrenechea.cl/${apiRegion}/covers/${gameId}.${data.cover.split(".").pop()}`
+          : null,
+      });
+    } catch (err) {
+      setError((err as Error).message);
+      setGameData(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [platform, region, gameId]);
+
+  useEffect(() => {
+    void fetchGameData();
+  }, [fetchGameData]);
 
   return { gameData, isLoading, error };
 }

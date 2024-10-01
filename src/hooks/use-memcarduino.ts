@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
@@ -132,13 +132,24 @@ export function useMemcarduino() {
     [memcarduino]
   );
 
-  return {
-    isConnected,
-    error,
-    connect,
-    disconnect,
-    readMemoryCard,
-    writeMemoryCard,
-    firmwareVersion,
-  };
+  return useMemo(
+    () => ({
+      isConnected,
+      error,
+      connect,
+      disconnect,
+      readMemoryCard,
+      writeMemoryCard,
+      firmwareVersion,
+    }),
+    [
+      isConnected,
+      error,
+      connect,
+      disconnect,
+      readMemoryCard,
+      writeMemoryCard,
+      firmwareVersion,
+    ]
+  );
 }

@@ -151,24 +151,34 @@ export const MemoryCardManager: React.FC = () => {
     error: gameDataError,
   } = useGameData("PS1", selectedRegion ?? "", selectedGameId ?? "");
 
-  const handleConnect = async (deviceType: string, connectionMode: string) => {
-    showDialog("Connecting to MemCARDuino", "Initializing connection...");
+  const handleConnect = useCallback(
+    async (deviceType: string, connectionMode: string) => {
+      showDialog("Connecting to MemCARDuino", "Initializing connection...");
 
-    try {
-      const baudRate = connectionMode === "fast" ? 115200 : 38400;
-      const signalsConfig = getSignalsConfig(deviceType);
+      try {
+        const baudRate = connectionMode === "fast" ? 115200 : 38400;
+        const signalsConfig = getSignalsConfig(deviceType);
 
-      await connect(deviceType, baudRate, signalsConfig, (status) => {
-        updateDialog(status);
-      });
+        await connect(deviceType, baudRate, signalsConfig, (status) => {
+          updateDialog(status);
+        });
 
-      setTimeout(hideDialog, 1000); // Hide dialog after 1 second
-      setIsConnectDialogOpen(false); // Close the connect dialog
-    } catch (err) {
-      setError((err as Error).message);
-      hideDialog();
-    }
-  };
+        setTimeout(hideDialog, 1000);
+        setIsConnectDialogOpen(false);
+      } catch (err) {
+        setError((err as Error).message);
+        hideDialog();
+      }
+    },
+    [
+      showDialog,
+      connect,
+      updateDialog,
+      hideDialog,
+      setError,
+      setIsConnectDialogOpen,
+    ]
+  );
 
   const getSignalsConfig = (deviceType: string): SerialOutputSignals[] => {
     switch (deviceType) {
@@ -185,7 +195,7 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = useCallback(async () => {
     showDialog(
       "Disconnecting from MemCARDuino",
       "Initializing disconnection..."
@@ -197,14 +207,14 @@ export const MemoryCardManager: React.FC = () => {
       });
 
       updateDialog("Disconnected successfully!");
-      setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+      setTimeout(hideDialog, 1000);
     } catch (err) {
       setError((err as Error).message);
       hideDialog();
     }
-  };
+  }, [showDialog, disconnect, updateDialog, hideDialog, setError]);
 
-  const handleReadFromDevice = async () => {
+  const handleReadFromDevice = useCallback(async () => {
     showDialog("Reading Memory Card", "Reading memory card data...");
     setError(null);
 
@@ -226,10 +236,10 @@ export const MemoryCardManager: React.FC = () => {
           card: card,
         };
 
-        setMemoryCards([...memoryCards, newMemoryCard]);
+        setMemoryCards((prev) => [...prev, newMemoryCard]);
         setSelectedCard(newMemoryCard.id);
         updateDialog("Memory card read successfully!");
-        setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+        setTimeout(hideDialog, 1000);
       } else {
         throw new Error("Failed to read memory card");
       }
@@ -237,9 +247,18 @@ export const MemoryCardManager: React.FC = () => {
       setError((err as Error).message);
       hideDialog();
     }
-  };
+  }, [
+    showDialog,
+    readMemoryCard,
+    updateDialog,
+    hideDialog,
+    setError,
+    setMemoryCards,
+    setSelectedCard,
+    firmwareVersion,
+  ]);
 
-  const handleWriteToDevice = async () => {
+  const handleWriteToDevice = useCallback(async () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
@@ -257,7 +276,7 @@ export const MemoryCardManager: React.FC = () => {
 
           if (success) {
             updateDialog("Memory card write successful!");
-            setTimeout(hideDialog, 1000); // Hide dialog after 1 second
+            setTimeout(hideDialog, 1000);
           } else {
             throw new Error("Failed to write memory card to device");
           }
@@ -267,35 +286,49 @@ export const MemoryCardManager: React.FC = () => {
         }
       }
     }
-  };
+  }, [
+    selectedCard,
+    memoryCards,
+    showDialog,
+    writeMemoryCard,
+    updateDialog,
+    hideDialog,
+    setError,
+  ]);
 
-  const handleFileDrop = useCallback(async (file: File) => {
-    await handleFileOpen(file);
-  }, []);
+  const handleFileOpen = useCallback(
+    async (file?: File) => {
+      try {
+        const selectedFile = file ?? (await selectFile());
+        if (selectedFile) {
+          const card = new PS1MemoryCard();
+          await card.loadFromFile(selectedFile);
 
-  const handleFileOpen = async (file?: File) => {
-    try {
-      const selectedFile = file ?? (await selectFile());
-      if (selectedFile) {
-        const card = new PS1MemoryCard();
-        await card.loadFromFile(selectedFile);
+          const newCard: MemoryCard = {
+            id: Date.now(),
+            name: selectedFile.name,
+            type: "file",
+            source: selectedFile.name,
+            card: card,
+          };
 
-        const newCard: MemoryCard = {
-          id: Date.now(),
-          name: selectedFile.name,
-          type: "file",
-          source: selectedFile.name,
-          card: card,
-        };
-
-        setMemoryCards((prevCards) => [...prevCards, newCard]);
-        setSelectedCard(newCard.id);
-        setError(null);
+          setMemoryCards((prevCards) => [...prevCards, newCard]);
+          setSelectedCard(newCard.id);
+          setError(null);
+        }
+      } catch (err) {
+        setError(`Error opening file: ${(err as Error).message}`);
       }
-    } catch (err) {
-      setError(`Error opening file: ${(err as Error).message}`);
-    }
-  };
+    },
+    [setMemoryCards, setSelectedCard, setError]
+  );
+
+  const handleFileDrop = useCallback(
+    async (file: File) => {
+      await handleFileOpen(file);
+    },
+    [handleFileOpen]
+  );
 
   const selectFile = (): Promise<File | undefined> => {
     return new Promise((resolve) => {
@@ -311,7 +344,7 @@ export const MemoryCardManager: React.FC = () => {
     });
   };
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     if (selectedCard !== null && selectedSlot !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
@@ -319,15 +352,18 @@ export const MemoryCardManager: React.FC = () => {
         setMemoryCards([...memoryCards]);
       }
     }
-  };
+  }, [selectedCard, selectedSlot, memoryCards, setMemoryCards]);
 
-  const handleCopyMove = (action: "copy" | "move") => {
-    setError(
-      `${action.charAt(0).toUpperCase() + action.slice(1)} functionality is not implemented yet.`
-    );
-  };
+  const handleCopyMove = useCallback(
+    (action: "copy" | "move") => {
+      setError(
+        `${action.charAt(0).toUpperCase() + action.slice(1)} functionality is not implemented yet.`
+      );
+    },
+    [setError]
+  );
 
-  const handleSaveMemoryCard = async () => {
+  const handleSaveMemoryCard = useCallback(async () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
@@ -342,17 +378,27 @@ export const MemoryCardManager: React.FC = () => {
         }
       }
     }
-  };
+  }, [selectedCard, memoryCards, setError]);
 
-  const handleSlotClick = (index: number) => {
-    setSelectedSlot(selectedSlot === index ? null : index);
-    setSidebarOpen(true);
-    const selectedSave = memoryCards
-      .find((card) => card.id === selectedCard)
-      ?.card.getSaves()[index];
-    setSelectedGameId(selectedSave?.productCode ?? null);
-    setSelectedRegion(selectedSave?.region ?? null);
-  };
+  const handleSlotClick = useCallback(
+    (index: number) => {
+      setSelectedSlot((prev) => (prev === index ? null : index));
+      setSidebarOpen(true);
+      const selectedSave = memoryCards
+        .find((card) => card.id === selectedCard)
+        ?.card.getSaves()[index];
+      setSelectedGameId(selectedSave?.productCode ?? null);
+      setSelectedRegion(selectedSave?.region ?? null);
+    },
+    [
+      setSelectedSlot,
+      setSidebarOpen,
+      memoryCards,
+      selectedCard,
+      setSelectedGameId,
+      setSelectedRegion,
+    ]
+  );
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-transparent p-4">
