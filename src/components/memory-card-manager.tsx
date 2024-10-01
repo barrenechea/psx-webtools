@@ -10,7 +10,7 @@ import {
   UsbIcon,
   XIcon,
 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,8 @@ import PS1MemoryCard, {
   SaveInfo,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
+
+import { DragDropWrapper } from "./drag-drop-wrapper";
 
 interface MemoryCard {
   id: number;
@@ -177,7 +179,7 @@ export const MemoryCardManager: React.FC = () => {
       case "arduino_nano":
         return [{ dataTerminalReady: true }, { dataTerminalReady: false }];
       case "arduino_leonardo_micro":
-        return []
+        return [];
       default:
         return [];
     }
@@ -267,37 +269,46 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const handleFileOpen = () => {
+  const handleFileDrop = useCallback(async (file: File) => {
+    await handleFileOpen(file);
+  }, []);
+
+  const handleFileOpen = async (file?: File) => {
     try {
+      const selectedFile = file ?? (await selectFile());
+      if (selectedFile) {
+        const card = new PS1MemoryCard();
+        await card.loadFromFile(selectedFile);
+
+        const newCard: MemoryCard = {
+          id: Date.now(),
+          name: selectedFile.name,
+          type: "file",
+          source: selectedFile.name,
+          card: card,
+        };
+
+        setMemoryCards((prevCards) => [...prevCards, newCard]);
+        setSelectedCard(newCard.id);
+        setError(null);
+      }
+    } catch (err) {
+      setError(`Error opening file: ${(err as Error).message}`);
+    }
+  };
+
+  const selectFile = (): Promise<File | undefined> => {
+    return new Promise((resolve) => {
       const input = document.createElement("input");
       input.type = "file";
       input.accept =
         ".mcr,.mcd,.gme,.vgs,.vmp,.psm,.ps1,.bin,.mem,.psx,.pda,.mc,.ddf,.mc1,.mc2,.srm";
-
-      input.onchange = async (e) => {
+      input.onchange = (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          const card = new PS1MemoryCard();
-          await card.loadFromFile(file);
-
-          const newCard: MemoryCard = {
-            id: Date.now(),
-            name: file.name,
-            type: "file",
-            source: file.name,
-            card: card,
-          };
-
-          setMemoryCards([...memoryCards, newCard]);
-          setSelectedCard(newCard.id);
-          setError(null);
-        }
+        resolve(file);
       };
-
       input.click();
-    } catch (err) {
-      setError(`Error opening file: ${(err as Error).message}`);
-    }
+    });
   };
 
   const handleDelete = () => {
@@ -345,359 +356,365 @@ export const MemoryCardManager: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-transparent p-4">
-      <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
-          <h1 className="pl-2 font-light text-muted-foreground">
-            Memory Card Manager{" "}
-            <span className="text-xs text-destructive dark:text-red-400">
-              Alpha
-            </span>
-          </h1>
-          <TooltipProvider>
-            <div className="flex space-x-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleCopyMove("copy")}
-                    disabled={selectedSlot === null}
-                  >
-                    <CopyIcon className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Copy to other card
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleCopyMove("move")}
-                    disabled={selectedSlot === null}
-                  >
-                    <ArrowRightIcon className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Move to other card
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleDelete}
-                    disabled={selectedSlot === null}
-                  >
-                    <TrashIcon className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Delete save</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => void handleSaveMemoryCard()}
-                    disabled={selectedCard === null}
-                  >
-                    <SaveIcon className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Save memory card</TooltipContent>
-              </Tooltip>
-            </div>
-          </TooltipProvider>
-        </div>
-        {/* Main content */}
-        <div className="flex grow overflow-hidden">
-          {/* Sidebar */}
-          <div className="flex w-64 flex-col border-r border-border bg-muted/80">
-            <ScrollArea className="grow" type="auto">
-              <div className="p-2">
-                {memoryCards.map((card) => (
-                  <Button
-                    key={card.id}
-                    variant="ghost"
-                    className={`mb-1 w-full justify-start ${
-                      selectedCard === card.id
-                        ? "cursor-default bg-card hover:bg-card"
-                        : "border-transparent bg-card/40 hover:bg-card/80"
-                    }`}
-                    onClick={() => {
-                      setSelectedSlot(null);
-                      setSelectedCard(card.id);
-                      setSidebarOpen(false);
-                    }}
-                  >
-                    {card.type === "device" ? (
-                      <MemoryStickIcon className="mr-2 size-4" />
-                    ) : (
-                      <FileIcon className="mr-2 size-4" />
-                    )}
-                    <span className="max-w-44 truncate">{card.name}</span>
-                  </Button>
-                ))}
+      <DragDropWrapper onFileDrop={(file) => void handleFileDrop(file)}>
+        <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
+            <h1 className="pl-2 font-light text-muted-foreground">
+              Memory Card Manager{" "}
+              <span className="text-xs text-destructive dark:text-red-400">
+                Alpha
+              </span>
+            </h1>
+            <TooltipProvider>
+              <div className="flex space-x-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleCopyMove("copy")}
+                      disabled={selectedSlot === null}
+                    >
+                      <CopyIcon className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Copy to other card
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleCopyMove("move")}
+                      disabled={selectedSlot === null}
+                    >
+                      <ArrowRightIcon className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Move to other card
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleDelete}
+                      disabled={selectedSlot === null}
+                    >
+                      <TrashIcon className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Delete save</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => void handleSaveMemoryCard()}
+                      disabled={selectedCard === null}
+                    >
+                      <SaveIcon className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Save memory card
+                  </TooltipContent>
+                </Tooltip>
               </div>
-            </ScrollArea>
-            <div className="space-y-1 border-t border-border p-2">
-              <Button
-                variant="ghost"
-                className="w-full justify-start hover:bg-card/80"
-                onClick={handleFileOpen}
-              >
-                <FileIcon className="mr-2 size-4" />
-                Open from file
-              </Button>
+            </TooltipProvider>
+          </div>
+          {/* Main content */}
+          <div className="flex grow overflow-hidden">
+            {/* Sidebar */}
+            <div className="flex w-64 flex-col border-r border-border bg-muted/80">
+              <ScrollArea className="grow" type="auto">
+                <div className="p-2">
+                  {memoryCards.map((card) => (
+                    <Button
+                      key={card.id}
+                      variant="ghost"
+                      className={`mb-1 w-full justify-start ${
+                        selectedCard === card.id
+                          ? "cursor-default bg-card hover:bg-card"
+                          : "border-transparent bg-card/40 hover:bg-card/80"
+                      }`}
+                      onClick={() => {
+                        setSelectedSlot(null);
+                        setSelectedCard(card.id);
+                        setSidebarOpen(false);
+                      }}
+                    >
+                      {card.type === "device" ? (
+                        <MemoryStickIcon className="mr-2 size-4" />
+                      ) : (
+                        <FileIcon className="mr-2 size-4" />
+                      )}
+                      <span className="max-w-44 truncate">{card.name}</span>
+                    </Button>
+                  ))}
+                </div>
+              </ScrollArea>
+              <div className="space-y-1 border-t border-border p-2">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-card/80"
+                  onClick={() => void handleFileOpen()}
+                >
+                  <FileIcon className="mr-2 size-4" />
+                  Open from file
+                </Button>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start hover:bg-card/80"
-                  >
-                    <MemoryStickIcon className="mr-2 size-4" />
-                    Connect a device
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="right">
-                  <DropdownMenuLabel>
-                    <div className="flex items-center">
-                      <UsbIcon className="mr-2 size-4" />
-                      USB Devices
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem disabled>
-                    No USB devices available
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>
-                    <div className="flex items-center">
-                      <CpuIcon className="mr-2 size-4" />
-                      Serial Devices
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={() => setIsConnectDialogOpen(true)}
-                  >
-                    MemCARDuino
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {isConnected && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start hover:bg-card/80"
+                    >
+                      <MemoryStickIcon className="mr-2 size-4" />
+                      Connect a device
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right">
+                    <DropdownMenuLabel>
+                      <div className="flex items-center">
+                        <UsbIcon className="mr-2 size-4" />
+                        USB Devices
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem disabled>
+                      No USB devices available
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>
+                      <div className="flex items-center">
+                        <CpuIcon className="mr-2 size-4" />
+                        Serial Devices
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      onSelect={() => setIsConnectDialogOpen(true)}
+                    >
+                      MemCARDuino
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {isConnected && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start hover:bg-card/80"
+                      onClick={() => void handleDisconnect()}
+                    >
+                      Disconnect MemCARDuino
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start hover:bg-card/80"
+                      onClick={() => void handleReadFromDevice()}
+                    >
+                      Read from MemCARDuino
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start hover:bg-card/80"
+                      onClick={() => void handleWriteToDevice()}
+                      disabled={selectedCard === null}
+                    >
+                      Write to MemCARDuino
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Card content */}
+            <div className="flex grow flex-row bg-transparent">
+              {selectedCard ? (
                 <>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start hover:bg-card/80"
-                    onClick={() => void handleDisconnect()}
-                  >
-                    Disconnect MemCARDuino
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start hover:bg-card/80"
-                    onClick={() => void handleReadFromDevice()}
-                  >
-                    Read from MemCARDuino
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start hover:bg-card/80"
-                    onClick={() => void handleWriteToDevice()}
-                    disabled={selectedCard === null}
-                  >
-                    Write to MemCARDuino
-                  </Button>
+                  <div className="flex grow flex-col">
+                    <div className="border-b border-border bg-muted/80 p-4">
+                      <h2 className="mb-1 text-lg font-semibold">
+                        {
+                          memoryCards.find((card) => card.id === selectedCard)
+                            ?.name
+                        }
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        {`Opened via ${
+                          memoryCards.find((card) => card.id === selectedCard)
+                            ?.type
+                        } "${
+                          memoryCards.find((card) => card.id === selectedCard)
+                            ?.source
+                        }"`}
+                      </p>
+                    </div>
+                    <ScrollArea className="grow" type="auto">
+                      <div className="bg-card/80 p-4">
+                        {memoryCards
+                          .find((card) => card.id === selectedCard)
+                          ?.card.getSaves()
+                          .map((save, index) => {
+                            const card = memoryCards.find(
+                              (c) => c.id === selectedCard
+                            )?.card;
+                            return (
+                              <MemoryCardSlot
+                                key={index}
+                                slot={save}
+                                index={index}
+                                isSelected={selectedSlot === index}
+                                onClick={handleSlotClick}
+                                iconData={card?.getIconData(index) ?? []}
+                                iconPalette={card?.getIconPalette(index) ?? []}
+                              />
+                            );
+                          })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                  {sidebarOpen && (
+                    <div className="flex w-80 flex-col border-l border-border bg-muted/80">
+                      <div className="flex items-center justify-between p-4">
+                        <div className="flex-row">
+                          <div className="flex flex-row items-center space-x-1">
+                            <p className="font-semibold">Game Details</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <InfoIcon className="size-3 text-muted-foreground" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>
+                                    Game details provided by The PlayStation
+                                    DataCenter
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedGameId}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setSidebarOpen(false)}
+                          className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        >
+                          <XIcon className="size-4" />
+                        </Button>
+                      </div>
+                      <Separator />
+                      {isLoading ? (
+                        <div className="flex h-full items-center justify-center">
+                          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                        </div>
+                      ) : gameDataError ? (
+                        <div className="text-center text-destructive">
+                          {gameDataError}
+                        </div>
+                      ) : gameData ? (
+                        <ScrollArea className="grow">
+                          <div className="space-y-6 p-4">
+                            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
+                              {gameData.cover ? (
+                                <img
+                                  src={gameData.cover}
+                                  alt="Game cover"
+                                  className="size-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex size-full items-center justify-center text-muted-foreground">
+                                  No cover available
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <h4 className="mb-1 text-sm font-semibold">
+                                {gameData.officialTitle}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">
+                                Developed by {gameData.developer}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Published by {gameData.publisher}
+                              </p>
+                            </div>
+                            <Separator />
+                            <div className="space-y-3">
+                              <div>
+                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                  Genre / Style
+                                </p>
+                                <p className="text-sm">{gameData.genre}</p>
+                              </div>
+                              <div>
+                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                  Release Date
+                                </p>
+                                <p className="text-sm">
+                                  {gameData.releaseDate}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                  Discs
+                                </p>
+                                <p className="text-sm">{gameData.discs}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </ScrollArea>
+                      ) : (
+                        <div className="flex h-full flex-col items-center justify-center p-4 pb-16 text-center text-muted-foreground">
+                          <div className="mb-4 size-16 rounded-full bg-muted/50 p-4">
+                            <FileIcon className="size-8" />
+                          </div>
+                          <p className="text-lg font-semibold">
+                            Empty Slot Selected
+                          </p>
+                          <p className="mt-2 text-sm">
+                            Select a save slot to view game details
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
+              ) : (
+                <div className="flex grow flex-col items-center justify-center bg-card/80 p-4 text-muted-foreground">
+                  <p className="mb-4 text-lg">No memory card selected</p>
+                  <p className="text-sm">
+                    Open a memory card file or connect a device to get started
+                  </p>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Card content */}
-          <div className="flex grow flex-row bg-transparent">
-            {selectedCard ? (
-              <>
-                <div className="flex grow flex-col">
-                  <div className="border-b border-border bg-muted/80 p-4">
-                    <h2 className="mb-1 text-lg font-semibold">
-                      {
-                        memoryCards.find((card) => card.id === selectedCard)
-                          ?.name
-                      }
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {`Opened via ${
-                        memoryCards.find((card) => card.id === selectedCard)
-                          ?.type
-                      } "${
-                        memoryCards.find((card) => card.id === selectedCard)
-                          ?.source
-                      }"`}
-                    </p>
-                  </div>
-                  <ScrollArea className="grow" type="auto">
-                    <div className="bg-card/80 p-4">
-                      {memoryCards
-                        .find((card) => card.id === selectedCard)
-                        ?.card.getSaves()
-                        .map((save, index) => {
-                          const card = memoryCards.find(
-                            (c) => c.id === selectedCard
-                          )?.card;
-                          return (
-                            <MemoryCardSlot
-                              key={index}
-                              slot={save}
-                              index={index}
-                              isSelected={selectedSlot === index}
-                              onClick={handleSlotClick}
-                              iconData={card?.getIconData(index) ?? []}
-                              iconPalette={card?.getIconPalette(index) ?? []}
-                            />
-                          );
-                        })}
-                    </div>
-                  </ScrollArea>
-                </div>
-                {sidebarOpen && (
-                  <div className="flex w-80 flex-col border-l border-border bg-muted/80">
-                    <div className="flex items-center justify-between p-4">
-                      <div className="flex-row">
-                        <div className="flex flex-row items-center space-x-1">
-                          <p className="font-semibold">Game Details</p>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <InfoIcon className="size-3 text-muted-foreground" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>
-                                  Game details provided by The PlayStation
-                                  DataCenter
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {selectedGameId}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSidebarOpen(false)}
-                        className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      >
-                        <XIcon className="size-4" />
-                      </Button>
-                    </div>
-                    <Separator />
-                    {isLoading ? (
-                      <div className="flex h-full items-center justify-center">
-                        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                      </div>
-                    ) : gameDataError ? (
-                      <div className="text-center text-destructive">
-                        {gameDataError}
-                      </div>
-                    ) : gameData ? (
-                      <ScrollArea className="grow">
-                        <div className="space-y-6 p-4">
-                          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
-                            {gameData.cover ? (
-                              <img
-                                src={gameData.cover}
-                                alt="Game cover"
-                                className="size-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex size-full items-center justify-center text-muted-foreground">
-                                No cover available
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            <h4 className="mb-1 text-sm font-semibold">
-                              {gameData.officialTitle}
-                            </h4>
-                            <p className="text-xs text-muted-foreground">
-                              Developed by {gameData.developer}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Published by {gameData.publisher}
-                            </p>
-                          </div>
-                          <Separator />
-                          <div className="space-y-3">
-                            <div>
-                              <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
-                                Genre / Style
-                              </p>
-                              <p className="text-sm">{gameData.genre}</p>
-                            </div>
-                            <div>
-                              <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
-                                Release Date
-                              </p>
-                              <p className="text-sm">{gameData.releaseDate}</p>
-                            </div>
-                            <div>
-                              <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
-                                Discs
-                              </p>
-                              <p className="text-sm">{gameData.discs}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </ScrollArea>
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center p-4 pb-16 text-center text-muted-foreground">
-                        <div className="mb-4 size-16 rounded-full bg-muted/50 p-4">
-                          <FileIcon className="size-8" />
-                        </div>
-                        <p className="text-lg font-semibold">
-                          Empty Slot Selected
-                        </p>
-                        <p className="mt-2 text-sm">
-                          Select a save slot to view game details
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex grow flex-col items-center justify-center bg-card/80 p-4 text-muted-foreground">
-                <p className="mb-4 text-lg">No memory card selected</p>
-                <p className="text-sm">
-                  Open a memory card file or connect a device to get started
-                </p>
-              </div>
-            )}
+          {/* Status bar */}
+          <div className="border-t border-border bg-muted/80 p-2 text-sm text-muted-foreground">
+            {error ??
+              (selectedCard
+                ? `${
+                    memoryCards
+                      .find((card) => card.id === selectedCard)
+                      ?.card.getSaves().length ?? 0
+                  } items`
+                : "No memory card selected")}
           </div>
         </div>
-
-        {/* Status bar */}
-        <div className="border-t border-border bg-muted/80 p-2 text-sm text-muted-foreground">
-          {error ??
-            (selectedCard
-              ? `${
-                  memoryCards
-                    .find((card) => card.id === selectedCard)
-                    ?.card.getSaves().length ?? 0
-                } items`
-              : "No memory card selected")}
-        </div>
-      </div>
+      </DragDropWrapper>
       <MemcarduinoConnectDialog
         isOpen={isConnectDialogOpen}
         onOpenChange={setIsConnectDialogOpen}
