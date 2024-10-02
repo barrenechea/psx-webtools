@@ -43,6 +43,7 @@ import PS1MemoryCard, {
   SaveInfo,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
+import { cn } from "@/lib/utils";
 
 import { DragDropWrapper } from "./drag-drop-wrapper";
 
@@ -97,9 +98,11 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
 
   return (
     <Card
-      className={`mb-2 cursor-pointer border-none ${
-        isSelected ? "bg-card" : "bg-card/40 hover:bg-card/80"
-      } ${isLink ? "ml-4" : ""}`}
+      className={cn(
+        "mb-2 cursor-pointer border-none",
+        isSelected ? "bg-card" : "bg-card/40 hover:bg-card/80",
+        isLink && "ml-4"
+      )}
       onClick={() => onClick(index)}
     >
       <CardContent className="flex items-center p-3">
