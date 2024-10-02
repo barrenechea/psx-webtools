@@ -237,7 +237,32 @@ class PS1MemoryCard {
 
   private loadSlotTypes(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
-      this.slotTypes[i] = this.headerData[i][0] as SlotTypes;
+      switch (this.headerData[i][0]) {
+        case 0xa0:
+          this.slotTypes[i] = SlotTypes.Formatted;
+          break;
+        case 0x51:
+          this.slotTypes[i] = SlotTypes.Initial;
+          break;
+        case 0x52:
+          this.slotTypes[i] = SlotTypes.MiddleLink;
+          break;
+        case 0x53:
+          this.slotTypes[i] = SlotTypes.EndLink;
+          break;
+        case 0xa1:
+          this.slotTypes[i] = SlotTypes.DeletedInitial;
+          break;
+        case 0xa2:
+          this.slotTypes[i] = SlotTypes.DeletedMiddleLink;
+          break;
+        case 0xa3:
+          this.slotTypes[i] = SlotTypes.DeletedEndLink;
+          break;
+        default:
+          this.slotTypes[i] = SlotTypes.Corrupted;
+          break;
+      }
     }
   }
 
@@ -466,12 +491,7 @@ class PS1MemoryCard {
   }
 
   public getSaves(): SaveInfo[] {
-    return this.saves.filter(
-      (save) =>
-        save.slotType === SlotTypes.Initial ||
-        save.slotType === SlotTypes.DeletedInitial ||
-        save.slotType === SlotTypes.Formatted
-    );
+    return this.saves;
   }
 
   public toggleDeleteSave(slotNumber: number): void {
