@@ -57,7 +57,7 @@ export const Sidebar: React.FC = () => {
           <PSLogo className="size-8" />
           {isExpanded && (
             <h1 className="text-lg font-semibold text-foreground">
-              PS1 WebTools
+              PSX WebTools
             </h1>
           )}
         </div>

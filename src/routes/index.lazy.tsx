@@ -13,10 +13,10 @@ function Index() {
       <div className="w-full max-w-4xl overflow-hidden rounded-xl shadow-xl">
         <div className="relative">
           <div className="relative z-10 space-y-6 bg-background/80 p-8 backdrop-blur-xl">
-            <h1 className="text-4xl font-bold">Welcome to PS1 WebTools</h1>
+            <h1 className="text-4xl font-bold">Welcome to PSX WebTools</h1>
 
             <p className="text-lg text-muted-foreground">
-              PS1 WebTools is a modern, web-based toolkit designed to enhance
+              PSX WebTools is a modern, web-based toolkit designed to enhance
               your PlayStation 1 gaming experience. The goal is to provide
               easy-to-use tools for different tasks related to PS1 development
               and gaming.
@@ -27,7 +27,7 @@ function Index() {
               <ul className="list-inside list-disc space-y-2 text-muted-foreground">
                 <li>
                   Memory Card Manager: View, edit, and organize your PS1 memory
-                  card saves
+                  card saves. MemCARDuino support included!
                 </li>
                 <li>
                   Web-based: No installation required, use it directly in your
@@ -47,7 +47,7 @@ function Index() {
                 </Button>
                 <Button variant="outline" asChild>
                   <a
-                    href="https://github.com/barrenechea/ps1-webtools"
+                    href="https://github.com/barrenechea/psx-webtools"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -59,7 +59,7 @@ function Index() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              PS1 WebTools is an open-source project. Contributions and feedback
+              PSX WebTools is an open-source project. Contributions and feedback
               are welcome!
             </p>
           </div>

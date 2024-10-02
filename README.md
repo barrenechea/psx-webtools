@@ -2,11 +2,11 @@
     <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/logo-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="./.github/assets/logo-light.png">
-    <img alt="PS1 WebTools logo" src="./.github/assets/logo-light.png" width="240">
+    <img alt="PSX WebTools logo" src="./.github/assets/logo-light.png" width="240">
     </picture>
 </p>
 
-PS1 WebTools is a collection of web-based utilities for PlayStation 1 (PSX) development and homebrew. This project aims to provide easy-to-use, browser-based tools for various PS1-related tasks.
+PSX WebTools is a collection of web-based utilities for PlayStation 1 (PSX) development and homebrew. This project aims to provide easy-to-use, browser-based tools for various PS1-related tasks.
 
 The app shares the serial port across all tools, supporting the following baud rates:
 
@@ -31,7 +31,7 @@ The EXE Loader is a web-based tool inspired by the [sioload.py](https://github.c
 
 ### Usage
 
-1. Visit the PS1 WebTools website (URL to be added)
+1. Visit the PSX WebTools website (URL to be added)
 2. Connect your PlayStation 1 to your computer using the serial cable
 3. Click the "Connect" button and select the appropriate serial port
 4. Choose the desired baud rate from the dropdown menu
