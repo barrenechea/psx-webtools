@@ -103,8 +103,8 @@ export const MemcarduinoConnectDialog: React.FC<
           </Select>
 
           <p className="mt-2 text-sm text-muted-foreground">
-            Note: If you purchased a reader from AliExpress, it's very likely to
-            use an Arduino Nano in Legacy mode.
+            Note: If you purchased a reader from AliExpress with the software as
+            it comes, it's very likely to use an Arduino Nano in Legacy mode.
           </p>
 
           <div className="flex items-center space-x-2">

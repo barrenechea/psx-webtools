@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 
+import FlagEU from "@/assets/flag-eu.svg?react";
+import FlagJA from "@/assets/flag-ja.svg?react";
+import FlagUS from "@/assets/flag-us.svg?react";
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,16 +63,20 @@ interface MemoryCardSlotProps {
   iconPalette: [number, number, number, number][];
 }
 
-const getRegionFlag = (region: string): string => {
+const getRegionFlag = (region: string): JSX.Element => {
   switch (region) {
     case "America":
-      return "🇺🇸";
+      return <FlagUS className="size-8" />;
     case "Europe":
-      return "🇪🇺";
+      return <FlagEU className="size-8" />;
     case "Japan":
-      return "🇯🇵";
+      return <FlagJA className="size-8" />;
     default:
-      return "🏴";
+      return (
+        <div className="size-8 content-center rounded-full bg-muted/60 text-center">
+          ?
+        </div>
+      );
   }
 };
 
@@ -103,11 +110,11 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
                 {slot.productCode}
               </p>
             </div>
-            <span className="mr-2 shrink-0 text-sm">
-              {getRegionFlag(slot.region)}
-            </span>
             <span className="shrink-0 text-xs text-muted-foreground">
               {slot.identifier}
+            </span>
+            <span className="ml-4 shrink-0 text-sm">
+              {getRegionFlag(slot.region)}
             </span>
           </>
         ) : (
