@@ -238,26 +238,14 @@ class PS1MemoryCard {
   private loadSlotTypes(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
       switch (this.headerData[i][0]) {
-        case 0xa0:
-          this.slotTypes[i] = SlotTypes.Formatted;
-          break;
-        case 0x51:
-          this.slotTypes[i] = SlotTypes.Initial;
-          break;
-        case 0x52:
-          this.slotTypes[i] = SlotTypes.MiddleLink;
-          break;
-        case 0x53:
-          this.slotTypes[i] = SlotTypes.EndLink;
-          break;
-        case 0xa1:
-          this.slotTypes[i] = SlotTypes.DeletedInitial;
-          break;
-        case 0xa2:
-          this.slotTypes[i] = SlotTypes.DeletedMiddleLink;
-          break;
-        case 0xa3:
-          this.slotTypes[i] = SlotTypes.DeletedEndLink;
+        case 0xa0: // Formatted
+        case 0x51: // Initial
+        case 0x52: // MiddleLink
+        case 0x53: // EndLink
+        case 0xa1: // DeletedInitial
+        case 0xa2: // DeletedMiddleLink
+        case 0xa3: // DeletedEndLink
+          this.slotTypes[i] = this.headerData[i][0] as SlotTypes;
           break;
         default:
           this.slotTypes[i] = SlotTypes.Corrupted;
