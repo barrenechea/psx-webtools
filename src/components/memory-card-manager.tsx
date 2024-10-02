@@ -88,34 +88,47 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   iconData,
   iconPalette,
 }) => {
+  const isLink =
+    slot.slotType === SlotTypes.MiddleLink ||
+    slot.slotType === SlotTypes.DeletedMiddleLink ||
+    slot.slotType === SlotTypes.EndLink ||
+    slot.slotType === SlotTypes.DeletedEndLink;
+  const isFormatted = slot.slotType === SlotTypes.Formatted;
+
   return (
     <Card
       className={`mb-2 cursor-pointer border-none ${
         isSelected ? "bg-card" : "bg-card/40 hover:bg-card/80"
-      }`}
+      } ${isLink ? "ml-4" : ""}`}
       onClick={() => onClick(index)}
     >
       <CardContent className="flex items-center p-3">
         <div className="mr-2 w-6 text-xs text-muted-foreground">
           {(index + 1).toString().padStart(2, "0")}
         </div>
-        {slot.slotType !== SlotTypes.Formatted ? (
+        {!isFormatted ? (
           <>
-            <PS1BlockIcon iconData={iconData} iconPalette={iconPalette} />
+            {!isLink && (
+              <PS1BlockIcon iconData={iconData} iconPalette={iconPalette} />
+            )}
             <div className="min-w-0 grow">
               <h3 className="truncate text-sm font-medium text-foreground">
-                {slot.name}
+                {isLink ? "Linked Save Data" : slot.name}
               </h3>
               <p className="truncate text-xs text-muted-foreground">
-                {slot.productCode}
+                {isLink ? "Part of a multi-block save" : slot.productCode}
               </p>
             </div>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {slot.identifier}
-            </span>
-            <span className="ml-4 shrink-0 text-sm">
-              {getRegionFlag(slot.region)}
-            </span>
+            {!isLink && (
+              <>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {slot.identifier}
+                </span>
+                <span className="ml-4 shrink-0 text-sm">
+                  {getRegionFlag(slot.region)}
+                </span>
+              </>
+            )}
           </>
         ) : (
           <span className="text-sm text-muted-foreground">Empty Slot</span>
@@ -387,23 +400,95 @@ export const MemoryCardManager: React.FC = () => {
     }
   }, [selectedCard, memoryCards, setError]);
 
+  const findLinkedSlots = useCallback(
+    (card: PS1MemoryCard, startIndex: number) => {
+      const linkedSlots = [startIndex];
+      const saves = card.getSaves();
+      let currentSlot = startIndex;
+
+      while (true) {
+        const nextSlot = saves[currentSlot].slotNumber + 1;
+        if (nextSlot >= saves.length) break;
+
+        const nextSave = saves[nextSlot];
+        if (
+          nextSave.slotType !== SlotTypes.MiddleLink &&
+          nextSave.slotType !== SlotTypes.EndLink &&
+          nextSave.slotType !== SlotTypes.DeletedMiddleLink &&
+          nextSave.slotType !== SlotTypes.DeletedEndLink
+        )
+          break;
+
+        linkedSlots.push(nextSlot);
+        currentSlot = nextSlot;
+      }
+
+      return linkedSlots;
+    },
+    []
+  );
+
+  const findParentSlot = useCallback(
+    (card: PS1MemoryCard, slotIndex: number) => {
+      const saves = card.getSaves();
+      let currentSlot = slotIndex;
+
+      if (
+        saves[currentSlot].slotType === SlotTypes.Initial ||
+        saves[currentSlot].slotType === SlotTypes.DeletedInitial ||
+        saves[currentSlot].slotType === SlotTypes.Formatted
+      )
+        return slotIndex;
+
+      while (currentSlot > 0) {
+        const prevSave = saves[currentSlot - 1];
+        if (
+          prevSave.slotType === SlotTypes.Initial ||
+          prevSave.slotType === SlotTypes.DeletedInitial
+        )
+          return currentSlot - 1;
+        if (
+          prevSave.slotType !== SlotTypes.MiddleLink &&
+          prevSave.slotType !== SlotTypes.EndLink &&
+          prevSave.slotType !== SlotTypes.DeletedMiddleLink &&
+          prevSave.slotType !== SlotTypes.DeletedEndLink
+        )
+          break;
+        currentSlot--;
+      }
+
+      return slotIndex;
+    },
+    []
+  );
+
   const handleSlotClick = useCallback(
     (index: number) => {
-      setSelectedSlot((prev) => (prev === index ? null : index));
+      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      if (!card) return;
+
+      const saves = card.getSaves();
+      const parentSlot = findParentSlot(card, index);
+      console.log(`parent slot game id: ${saves[parentSlot].productCode}`);
+      const linkedSlots = findLinkedSlots(card, parentSlot);
+      console.log(`linked slots: ${linkedSlots.join(", ")}`);
+
+      setSelectedSlot((prev) =>
+        linkedSlots.includes(prev ?? -1) ? null : parentSlot
+      );
       setSidebarOpen(true);
-      const selectedSave = memoryCards
-        .find((card) => card.id === selectedCard)
-        ?.card.getSaves()[index];
-      setSelectedGameId(selectedSave?.productCode ?? null);
-      setSelectedRegion(selectedSave?.region ?? null);
+      setSelectedGameId(saves[parentSlot].productCode);
+      setSelectedRegion(saves[parentSlot].region);
     },
     [
-      setSelectedSlot,
-      setSidebarOpen,
       memoryCards,
       selectedCard,
+      setSelectedSlot,
+      setSidebarOpen,
       setSelectedGameId,
       setSelectedRegion,
+      findParentSlot,
+      findLinkedSlots,
     ]
   );
 
@@ -609,7 +694,7 @@ export const MemoryCardManager: React.FC = () => {
                       </p>
                     </div>
                     <ScrollArea className="grow" type="auto">
-                      <div className="bg-card/80 p-4">
+                      <div className="bg-card/60 p-4">
                         {memoryCards
                           .find((card) => card.id === selectedCard)
                           ?.card.getSaves()
@@ -617,15 +702,25 @@ export const MemoryCardManager: React.FC = () => {
                             const card = memoryCards.find(
                               (c) => c.id === selectedCard
                             )?.card;
+                            if (!card) return null;
+
+                            const parentSlot = findParentSlot(card, index);
+                            const linkedSlots = findLinkedSlots(
+                              card,
+                              parentSlot
+                            );
+                            const isSelected = linkedSlots.includes(
+                              selectedSlot ?? -1
+                            );
                             return (
                               <MemoryCardSlot
                                 key={index}
                                 slot={save}
                                 index={index}
-                                isSelected={selectedSlot === index}
+                                isSelected={isSelected}
                                 onClick={handleSlotClick}
-                                iconData={card?.getIconData(index) ?? []}
-                                iconPalette={card?.getIconPalette(index) ?? []}
+                                iconData={card.getIconData(index)}
+                                iconPalette={card.getIconPalette(index)}
                               />
                             );
                           })}
