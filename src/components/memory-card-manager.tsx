@@ -469,9 +469,7 @@ export const MemoryCardManager: React.FC = () => {
 
       const saves = card.getSaves();
       const parentSlot = findParentSlot(card, index);
-      console.log(`parent slot game id: ${saves[parentSlot].productCode}`);
       const linkedSlots = findLinkedSlots(card, parentSlot);
-      console.log(`linked slots: ${linkedSlots.join(", ")}`);
 
       setSelectedSlot((prev) =>
         linkedSlots.includes(prev ?? -1) ? null : parentSlot
