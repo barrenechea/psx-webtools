@@ -184,6 +184,7 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
+  const [copiedSlots, setCopiedSlots] = useState<SaveInfo[]>([]);
 
   const {
     isConnected,
@@ -410,15 +411,6 @@ export const MemoryCardManager: React.FC = () => {
     }
   }, [selectedCard, selectedSlot, memoryCards, setMemoryCards]);
 
-  const handleCopyMove = useCallback(
-    (action: "copy" | "move") => {
-      setError(
-        `${action.charAt(0).toUpperCase() + action.slice(1)} functionality is not implemented yet.`
-      );
-    },
-    [setError]
-  );
-
   const handleSaveMemoryCard = useCallback(async () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
@@ -496,6 +488,23 @@ export const MemoryCardManager: React.FC = () => {
       return slotIndex;
     },
     []
+  );
+
+  const handleCopyMove = useCallback(
+    (action: "copy" | "move") => {
+      if (selectedCard !== null && selectedSlot !== null) {
+        const card = memoryCards.find((c) => c.id === selectedCard);
+        if (card) {
+          const parentSlot = findParentSlot(card.card, selectedSlot);
+          const linkedSlots = findLinkedSlots(card.card, parentSlot);
+          const copiedSaves = linkedSlots.map(
+            (slotIndex) => card.card.getSaves()[slotIndex]
+          );
+          setCopiedSlots(copiedSaves);
+        }
+      }
+    },
+    [selectedCard, selectedSlot, memoryCards, findParentSlot, findLinkedSlots]
   );
 
   const handleSlotClick = useCallback(
@@ -714,22 +723,50 @@ export const MemoryCardManager: React.FC = () => {
               {selectedCard ? (
                 <>
                   <div className="flex grow flex-col">
-                    <div className="border-b border-border bg-muted/80 p-4">
-                      <h2 className="mb-1 text-lg font-semibold">
-                        {
-                          memoryCards.find((card) => card.id === selectedCard)
-                            ?.name
-                        }
-                      </h2>
-                      <p className="text-sm text-muted-foreground">
-                        {`Opened via ${
-                          memoryCards.find((card) => card.id === selectedCard)
-                            ?.type
-                        } "${
-                          memoryCards.find((card) => card.id === selectedCard)
-                            ?.source
-                        }"`}
-                      </p>
+                    <div className="flex items-center justify-between border-b border-border bg-muted/80 p-4 px-6">
+                      <div>
+                        <h2 className="mb-1 text-lg font-semibold">
+                          {
+                            memoryCards.find((card) => card.id === selectedCard)
+                              ?.name
+                          }
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          {`Opened via ${
+                            memoryCards.find((card) => card.id === selectedCard)
+                              ?.type
+                          } "${memoryCards.find((card) => card.id === selectedCard)?.source}"`}
+                        </p>
+                      </div>
+                      <div className="flex items-center">
+                        {copiedSlots.length > 0 ? (
+                          <div className="relative size-8">
+                            <PS1BlockIcon
+                              iconData={
+                                memoryCards
+                                  .find((c) => c.id === selectedCard)
+                                  ?.card.getIconData(
+                                    copiedSlots[0].slotNumber
+                                  ) ?? []
+                              }
+                              iconPalette={
+                                memoryCards
+                                  .find((c) => c.id === selectedCard)
+                                  ?.card.getIconPalette(
+                                    copiedSlots[0].slotNumber
+                                  ) ?? []
+                              }
+                            />
+                            {copiedSlots.length > 1 && (
+                              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                                {copiedSlots.length}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="size-8 rounded-sm border-2 border-dashed border-muted-foreground" />
+                        )}
+                      </div>
                     </div>
                     <ScrollArea className="grow" type="auto">
                       <div className="bg-card/60 p-4">
