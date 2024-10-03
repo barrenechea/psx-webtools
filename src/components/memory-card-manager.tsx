@@ -16,6 +16,7 @@ import FlagEU from "@/assets/flag-eu.svg?react";
 import FlagJA from "@/assets/flag-ja.svg?react";
 import FlagUS from "@/assets/flag-us.svg?react";
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -81,6 +82,19 @@ const getRegionFlag = (region: string): JSX.Element => {
   }
 };
 
+const getSlotTypeBadge = (slotType: SlotTypes) => {
+  switch (slotType) {
+    case SlotTypes.DeletedInitial:
+    case SlotTypes.DeletedMiddleLink:
+    case SlotTypes.DeletedEndLink:
+      return <Badge variant="red">Deleted</Badge>;
+    case SlotTypes.Corrupted:
+      return <Badge variant="pink">Corrupted</Badge>;
+    default:
+      return null;
+  }
+};
+
 const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   slot,
   index,
@@ -89,12 +103,16 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   iconData,
   iconPalette,
 }) => {
+  const isFormatted = slot.slotType === SlotTypes.Formatted;
   const isLink =
     slot.slotType === SlotTypes.MiddleLink ||
     slot.slotType === SlotTypes.DeletedMiddleLink ||
     slot.slotType === SlotTypes.EndLink ||
     slot.slotType === SlotTypes.DeletedEndLink;
-  const isFormatted = slot.slotType === SlotTypes.Formatted;
+  const isDeleted =
+    slot.slotType === SlotTypes.DeletedInitial ||
+    slot.slotType === SlotTypes.DeletedMiddleLink ||
+    slot.slotType === SlotTypes.DeletedEndLink;
 
   return (
     <Card
@@ -122,16 +140,15 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
                 {isLink ? "Part of a multi-block save" : slot.productCode}
               </p>
             </div>
-            {!isLink && (
-              <>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {slot.identifier}
-                </span>
-                <span className="ml-4 shrink-0 text-sm">
-                  {getRegionFlag(slot.region)}
-                </span>
-              </>
-            )}
+            <div className="ml-2 flex flex-wrap gap-1">
+              {!isLink && (
+                <>
+                  <Badge>{slot.identifier}</Badge>
+                  <Badge>{slot.region}</Badge>
+                </>
+              )}
+              {getSlotTypeBadge(slot.slotType)}
+            </div>
           </>
         ) : (
           <span className="text-sm text-muted-foreground">Empty Slot</span>
@@ -627,7 +644,7 @@ export const MemoryCardManager: React.FC = () => {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuItem disabled>
-                      No USB devices available
+                      None yet, check back later
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>
