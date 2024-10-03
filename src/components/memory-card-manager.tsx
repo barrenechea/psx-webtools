@@ -540,7 +540,7 @@ export const MemoryCardManager: React.FC = () => {
             </h1>
             <TooltipProvider>
               <div className="flex space-x-2">
-                <Tooltip>
+                <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
@@ -555,7 +555,7 @@ export const MemoryCardManager: React.FC = () => {
                     Copy to other card
                   </TooltipContent>
                 </Tooltip>
-                <Tooltip>
+                <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
@@ -570,7 +570,7 @@ export const MemoryCardManager: React.FC = () => {
                     Move to other card
                   </TooltipContent>
                 </Tooltip>
-                <Tooltip>
+                <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
@@ -583,7 +583,7 @@ export const MemoryCardManager: React.FC = () => {
                   </TooltipTrigger>
                   <TooltipContent side="bottom">Delete save</TooltipContent>
                 </Tooltip>
-                <Tooltip>
+                <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
@@ -768,7 +768,7 @@ export const MemoryCardManager: React.FC = () => {
                           <div className="flex flex-row items-center space-x-1">
                             <p className="font-semibold">Game Details</p>
                             <TooltipProvider>
-                              <Tooltip>
+                              <Tooltip delayDuration={100}>
                                 <TooltipTrigger asChild>
                                   <Button variant="ghost" size="icon">
                                     <InfoIcon className="size-3 text-muted-foreground" />
