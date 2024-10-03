@@ -12,9 +12,6 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 
-import FlagEU from "@/assets/flag-eu.svg?react";
-import FlagJA from "@/assets/flag-ja.svg?react";
-import FlagUS from "@/assets/flag-us.svg?react";
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,31 +62,36 @@ interface MemoryCardSlotProps {
   iconPalette: [number, number, number, number][];
 }
 
-const getRegionFlag = (region: string): JSX.Element => {
-  switch (region) {
-    case "America":
-      return <FlagUS className="size-8" />;
-    case "Europe":
-      return <FlagEU className="size-8" />;
-    case "Japan":
-      return <FlagJA className="size-8" />;
-    default:
-      return (
-        <div className="size-8 content-center rounded-full bg-muted/60 text-center">
-          ?
-        </div>
-      );
-  }
-};
-
 const getSlotTypeBadge = (slotType: SlotTypes) => {
   switch (slotType) {
     case SlotTypes.DeletedInitial:
     case SlotTypes.DeletedMiddleLink:
     case SlotTypes.DeletedEndLink:
-      return <Badge variant="red">Deleted</Badge>;
+      return (
+        <TooltipProvider>
+          <Tooltip delayDuration={100}>
+            <TooltipTrigger>
+              <Badge variant="red">Deleted</Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>This save has been deleted but can be recovered</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
     case SlotTypes.Corrupted:
-      return <Badge variant="pink">Corrupted</Badge>;
+      return (
+        <TooltipProvider>
+          <Tooltip delayDuration={100}>
+            <TooltipTrigger>
+              <Badge variant="pink">Corrupted</Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>This save data is corrupted and may not be readable</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
     default:
       return null;
   }
@@ -108,10 +110,6 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
     slot.slotType === SlotTypes.MiddleLink ||
     slot.slotType === SlotTypes.DeletedMiddleLink ||
     slot.slotType === SlotTypes.EndLink ||
-    slot.slotType === SlotTypes.DeletedEndLink;
-  const isDeleted =
-    slot.slotType === SlotTypes.DeletedInitial ||
-    slot.slotType === SlotTypes.DeletedMiddleLink ||
     slot.slotType === SlotTypes.DeletedEndLink;
 
   return (
@@ -143,8 +141,26 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
             <div className="ml-2 flex flex-wrap gap-1">
               {!isLink && (
                 <>
-                  <Badge>{slot.identifier}</Badge>
-                  <Badge>{slot.region}</Badge>
+                  <TooltipProvider>
+                    <Tooltip delayDuration={100}>
+                      <TooltipTrigger>
+                        <Badge>{slot.identifier}</Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Save identifier</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip delayDuration={100}>
+                      <TooltipTrigger>
+                        <Badge>{slot.region}</Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Game region</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </>
               )}
               {getSlotTypeBadge(slot.slotType)}
