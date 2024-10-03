@@ -547,6 +547,7 @@ export const MemoryCardManager: React.FC = () => {
                       size="icon"
                       onClick={() => handleCopyMove("copy")}
                       disabled={selectedSlot === null}
+                      aria-label="Copy to other card"
                     >
                       <CopyIcon className="size-4" />
                     </Button>
@@ -562,6 +563,7 @@ export const MemoryCardManager: React.FC = () => {
                       size="icon"
                       onClick={() => handleCopyMove("move")}
                       disabled={selectedSlot === null}
+                      aria-label="Move to other card"
                     >
                       <ArrowRightIcon className="size-4" />
                     </Button>
@@ -577,6 +579,7 @@ export const MemoryCardManager: React.FC = () => {
                       size="icon"
                       onClick={handleDelete}
                       disabled={selectedSlot === null}
+                      aria-label="Delete save"
                     >
                       <TrashIcon className="size-4" />
                     </Button>
@@ -590,6 +593,7 @@ export const MemoryCardManager: React.FC = () => {
                       size="icon"
                       onClick={() => void handleSaveMemoryCard()}
                       disabled={selectedCard === null}
+                      aria-label="Save memory card"
                     >
                       <SaveIcon className="size-4" />
                     </Button>
