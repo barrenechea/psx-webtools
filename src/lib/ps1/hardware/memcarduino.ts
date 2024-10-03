@@ -192,7 +192,7 @@ export class MemCARDuino extends HardwareInterface {
 
     if (
       xorData !== readData[128] ||
-      readData[129].valueOf() !== MCinoResponses.GOOD.valueOf()
+      readData[129] !== MCinoResponses.GOOD.valueOf()
     ) {
       return null;
     }
@@ -218,7 +218,7 @@ export class MemCARDuino extends HardwareInterface {
     );
 
     const response = await this.readDataFromPort(1);
-    return response[0].valueOf() === MCinoResponses.GOOD.valueOf();
+    return response[0] === MCinoResponses.GOOD.valueOf();
   }
 
   override async readPocketStationSerial(): Promise<{
@@ -262,7 +262,7 @@ export class MemCARDuino extends HardwareInterface {
     const biosData = await this.readDataFromPort(128);
     const statusResponse = await this.readDataFromPort(1);
 
-    if (statusResponse[0].valueOf() !== MCinoResponses.GOOD.valueOf()) {
+    if (statusResponse[0] !== MCinoResponses.GOOD.valueOf()) {
       return null;
     }
 
