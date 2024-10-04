@@ -491,7 +491,8 @@ export const MemoryCardManager: React.FC = () => {
   );
 
   const handleCopyMove = useCallback(
-    (action: "copy" | "move") => {
+    (_action: "copy" | "move") => {
+      console.log(_action);
       if (selectedCard !== null && selectedSlot !== null) {
         const card = memoryCards.find((c) => c.id === selectedCard);
         if (card) {
@@ -738,35 +739,47 @@ export const MemoryCardManager: React.FC = () => {
                           } "${memoryCards.find((card) => card.id === selectedCard)?.source}"`}
                         </p>
                       </div>
-                      <div className="flex items-center">
-                        {copiedSlots.length > 0 ? (
-                          <div className="relative size-8">
-                            <PS1BlockIcon
-                              iconData={
-                                memoryCards
-                                  .find((c) => c.id === selectedCard)
-                                  ?.card.getIconData(
-                                    copiedSlots[0].slotNumber
-                                  ) ?? []
-                              }
-                              iconPalette={
-                                memoryCards
-                                  .find((c) => c.id === selectedCard)
-                                  ?.card.getIconPalette(
-                                    copiedSlots[0].slotNumber
-                                  ) ?? []
-                              }
-                            />
-                            {copiedSlots.length > 1 && (
-                              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                                {copiedSlots.length}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="size-8 rounded-sm border-2 border-dashed border-muted-foreground" />
-                        )}
-                      </div>
+                      <TooltipProvider>
+                        <Tooltip delayDuration={100}>
+                          <TooltipTrigger>
+                            <div className="flex items-center">
+                              {copiedSlots.length > 0 ? (
+                                <div className="group relative">
+                                  <div className="absolute -inset-0.5 animate-tilt rounded-lg bg-gradient-to-r from-pink-600 to-purple-600 opacity-75 blur transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
+                                  <div className="relative size-8">
+                                    <PS1BlockIcon
+                                      iconData={
+                                        memoryCards
+                                          .find((c) => c.id === selectedCard)
+                                          ?.card.getIconData(
+                                            copiedSlots[0].slotNumber
+                                          ) ?? []
+                                      }
+                                      iconPalette={
+                                        memoryCards
+                                          .find((c) => c.id === selectedCard)
+                                          ?.card.getIconPalette(
+                                            copiedSlots[0].slotNumber
+                                          ) ?? []
+                                      }
+                                    />
+                                    {copiedSlots.length > 1 && (
+                                      <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                                        {copiedSlots.length}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="size-8 rounded-sm border-2 border-dashed border-muted-foreground" />
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Temporary Buffer</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                     <ScrollArea className="grow" type="auto">
                       <div className="bg-card/60 p-4">
