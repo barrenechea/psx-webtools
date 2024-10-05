@@ -1,4 +1,4 @@
-import React, { createContext, ReactNode, useContext, useState } from "react";
+import { createContext, useContext, useState } from "react";
 
 import { LoadingProgressDialog } from "@/components/loading-progress-dialog";
 
@@ -26,7 +26,7 @@ export const useLoadingDialog = () => {
   return context;
 };
 
-export const LoadingDialogProvider: React.FC<{ children: ReactNode }> = ({
+export const LoadingDialogProvider: React.FC<{ children: JSX.Element }> = ({
   children,
 }) => {
   const [isOpen, setIsOpen] = useState(false);

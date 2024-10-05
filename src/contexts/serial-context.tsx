@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useRef, useState } from "react";
+import { createContext, useCallback, useRef, useState } from "react";
 
 export interface SerialContextType {
   port: SerialPort | null;
@@ -23,7 +23,7 @@ export const SerialContext = createContext<SerialContextType | undefined>(
   undefined
 );
 
-export const SerialProvider: React.FC<{ children: ReactNode }> = ({
+export const SerialProvider: React.FC<{ children: JSX.Element }> = ({
   children,
 }) => {
   const [port, setPort] = useState<SerialPort | null>(null);

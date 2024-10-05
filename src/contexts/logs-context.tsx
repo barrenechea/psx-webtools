@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useState } from "react";
+import { createContext, useCallback, useState } from "react";
 
 export interface LogEntry {
   message: string;
@@ -14,7 +14,7 @@ export const LogsContext = createContext<LogsContextType | undefined>(
   undefined
 );
 
-export const LogsProvider: React.FC<{ children: ReactNode }> = ({
+export const LogsProvider: React.FC<{ children: JSX.Element }> = ({
   children,
 }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);

@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { IconPalette, SlotIconData } from "@/lib/ps1-memory-card";
+import type { IconPalette, SlotIconData } from "@/lib/ps1-memory-card";
 
 interface PS1BlockIconProps {
   iconData: SlotIconData;

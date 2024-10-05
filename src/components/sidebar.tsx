@@ -1,11 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Home,
-  MemoryStickIcon,
-} from "lucide-react";
-import React, { useState } from "react";
+import { ChevronLeft, ChevronRight, Home, MemoryStickIcon } from "lucide-react";
+import { useState } from "react";
 
 import PSLogo from "@/assets/ps-logo.svg?react";
 import { Button } from "@/components/ui/button";

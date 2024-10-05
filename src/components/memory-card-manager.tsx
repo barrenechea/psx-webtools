@@ -10,7 +10,7 @@ import {
   UsbIcon,
   XIcon,
 } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -38,9 +38,9 @@ import { useGameData } from "@/hooks/use-game-data";
 import { useMemcarduino } from "@/hooks/use-memcarduino";
 import PS1MemoryCard, {
   CardTypes,
-  IconPalette,
-  SaveInfo,
-  SlotIconData,
+  type IconPalette,
+  type SaveInfo,
+  type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 import { cn } from "@/lib/utils";
