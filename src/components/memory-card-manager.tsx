@@ -38,7 +38,9 @@ import { useGameData } from "@/hooks/use-game-data";
 import { useMemcarduino } from "@/hooks/use-memcarduino";
 import PS1MemoryCard, {
   CardTypes,
+  IconPalette,
   SaveInfo,
+  SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 import { cn } from "@/lib/utils";
@@ -58,8 +60,8 @@ interface MemoryCardSlotProps {
   index: number;
   isSelected: boolean;
   onClick: (index: number) => void;
-  iconData: number[];
-  iconPalette: [number, number, number, number][];
+  iconData: SlotIconData;
+  iconPalette: IconPalette;
 }
 
 const getSlotTypeBadge = (slotType: SlotTypes) => {
@@ -128,7 +130,11 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
         {!isFormatted ? (
           <>
             {!isLink && (
-              <PS1BlockIcon iconData={iconData} iconPalette={iconPalette} />
+              <PS1BlockIcon
+                iconData={iconData}
+                iconPalette={iconPalette}
+                iconFrameCount={slot.iconFrameCount}
+              />
             )}
             <div className="min-w-0 grow">
               <h3 className="truncate text-sm font-medium text-foreground">
@@ -757,6 +763,9 @@ export const MemoryCardManager: React.FC = () => {
                                           ?.card.getIconPalette(
                                             copiedSlots[0].slotNumber
                                           ) ?? []
+                                      }
+                                      iconFrameCount={
+                                        copiedSlots[0].iconFrameCount
                                       }
                                     />
                                     {copiedSlots.length > 1 && (

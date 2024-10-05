@@ -55,9 +55,9 @@ export interface SaveInfo {
 }
 
 type RGBAColor = [number, number, number, number];
-type IconPalette = RGBAColor[];
+export type IconPalette = RGBAColor[];
 type IconData = number[]; // Single icon data is a 1D array of numbers
-type SlotIconData = IconData[]; // Icons for a single slot (up to 3 icons)
+export type SlotIconData = IconData[]; // Icons for a single slot (up to 3 icons)
 
 class PS1MemoryCard {
   private rawData: Uint8Array;
@@ -888,16 +888,17 @@ class PS1MemoryCard {
     }
   }
 
-  public getIconData(slotNumber: number): number[] {
-    if (this.iconData[slotNumber]?.[0]) {
-      return this.iconData[slotNumber][0];
+  public getIconData(slotNumber: number): SlotIconData {
+    if (this.iconData[slotNumber]) {
+      return this.iconData[slotNumber];
     }
-    return new Array<number>(16 * 16).fill(0); // Return a blank icon if no data is available
+    // // Return a blank icon if no data is available
+    return new Array<IconData>(3).fill(
+      new Array<number>(ICON_SIZE * ICON_SIZE).fill(0)
+    );
   }
 
-  public getIconPalette(
-    slotNumber: number
-  ): [number, number, number, number][] {
+  public getIconPalette(slotNumber: number): IconPalette {
     if (this.iconPalette[slotNumber]) {
       // Set alpha to 255 (fully opaque) for all colors except the first one (usually transparent)
       return this.iconPalette[slotNumber].map(([r, g, b], index) =>
