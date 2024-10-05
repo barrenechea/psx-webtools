@@ -59,16 +59,16 @@ export default {
           "50%": {
             backgroundPosition: "100% 50%",
           },
-          tilt: {
-            "0%, 50%, 100%": { transform: "rotate(0deg)" },
-            "25%": { transform: "rotate(0.5deg)" },
-            "75%": { transform: "rotate(-0.5deg)" },
-          },
+        },
+        tilt: {
+          "0%, 50%, 100%": { transform: "rotate(0deg)" },
+          "25%": { transform: "rotate(0.5deg)" },
+          "75%": { transform: "rotate(-0.5deg)" },
         },
       },
       animation: {
-        tilt: "tilt 1s infinite linear",
         "background-shine": "background-shine 20s ease infinite",
+        tilt: "tilt 1s infinite linear",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",

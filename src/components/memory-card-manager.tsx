@@ -491,8 +491,8 @@ export const MemoryCardManager: React.FC = () => {
   );
 
   const handleCopyMove = useCallback(
-    (_action: "copy" | "move") => {
-      console.log(_action);
+    (action: "copy" | "move") => {
+      console.log(action);
       if (selectedCard !== null && selectedSlot !== null) {
         const card = memoryCards.find((c) => c.id === selectedCard);
         if (card) {
@@ -557,14 +557,12 @@ export const MemoryCardManager: React.FC = () => {
                       size="icon"
                       onClick={() => handleCopyMove("copy")}
                       disabled={selectedSlot === null}
-                      aria-label="Copy to other card"
+                      aria-label="Copy to buffer"
                     >
                       <CopyIcon className="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    Copy to other card
-                  </TooltipContent>
+                  <TooltipContent side="bottom">Copy to buffer</TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
@@ -573,14 +571,12 @@ export const MemoryCardManager: React.FC = () => {
                       size="icon"
                       onClick={() => handleCopyMove("move")}
                       disabled={selectedSlot === null}
-                      aria-label="Move to other card"
+                      aria-label="Move to buffer"
                     >
                       <ArrowRightIcon className="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    Move to other card
-                  </TooltipContent>
+                  <TooltipContent side="bottom">Move to buffer</TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
