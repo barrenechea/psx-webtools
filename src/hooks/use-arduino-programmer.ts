@@ -45,8 +45,8 @@ const useArduinoProgrammer = () => {
           return true;
         };
 
-        const stk500 = new STK500();
-        await stk500.bootload(serialStream, hexData, board);
+        const stk500 = new STK500(serialStream, board);
+        await stk500.bootload(hexData);
 
         setProgress(100);
 
