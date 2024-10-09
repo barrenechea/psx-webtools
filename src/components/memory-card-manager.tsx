@@ -944,7 +944,7 @@ export const MemoryCardManager: React.FC = () => {
           </div>
 
           {/* Status bar */}
-          <div className="border-t border-border bg-muted/80 p-2 text-sm text-muted-foreground">
+          <div className="border-t border-border bg-muted/80 px-4 py-2 text-sm text-muted-foreground">
             {error ??
               (selectedCard
                 ? `${

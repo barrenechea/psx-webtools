@@ -1,5 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Home, MemoryStickIcon } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CpuIcon,
+  Home,
+  MemoryStickIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import PSLogo from "@/assets/ps-logo.svg?react";
@@ -80,16 +86,16 @@ export const Sidebar: React.FC = () => {
           label="Home"
           isExpanded={isExpanded}
         />
-        {/* <NavItem
-          to="/exe-loader"
-          icon={<MonitorPlayIcon className="size-5" />}
-          label="EXE Loader"
-          isExpanded={isExpanded}
-        /> */}
         <NavItem
           to="/memory-card-manager"
           icon={<MemoryStickIcon className="size-5" />}
           label="Memory Card Manager"
+          isExpanded={isExpanded}
+        />
+        <NavItem
+          to="/memcarduino-flasher"
+          icon={<CpuIcon className="size-5" />}
+          label="MemCARDuino Flasher"
           isExpanded={isExpanded}
         />
       </nav>
