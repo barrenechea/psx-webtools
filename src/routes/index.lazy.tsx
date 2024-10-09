@@ -23,15 +23,19 @@ function Index() {
             </p>
 
             <div className="space-y-4">
-              <h2 className="text-2xl font-semibold">Features (for now):</h2>
+              <h2 className="text-2xl font-semibold">Features:</h2>
               <ul className="list-inside list-disc space-y-2 text-muted-foreground">
                 <li>
                   Memory Card Manager: View, edit, and organize your PS1 memory
                   card saves. MemCARDuino support included!
                 </li>
                 <li>
+                  MemCARDuino Flasher: Update the firmware to your MemCARDuino
+                  device directly from your browser.
+                </li>
+                <li>
                   Web-based: No installation required, use it directly in your
-                  browser
+                  browser.
                 </li>
               </ul>
             </div>
@@ -42,6 +46,12 @@ function Index() {
                 <Button asChild>
                   <Link to="/memory-card-manager">
                     Open Memory Card Manager
+                    <ArrowRightIcon className="ml-2 size-4" />
+                  </Link>
+                </Button>
+                <Button asChild>
+                  <Link to="/memcarduino-flasher">
+                    Open MemCARDuino Flasher
                     <ArrowRightIcon className="ml-2 size-4" />
                   </Link>
                 </Button>

@@ -6,51 +6,41 @@
     </picture>
 </p>
 
-PSX WebTools is a collection of web-based utilities for PlayStation 1 (PSX) development and homebrew. This project aims to provide easy-to-use, browser-based tools for various PS1-related tasks.
+PSX WebTools is a modern, web-based toolkit designed to enhance your PlayStation 1 gaming experience. The goal is to provide easy-to-use tools for different tasks related to PS1 development and gaming.
 
-The app shares the serial port across all tools, supporting the following baud rates:
+## Features
 
-- 115,200 bps (Standard)
-- 510,000 bps (FTDI friendly)
-- 518,400 bps (PSX native)
-- 1,036,800 bps (SIOLOADER)
-
-## Current Tools
-
-### 1. EXE Loader
-
-The EXE Loader is a web-based tool inspired by the [sioload.py](https://github.com/danhans42/sioload) script. It allows you to upload and execute PSX-EXE files on a PlayStation 1 console using the serial port.
+- **Memory Card Manager**: View, edit, and organize your PS1 memory card saves. MemCARDuino support included!
+- **MemCARDuino Flasher**: Flash firmware to your MemCARDuino device directly from your browser.
+- **Web-based**: No installation required, use it directly in your browser.
 
 ## Getting Started
 
-### Prerequisites
+1. Clone the repository:
 
-- A modern web browser with Web Serial API support (Chrome, Edge, Opera)
-- A PlayStation 1 console with a serial port
-- A compatible USB-to-Serial adapter (FTDI, CH340, or CP2103 recommended)
+   ```
+   git clone https://github.com/barrenechea/psx-webtools.git
+   ```
 
-### Usage
+2. Install dependencies:
 
-1. Visit the PSX WebTools website (URL to be added)
-2. Connect your PlayStation 1 to your computer using the serial cable
-3. Click the "Connect" button and select the appropriate serial port
-4. Choose the desired baud rate from the dropdown menu
-5. Select the PSX-EXE file you want to upload
-6. Click "Upload and Execute" to send the file to your PlayStation 1
-7. Monitor the progress and logs in the application interface
+   ```
+   cd psx-webtools
+   npm install
+   ```
 
-## Development
+3. Run the development server:
 
-This project is built using React, Vite, and TypeScript. To set up the development environment:
+   ```
+   npm run dev
+   ```
 
-1. Clone this repository
-2. Run `npm install` to install dependencies
-3. Use `npm run dev` to start the development server
-
-## License
-
-This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for details.
+4. Open your browser and navigate to `https://localhost:5173` (or the URL provided in the console).
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for details.
