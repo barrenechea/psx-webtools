@@ -32,6 +32,7 @@ interface MemcarduinoConnectDialogProps {
 interface SavedSettings {
   deviceType: string;
   connectionMode: string;
+  saveSettings: boolean;
 }
 
 export const MemcarduinoConnectDialog: React.FC<
@@ -47,9 +48,11 @@ export const MemcarduinoConnectDialog: React.FC<
       const {
         deviceType: savedDeviceType,
         connectionMode: savedConnectionMode,
+        saveSettings,
       } = JSON.parse(savedSettings) as SavedSettings;
       setDeviceType(savedDeviceType);
       setConnectionMode(savedConnectionMode);
+      setSaveSettings(saveSettings);
     }
   }, []);
 
@@ -59,7 +62,7 @@ export const MemcarduinoConnectDialog: React.FC<
       if (saveSettings) {
         localStorage.setItem(
           "memcarduinoSettings",
-          JSON.stringify({ deviceType, connectionMode })
+          JSON.stringify({ deviceType, connectionMode, saveSettings })
         );
       } else {
         localStorage.removeItem("memcarduinoSettings");

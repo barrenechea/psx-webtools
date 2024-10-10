@@ -87,15 +87,15 @@ export const Sidebar: React.FC = () => {
           isExpanded={isExpanded}
         />
         <NavItem
-          to="/memory-card-manager"
-          icon={<MemoryStickIcon className="size-5" />}
-          label="Memory Card Manager"
-          isExpanded={isExpanded}
-        />
-        <NavItem
           to="/memcarduino-flasher"
           icon={<CpuIcon className="size-5" />}
           label="MemCARDuino Flasher"
+          isExpanded={isExpanded}
+        />
+        <NavItem
+          to="/memory-card-manager"
+          icon={<MemoryStickIcon className="size-5" />}
+          label="Memory Card Manager"
           isExpanded={isExpanded}
         />
       </nav>
