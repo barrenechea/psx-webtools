@@ -67,7 +67,7 @@ export function MemcarduinoFlasher() {
         <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
           <h1 className="pl-2 font-light text-muted-foreground">
             MemCARDuino Flasher{" "}
-            <span className="text-xs text-destructive dark:text-red-400">
+            <span className="text-xs text-sky-500 dark:text-sky-400">
               Beta
             </span>
           </h1>
@@ -82,7 +82,7 @@ export function MemcarduinoFlasher() {
                   Flash MemCARDuino Firmware
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Select your Arduino board and MemCARDuino version to flash
+                  Select your board and MemCARDuino version to flash
                 </p>
               </div>
             </div>
@@ -90,7 +90,7 @@ export function MemcarduinoFlasher() {
               <div className="space-y-6 p-6">
                 <div className="space-y-2">
                   <label htmlFor="board-select" className="text-sm font-medium">
-                    Select Arduino Board
+                    Select Board
                   </label>
                   <Select
                     value={selectedBoard?.name}
@@ -182,30 +182,37 @@ export function MemcarduinoFlasher() {
 
         {/* Status bar */}
         <div className="flex items-center justify-between border-t border-border bg-muted/80 px-4 py-2 text-sm text-muted-foreground">
-          <div className="flex items-center space-x-2">
-            <span>
-              Powered by{" "}
-              <a
-                href="https://github.com/barrenechea/stk500-esm"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-foreground"
-              >
-                stk500-esm
-              </a>
-            </span>
-          </div>
-          <div>
+          <span>
+            Powered by{" "}
             <a
-              href="https://github.com/ShendoXT/memcarduino"
+              href="https://github.com/barrenechea/stk500-esm"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center space-x-2 hover:text-foreground"
+              className="underline hover:text-foreground"
             >
-              <GithubIcon className="size-4" />
-              <span>View MemCARDuino on GitHub</span>
+              stk500-esm
             </a>
-          </div>
+          </span>
+          <span>
+            Builds by{" "}
+            <a
+              href="https://github.com/barrenechea/memcarduino-builder"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              memcarduino-builder
+            </a>
+          </span>
+          <a
+            href="https://github.com/ShendoXT/memcarduino"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center space-x-2 underline hover:text-foreground"
+          >
+            <GithubIcon className="size-4" />
+            <span>View MemCARDuino on GitHub</span>
+          </a>
         </div>
       </div>
     </div>
