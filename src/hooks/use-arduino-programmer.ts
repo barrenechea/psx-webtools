@@ -5,6 +5,7 @@ import STK500, { type Board } from "stk500-esm";
 const useArduinoProgrammer = () => {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>("");
 
   const upload = useCallback(
     async (
@@ -15,26 +16,25 @@ const useArduinoProgrammer = () => {
       try {
         setError(null);
         setProgress(0);
+        setStatus("Preparing to flash...");
 
         let hexData: string;
         if (sourceType === "url") {
-          // Fetch hex file from URL
+          setStatus("Fetching hex file...");
           const response = await fetch(hexFileSource);
           hexData = await response.text();
         } else {
-          // Use the provided hex file content
           hexData = hexFileSource;
         }
 
-        // Request serial port access
+        setStatus("Requesting serial port access...");
         const port = await navigator.serial.requestPort();
+        setStatus(`Opening port at ${board.baudRate} baud...`);
         await port.open({ baudRate: board.baudRate });
 
-        // Create readable and writable streams
         const reader = new ReadableWebToNodeStream(port.readable!);
         const writer = port.writable!.getWriter();
 
-        // Create a fake NodeJS.ReadWriteStream
         const serialStream = reader as unknown as NodeJS.ReadWriteStream;
         // @ts-expect-error We are faking the stream
         serialStream.write = (
@@ -46,15 +46,20 @@ const useArduinoProgrammer = () => {
         };
 
         const stk500 = new STK500(serialStream, board);
-        await stk500.bootload(hexData);
 
+        setStatus("Starting bootloader process...");
+        await stk500.bootload(hexData, (status, percentage) => {
+          setProgress(percentage);
+          setStatus(`${status}... ${percentage.toFixed(0)}%`);
+        });
+
+        setStatus("Flashing completed successfully!");
         setProgress(100);
 
         if (reader) {
           // @ts-expect-error this is specific to the "readable-web-to-node-stream" library
           // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           await reader.reader.cancel();
-          // await this.reader.close() // this blocks if uploading failed
         }
         if (writer) {
           await writer.close();
@@ -63,15 +68,16 @@ const useArduinoProgrammer = () => {
           await port.close();
         }
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "An unknown error occurred"
-        );
+        const errorMessage =
+          err instanceof Error ? err.message : "An unknown error occurred";
+        setError(errorMessage);
+        setStatus(`Error: ${errorMessage}`);
       }
     },
     []
   );
 
-  return { upload, progress, error };
+  return { upload, progress, error, status };
 };
 
 export default useArduinoProgrammer;

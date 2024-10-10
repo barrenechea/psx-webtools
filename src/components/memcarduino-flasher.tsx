@@ -1,10 +1,9 @@
 import { AlertCircle, CheckCircle2, GithubIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type Board } from "stk500-esm";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -13,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import useArduinoProgrammer from "@/hooks/use-arduino-programmer";
 
 type BoardwithExtension = Board & { boardWithExtension: string };
@@ -51,10 +51,35 @@ export function MemcarduinoFlasher() {
     null
   );
   const [selectedVersion, setSelectedVersion] = useState("");
-  const { upload, progress, error } = useArduinoProgrammer();
+  const { upload, progress, error, status } = useArduinoProgrammer();
+  const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  useEffect(() => {
+    if (isFlashing) {
+      if (error) {
+        updateDialog(status, undefined, progress / 100);
+        setTimeout(() => {
+          hideDialog();
+          setIsFlashing(false);
+        }, 5000);
+      } else if (progress === 100) {
+        updateDialog(status, undefined, 1);
+        setTimeout(() => {
+          hideDialog();
+          setIsFlashing(false);
+        }, 2000);
+      } else {
+        updateDialog(status, undefined, progress / 100);
+      }
+    }
+  }, [isFlashing, status, progress, error, updateDialog, hideDialog]);
 
   const handleFlash = async () => {
     if (!selectedBoard || !selectedVersion) return;
+
+    setIsFlashing(true);
+    showDialog("Flashing MemCARDuino", "Preparing to flash...");
 
     const hexFileUrl = `/memcarduino/MemCARDuino_v${selectedVersion}_${selectedBoard.boardWithExtension}`;
     await upload(selectedBoard, hexFileUrl, "url");
@@ -67,9 +92,7 @@ export function MemcarduinoFlasher() {
         <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
           <h1 className="pl-2 font-light text-muted-foreground">
             MemCARDuino Flasher{" "}
-            <span className="text-xs text-sky-500 dark:text-sky-400">
-              Beta
-            </span>
+            <span className="text-xs text-sky-500 dark:text-sky-400">Beta</span>
           </h1>
         </div>
 
@@ -135,31 +158,18 @@ export function MemcarduinoFlasher() {
                     </SelectContent>
                   </Select>
                 </div>
-                {progress > 0 && progress < 100 && (
-                  <div className="space-y-2">
-                    <Progress value={progress} className="w-full" />
-                    <p className="text-sm text-muted-foreground">
-                      Flashing... {progress.toFixed(0)}%
-                    </p>
-                  </div>
-                )}
-                {error && (
+                {error && !isFlashing && (
                   <Alert variant="destructive">
                     <AlertCircle className="size-4" />
                     <AlertTitle>Error</AlertTitle>
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
-                {progress === 100 && (
-                  <Alert
-                    variant="default"
-                    className="border-green-500 bg-green-50 dark:bg-green-950"
-                  >
-                    <CheckCircle2 className="size-4 text-green-500" />
-                    <AlertTitle className="text-green-700 dark:text-green-300">
-                      Success
-                    </AlertTitle>
-                    <AlertDescription className="text-green-600 dark:text-green-400">
+                {progress === 100 && !isFlashing && (
+                  <Alert>
+                    <CheckCircle2 className="size-4" />
+                    <AlertTitle>Success</AlertTitle>
+                    <AlertDescription>
                       MemCARDuino firmware has been successfully flashed to your
                       device.
                     </AlertDescription>
@@ -168,9 +178,7 @@ export function MemcarduinoFlasher() {
                 <div className="flex justify-end">
                   <Button
                     onClick={() => void handleFlash()}
-                    disabled={
-                      !selectedBoard || !selectedVersion || progress > 0
-                    }
+                    disabled={!selectedBoard || !selectedVersion || isFlashing}
                   >
                     Flash MemCARDuino
                   </Button>
