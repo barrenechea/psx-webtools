@@ -15,41 +15,48 @@ import {
 } from "@/components/ui/select";
 import useArduinoProgrammer from "@/hooks/use-arduino-programmer";
 
-const arduinoBoards: Board[] = [
+type BoardwithExtension = Board & { boardWithExtension: string };
+
+const arduinoBoards: BoardwithExtension[] = [
   {
-    name: "Arduino Nano",
+    name: "ATmega328P-based Arduino (Uno, Nano, Pro Mini, etc.)",
     baudRate: 115200,
     signature: Buffer.from([0x1e, 0x95, 0x0f]),
     pageSize: 128,
     timeout: 400,
+    boardWithExtension: "atmega328p.hex",
   },
   {
-    name: "Arduino Nano (Old Bootloader)",
+    name: "Arduino Nano (Old Bootloader) (Most chinese clones)",
     signature: Buffer.from([0x1e, 0x95, 0x0f]),
     pageSize: 128,
     timeout: 400,
     baudRate: 57600,
+    boardWithExtension: "atmega328p.hex",
+  },
+  {
+    name: "LGT8F328P Arduino Clone",
+    signature: Buffer.from([0x1e, 0x95, 0x0f]),
+    pageSize: 128,
+    timeout: 400,
+    baudRate: 57600,
+    boardWithExtension: "lgt8f328p.hex",
   },
 ];
 
-const memcarduinoVersions = [
-  { name: "v0.9", value: "0.9" },
-  { name: "v0.8", value: "0.8" },
-  { name: "v0.7", value: "0.7" },
-  { name: "v0.6", value: "0.6" },
-  { name: "v0.5", value: "0.5" },
-  { name: "v0.4", value: "0.4" },
-];
+const memcarduinoVersions = [{ name: "v0.9", value: "0.9" }];
 
 export function MemcarduinoFlasher() {
-  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
+  const [selectedBoard, setSelectedBoard] = useState<BoardwithExtension | null>(
+    null
+  );
   const [selectedVersion, setSelectedVersion] = useState("");
   const { upload, progress, error } = useArduinoProgrammer();
 
   const handleFlash = async () => {
     if (!selectedBoard || !selectedVersion) return;
 
-    const hexFileUrl = `/memcarduino-hex/MemCARDuino_v${selectedVersion}_nano.hex`;
+    const hexFileUrl = `/memcarduino/MemCARDuino_v${selectedVersion}_${selectedBoard.boardWithExtension}`;
     await upload(selectedBoard, hexFileUrl, "url");
   };
 
