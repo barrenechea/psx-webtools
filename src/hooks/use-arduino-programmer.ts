@@ -1,3 +1,5 @@
+import type { Duplex } from "node:stream";
+
 import { useCallback, useState } from "react";
 import { ReadableWebToNodeStream } from "readable-web-to-node-stream";
 import STK500, { type Board } from "stk500-esm";
@@ -35,13 +37,21 @@ const useArduinoProgrammer = () => {
         const reader = new ReadableWebToNodeStream(port.readable!);
         const writer = port.writable!.getWriter();
 
-        const serialStream = reader as unknown as NodeJS.ReadWriteStream;
-        // @ts-expect-error We are faking the stream
+        // We're faking the stream
+        const serialStream = reader as unknown as Duplex;
         serialStream.write = (
-          buffer: string | Uint8Array,
-          onDone: (err: Error | null | undefined) => void
+          chunk: string | Uint8Array,
+          encodingOrCb?:
+            | BufferEncoding
+            | ((error: Error | null | undefined) => void),
+          cb?: (error: Error | null | undefined) => void
         ) => {
-          writer.write(Buffer.from(buffer)).then(() => onDone(null), onDone);
+          const encoder = new TextEncoder();
+          const callback =
+            typeof encodingOrCb === "function" ? encodingOrCb : cb;
+          void writer
+            .write(typeof chunk === "string" ? encoder.encode(chunk) : chunk)
+            .then(() => callback && callback(null), callback);
           return true;
         };
 
