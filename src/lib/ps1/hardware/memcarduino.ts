@@ -101,7 +101,6 @@ export class MemCARDuino extends HardwareInterface {
   private getDeviceDelay(deviceType: string): number {
     switch (deviceType) {
       case "esp8266_esp32":
-        return 1000;
       case "rpi_pico":
         return 0;
       case "arduino_nano":
