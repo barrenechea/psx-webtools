@@ -15,6 +15,8 @@ import {
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import useArduinoProgrammer from "@/hooks/use-arduino-programmer";
 
+import PicoFlashInstructions from "./pico-flash-instructions";
+
 type BoardwithExtension = Board & { boardWithExtension: string };
 
 const arduinoBoards: BoardwithExtension[] = [
@@ -42,6 +44,14 @@ const arduinoBoards: BoardwithExtension[] = [
     baudRate: 57600,
     boardWithExtension: "lgt8f328p.hex",
   },
+  {
+    name: "Raspberry Pi Pico",
+    baudRate: 115200, // Not used for Pico
+    signature: new Uint8Array([0, 0, 0]), // Not used for Pico
+    pageSize: 0, // Not used for Pico
+    timeout: 0, // Not used for Pico
+    boardWithExtension: "pico.uf2",
+  },
 ];
 
 const memcarduinoVersions = [{ name: "v0.9", value: "0.9" }];
@@ -54,6 +64,7 @@ export function MemcarduinoFlasher() {
   const { upload, progress, error, status } = useArduinoProgrammer();
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const [isFlashing, setIsFlashing] = useState(false);
+  const [isPicoDialogOpen, setIsPicoDialogOpen] = useState(false);
 
   useEffect(() => {
     if (isFlashing) {
@@ -77,6 +88,11 @@ export function MemcarduinoFlasher() {
 
   const handleFlash = async () => {
     if (!selectedBoard || !selectedVersion) return;
+
+    if (selectedBoard.name === "Raspberry Pi Pico") {
+      setIsPicoDialogOpen(true);
+      return;
+    }
 
     setIsFlashing(true);
     showDialog("Flashing MemCARDuino", "Preparing to flash...");
@@ -223,6 +239,11 @@ export function MemcarduinoFlasher() {
           </a>
         </div>
       </div>
+      <PicoFlashInstructions
+        isOpen={isPicoDialogOpen}
+        version={selectedVersion}
+        onClose={() => setIsPicoDialogOpen(false)}
+      />
     </div>
   );
 }
