@@ -27,12 +27,14 @@ const MemcarduinoFlasherIndexLazyImport = createFileRoute(
 // Create/Update Routes
 
 const IndexLazyRoute = IndexLazyImport.update({
+  id: '/',
   path: '/',
   getParentRoute: () => rootRoute,
 } as any).lazy(() => import('./routes/index.lazy').then((d) => d.Route))
 
 const MemoryCardManagerIndexLazyRoute = MemoryCardManagerIndexLazyImport.update(
   {
+    id: '/memory-card-manager/',
     path: '/memory-card-manager/',
     getParentRoute: () => rootRoute,
   } as any,
@@ -42,6 +44,7 @@ const MemoryCardManagerIndexLazyRoute = MemoryCardManagerIndexLazyImport.update(
 
 const MemcarduinoFlasherIndexLazyRoute =
   MemcarduinoFlasherIndexLazyImport.update({
+    id: '/memcarduino-flasher/',
     path: '/memcarduino-flasher/',
     getParentRoute: () => rootRoute,
   } as any).lazy(() =>
