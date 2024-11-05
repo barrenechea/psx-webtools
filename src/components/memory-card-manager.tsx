@@ -45,6 +45,7 @@ import PS1MemoryCard, {
 } from "@/lib/ps1-memory-card";
 import { cn } from "@/lib/utils";
 
+import AlphaNoticeDialog from "./alpha-notice-dialog";
 import { DragDropWrapper } from "./drag-drop-wrapper";
 
 interface MemoryCard {
@@ -98,6 +99,9 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
       return null;
   }
 };
+
+// features disabled in alpha
+const alphaDisabled = true;
 
 const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   slot,
@@ -181,6 +185,8 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
 };
 
 export const MemoryCardManager: React.FC = () => {
+  const [isAlphaNoticeOpen, setIsAlphaNoticeOpen] = useState(true);
+
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
@@ -562,7 +568,7 @@ export const MemoryCardManager: React.FC = () => {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleCopyMove("copy")}
-                      disabled={selectedSlot === null}
+                      disabled={selectedSlot === null || alphaDisabled}
                       aria-label="Copy to buffer"
                     >
                       <CopyIcon className="size-4" />
@@ -576,7 +582,7 @@ export const MemoryCardManager: React.FC = () => {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleCopyMove("move")}
-                      disabled={selectedSlot === null}
+                      disabled={selectedSlot === null || alphaDisabled}
                       aria-label="Move to buffer"
                     >
                       <ArrowRightIcon className="size-4" />
@@ -590,7 +596,7 @@ export const MemoryCardManager: React.FC = () => {
                       variant="ghost"
                       size="icon"
                       onClick={handleDelete}
-                      disabled={selectedSlot === null}
+                      disabled={selectedSlot === null || alphaDisabled}
                       aria-label="Delete save"
                     >
                       <TrashIcon className="size-4" />
@@ -955,6 +961,10 @@ export const MemoryCardManager: React.FC = () => {
                 : "No memory card selected")}
           </div>
         </div>
+        <AlphaNoticeDialog
+          isOpen={isAlphaNoticeOpen}
+          onClose={() => setIsAlphaNoticeOpen(false)}
+        />
       </DragDropWrapper>
       <MemcarduinoConnectDialog
         isOpen={isConnectDialogOpen}
