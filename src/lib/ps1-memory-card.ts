@@ -828,12 +828,12 @@ class PS1MemoryCard {
     psvSave[0x3c] = 1;
     psvSave[0x44] = 0x84;
     psvSave[0x49] = 2;
-    psvSave[0x5d] = 0x20;
     psvSave[0x60] = 3;
     psvSave[0x61] = 0x90;
 
     psvSave.set(save.subarray(0x0a, 0x2a), 0x64);
     new DataView(psvSave.buffer).setUint32(0x40, save.length - 0x80, true);
+    new DataView(psvSave.buffer).setUint32(0x5c, save.length - 0x80, true);
     psvSave.set(save.subarray(0x80), 0x84);
 
     const saltSeed = await generateSaltSeed(psvSave);
