@@ -1,10 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 
+import type { HardwareInterface } from "@/lib/ps1/hardware/core";
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
+import { Unirom } from "@/lib/ps1/hardware/unirom";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 
 export function useMemcarduino() {
-  const [memcarduino, setMemcarduino] = useState<MemCARDuino | null>(null);
+  const [memcarduino, setMemcarduino] = useState<HardwareInterface | null>(
+    null
+  );
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
@@ -17,22 +21,22 @@ export function useMemcarduino() {
       onStatusUpdate: (status: string) => void
     ) => {
       try {
-        const mcduino = new MemCARDuino();
+        const device =
+          deviceType === "unirom" ? new Unirom() : new MemCARDuino();
+
         onStatusUpdate(`Attempting connection at ${baudRate} baud...`);
-        const result = await mcduino.start(
+        const result = await device.start(
           deviceType,
           baudRate,
           signalsConfig,
           onStatusUpdate
         );
         if (result === null) {
-          setMemcarduino(mcduino);
+          setMemcarduino(device);
           setIsConnected(true);
           setError(null);
-          setFirmwareVersion(mcduino.firmware());
-          onStatusUpdate(
-            `Connected successfully at ${mcduino.getBaudRate()} baud.`
-          );
+          setFirmwareVersion(device.firmware());
+          onStatusUpdate(`Connected successfully at ${baudRate} baud.`);
         } else {
           throw new Error(result);
         }

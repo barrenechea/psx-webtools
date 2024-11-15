@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-misused-promises */
 import {
   ArrowRightIcon,
   CopyIcon,
@@ -222,10 +223,15 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleConnect = useCallback(
     async (deviceType: string, connectionMode: string) => {
-      showDialog("Connecting to MemCARDuino", "Initializing connection...");
+      showDialog("Connecting to device", "Initializing connection...");
 
       try {
-        const baudRate = connectionMode === "fast" ? 115200 : 38400;
+        let baudRate;
+        if (deviceType === "unirom") {
+          baudRate = 115200; // Unirom uses fixed baud rate
+        } else {
+          baudRate = connectionMode === "fast" ? 115200 : 38400;
+        }
         const signalsConfig = getSignalsConfig(deviceType);
 
         await connect(deviceType, baudRate, signalsConfig, (status) => {
@@ -695,6 +701,25 @@ export const MemoryCardManager: React.FC = () => {
                       onSelect={() => setIsConnectDialogOpen(true)}
                     >
                       MemCARDuino
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={async () => {
+                        showDialog(
+                          "Connecting to Unirom",
+                          "Requesting serial port access..."
+                        );
+                        try {
+                          await connect("unirom", 115200, [], (status) => {
+                            updateDialog(status);
+                          });
+                          setTimeout(hideDialog, 1000);
+                        } catch (err) {
+                          setError((err as Error).message);
+                          hideDialog();
+                        }
+                      }}
+                    >
+                      Unirom (kinda broken)
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
