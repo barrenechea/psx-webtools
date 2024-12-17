@@ -23,7 +23,7 @@ export const SerialContext = createContext<SerialContextType | undefined>(
   undefined
 );
 
-export const SerialProvider: React.FC<{ children: JSX.Element }> = ({
+export const SerialProvider: React.FC<{ children: React.JSX.Element }> = ({
   children,
 }) => {
   const [port, setPort] = useState<SerialPort | null>(null);

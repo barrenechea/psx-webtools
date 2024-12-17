@@ -14,7 +14,7 @@ export const LogsContext = createContext<LogsContextType | undefined>(
   undefined
 );
 
-export const LogsProvider: React.FC<{ children: JSX.Element }> = ({
+export const LogsProvider: React.FC<{ children: React.JSX.Element }> = ({
   children,
 }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);

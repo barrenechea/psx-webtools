@@ -26,7 +26,7 @@ export const useLoadingDialog = () => {
   return context;
 };
 
-export const LoadingDialogProvider: React.FC<{ children: JSX.Element }> = ({
+export const LoadingDialogProvider: React.FC<{ children: React.JSX.Element }> = ({
   children,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
