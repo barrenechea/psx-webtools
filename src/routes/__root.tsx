@@ -3,6 +3,15 @@ import { lazy, Suspense } from "react";
 
 import { Sidebar } from "@/components/sidebar";
 
+const ReactQueryDevtools = import.meta.env.PROD
+  ? () => null // Render nothing in production
+  : lazy(() =>
+      // Lazy load in development
+      import("@tanstack/react-query-devtools").then((res) => ({
+        default: res.ReactQueryDevtools,
+      }))
+    );
+
 const TanStackRouterDevtools = import.meta.env.PROD
   ? () => null // Render nothing in production
   : lazy(() =>
@@ -25,7 +34,8 @@ export const Route = createRootRoute({
         </div>
       </div>
       <Suspense>
-        <TanStackRouterDevtools position="bottom-right" />
+      <ReactQueryDevtools />
+      <TanStackRouterDevtools />
       </Suspense>
     </>
   ),
