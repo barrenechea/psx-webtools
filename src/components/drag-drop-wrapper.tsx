@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface DragDropWrapperProps {
   onFileDrop: (file: File) => void;
@@ -13,65 +13,53 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
   const dragCounter = useRef(0);
   const timeoutRef = useRef<number | null>(null);
 
-  const handleDrag = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrag = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-  }, []);
+  };
 
-  const handleDragEnter = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      dragCounter.current++;
-      if (event.dataTransfer.items && event.dataTransfer.items.length > 0) {
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounter.current++;
+    if (event.dataTransfer.items && event.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = window.setTimeout(() => {
+      if (dragCounter.current > 0) {
         setIsDragging(true);
       }
-    },
-    []
-  );
+    }, 50);
+  };
 
-  const handleDragLeave = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      dragCounter.current--;
-      if (dragCounter.current === 0) {
-        setIsDragging(false);
-      }
-    },
-    []
-  );
-
-  const handleDragOver = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = "copy";
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = window.setTimeout(() => {
-        if (dragCounter.current > 0) {
-          setIsDragging(true);
-        }
-      }, 50);
-    },
-    []
-  );
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setIsDragging(false);
-      dragCounter.current = 0;
-      const files = Array.from(event.dataTransfer.files);
-      if (files.length > 0) {
-        onFileDrop(files[0]);
-      }
-    },
-    [onFileDrop]
-  );
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length > 0) {
+      onFileDrop(files[0]);
+    }
+  };
 
   useEffect(() => {
     return () => {

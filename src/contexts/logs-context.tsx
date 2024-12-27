@@ -1,4 +1,4 @@
-import { createContext, useCallback, useState } from "react";
+import { createContext, useState } from "react";
 
 export interface LogEntry {
   message: string;
@@ -19,9 +19,9 @@ export const LogsProvider: React.FC<{ children: React.JSX.Element }> = ({
 }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  const appendLog = useCallback((message: string): void => {
+  const appendLog = (message: string): void => {
     setLogs((prevLogs) => [...prevLogs, { message, timestamp: new Date() }]);
-  }, []);
+  };
 
   return (
     <LogsContext.Provider value={{ logs, appendLog }}>

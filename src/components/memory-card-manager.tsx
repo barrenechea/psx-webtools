@@ -11,7 +11,7 @@ import {
   UsbIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -221,39 +221,29 @@ export const MemoryCardManager: React.FC = () => {
     error: gameDataError,
   } = useGameData("PS1", selectedRegion ?? "", selectedGameId ?? "");
 
-  const handleConnect = useCallback(
-    async (deviceType: string, connectionMode: string) => {
-      showDialog("Connecting to device", "Initializing connection...");
+  const handleConnect = async (deviceType: string, connectionMode: string) => {
+    showDialog("Connecting to device", "Initializing connection...");
 
-      try {
-        let baudRate;
-        if (deviceType === "unirom") {
-          baudRate = 115200; // Unirom uses fixed baud rate
-        } else {
-          baudRate = connectionMode === "fast" ? 115200 : 38400;
-        }
-        const signalsConfig = getSignalsConfig(deviceType);
-
-        await connect(deviceType, baudRate, signalsConfig, (status) => {
-          updateDialog(status);
-        });
-
-        setTimeout(hideDialog, 1000);
-        setIsConnectDialogOpen(false);
-      } catch (err) {
-        setError((err as Error).message);
-        hideDialog();
+    try {
+      let baudRate;
+      if (deviceType === "unirom") {
+        baudRate = 115200; // Unirom uses fixed baud rate
+      } else {
+        baudRate = connectionMode === "fast" ? 115200 : 38400;
       }
-    },
-    [
-      showDialog,
-      connect,
-      updateDialog,
-      hideDialog,
-      setError,
-      setIsConnectDialogOpen,
-    ]
-  );
+      const signalsConfig = getSignalsConfig(deviceType);
+
+      await connect(deviceType, baudRate, signalsConfig, (status) => {
+        updateDialog(status);
+      });
+
+      setTimeout(hideDialog, 1000);
+      setIsConnectDialogOpen(false);
+    } catch (err) {
+      setError((err as Error).message);
+      hideDialog();
+    }
+  };
 
   const getSignalsConfig = (deviceType: string): SerialOutputSignals[] => {
     switch (deviceType) {
@@ -270,7 +260,7 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const handleDisconnect = useCallback(async () => {
+  const handleDisconnect = async () => {
     showDialog(
       "Disconnecting from MemCARDuino",
       "Initializing disconnection..."
@@ -287,9 +277,9 @@ export const MemoryCardManager: React.FC = () => {
       setError((err as Error).message);
       hideDialog();
     }
-  }, [showDialog, disconnect, updateDialog, hideDialog, setError]);
+  };
 
-  const handleReadFromDevice = useCallback(async () => {
+  const handleReadFromDevice = async () => {
     showDialog("Reading Memory Card", "Reading memory card data...");
     setError(null);
 
@@ -322,18 +312,9 @@ export const MemoryCardManager: React.FC = () => {
       setError((err as Error).message);
       hideDialog();
     }
-  }, [
-    showDialog,
-    readMemoryCard,
-    updateDialog,
-    hideDialog,
-    setError,
-    setMemoryCards,
-    setSelectedCard,
-    firmwareVersion,
-  ]);
+  };
 
-  const handleWriteToDevice = useCallback(async () => {
+  const handleWriteToDevice = async () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
@@ -361,49 +342,35 @@ export const MemoryCardManager: React.FC = () => {
         }
       }
     }
-  }, [
-    selectedCard,
-    memoryCards,
-    showDialog,
-    writeMemoryCard,
-    updateDialog,
-    hideDialog,
-    setError,
-  ]);
+  };
 
-  const handleFileOpen = useCallback(
-    async (file?: File) => {
-      try {
-        const selectedFile = file ?? (await selectFile());
-        if (selectedFile) {
-          const card = new PS1MemoryCard();
-          await card.loadFromFile(selectedFile);
+  const handleFileOpen = async (file?: File) => {
+    try {
+      const selectedFile = file ?? (await selectFile());
+      if (selectedFile) {
+        const card = new PS1MemoryCard();
+        await card.loadFromFile(selectedFile);
 
-          const newCard: MemoryCard = {
-            id: Date.now(),
-            name: selectedFile.name,
-            type: "file",
-            source: selectedFile.name,
-            card: card,
-          };
+        const newCard: MemoryCard = {
+          id: Date.now(),
+          name: selectedFile.name,
+          type: "file",
+          source: selectedFile.name,
+          card: card,
+        };
 
-          setMemoryCards((prevCards) => [...prevCards, newCard]);
-          setSelectedCard(newCard.id);
-          setError(null);
-        }
-      } catch (err) {
-        setError(`Error opening file: ${(err as Error).message}`);
+        setMemoryCards((prevCards) => [...prevCards, newCard]);
+        setSelectedCard(newCard.id);
+        setError(null);
       }
-    },
-    [setMemoryCards, setSelectedCard, setError]
-  );
+    } catch (err) {
+      setError(`Error opening file: ${(err as Error).message}`);
+    }
+  };
 
-  const handleFileDrop = useCallback(
-    async (file: File) => {
-      await handleFileOpen(file);
-    },
-    [handleFileOpen]
-  );
+  const handleFileDrop = async (file: File) => {
+    await handleFileOpen(file);
+  };
 
   const selectFile = (): Promise<File | undefined> => {
     return new Promise((resolve) => {
@@ -419,7 +386,7 @@ export const MemoryCardManager: React.FC = () => {
     });
   };
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = () => {
     if (selectedCard !== null && selectedSlot !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
@@ -427,9 +394,9 @@ export const MemoryCardManager: React.FC = () => {
         setMemoryCards([...memoryCards]);
       }
     }
-  }, [selectedCard, selectedSlot, memoryCards, setMemoryCards]);
+  };
 
-  const handleSaveMemoryCard = useCallback(async () => {
+  const handleSaveMemoryCard = async () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
@@ -444,115 +411,94 @@ export const MemoryCardManager: React.FC = () => {
         }
       }
     }
-  }, [selectedCard, memoryCards, setError]);
+  };
 
-  const findLinkedSlots = useCallback(
-    (card: PS1MemoryCard, startIndex: number) => {
-      const linkedSlots = [startIndex];
-      const saves = card.getSaves();
-      let currentSlot = startIndex;
+  const findLinkedSlots = (card: PS1MemoryCard, startIndex: number) => {
+    const linkedSlots = [startIndex];
+    const saves = card.getSaves();
+    let currentSlot = startIndex;
 
-      while (true) {
-        const nextSlot = saves[currentSlot].slotNumber + 1;
-        if (nextSlot >= saves.length) break;
+    while (true) {
+      const nextSlot = saves[currentSlot].slotNumber + 1;
+      if (nextSlot >= saves.length) break;
 
-        const nextSave = saves[nextSlot];
-        if (
-          nextSave.slotType !== SlotTypes.MiddleLink &&
-          nextSave.slotType !== SlotTypes.EndLink &&
-          nextSave.slotType !== SlotTypes.DeletedMiddleLink &&
-          nextSave.slotType !== SlotTypes.DeletedEndLink
-        )
-          break;
-
-        linkedSlots.push(nextSlot);
-        currentSlot = nextSlot;
-      }
-
-      return linkedSlots;
-    },
-    []
-  );
-
-  const findParentSlot = useCallback(
-    (card: PS1MemoryCard, slotIndex: number) => {
-      const saves = card.getSaves();
-      let currentSlot = slotIndex;
-
+      const nextSave = saves[nextSlot];
       if (
-        saves[currentSlot].slotType === SlotTypes.Initial ||
-        saves[currentSlot].slotType === SlotTypes.DeletedInitial ||
-        saves[currentSlot].slotType === SlotTypes.Formatted
+        nextSave.slotType !== SlotTypes.MiddleLink &&
+        nextSave.slotType !== SlotTypes.EndLink &&
+        nextSave.slotType !== SlotTypes.DeletedMiddleLink &&
+        nextSave.slotType !== SlotTypes.DeletedEndLink
       )
-        return slotIndex;
+        break;
 
-      while (currentSlot > 0) {
-        const prevSave = saves[currentSlot - 1];
-        if (
-          prevSave.slotType === SlotTypes.Initial ||
-          prevSave.slotType === SlotTypes.DeletedInitial
-        )
-          return currentSlot - 1;
-        if (
-          prevSave.slotType !== SlotTypes.MiddleLink &&
-          prevSave.slotType !== SlotTypes.EndLink &&
-          prevSave.slotType !== SlotTypes.DeletedMiddleLink &&
-          prevSave.slotType !== SlotTypes.DeletedEndLink
-        )
-          break;
-        currentSlot--;
-      }
+      linkedSlots.push(nextSlot);
+      currentSlot = nextSlot;
+    }
 
+    return linkedSlots;
+  };
+
+  const findParentSlot = (card: PS1MemoryCard, slotIndex: number) => {
+    const saves = card.getSaves();
+    let currentSlot = slotIndex;
+
+    if (
+      saves[currentSlot].slotType === SlotTypes.Initial ||
+      saves[currentSlot].slotType === SlotTypes.DeletedInitial ||
+      saves[currentSlot].slotType === SlotTypes.Formatted
+    )
       return slotIndex;
-    },
-    []
-  );
 
-  const handleCopyMove = useCallback(
-    (action: "copy" | "move") => {
-      console.log(action);
-      if (selectedCard !== null && selectedSlot !== null) {
-        const card = memoryCards.find((c) => c.id === selectedCard);
-        if (card) {
-          const parentSlot = findParentSlot(card.card, selectedSlot);
-          const linkedSlots = findLinkedSlots(card.card, parentSlot);
-          const copiedSaves = linkedSlots.map(
-            (slotIndex) => card.card.getSaves()[slotIndex]
-          );
-          setCopiedSlots(copiedSaves);
-        }
+    while (currentSlot > 0) {
+      const prevSave = saves[currentSlot - 1];
+      if (
+        prevSave.slotType === SlotTypes.Initial ||
+        prevSave.slotType === SlotTypes.DeletedInitial
+      )
+        return currentSlot - 1;
+      if (
+        prevSave.slotType !== SlotTypes.MiddleLink &&
+        prevSave.slotType !== SlotTypes.EndLink &&
+        prevSave.slotType !== SlotTypes.DeletedMiddleLink &&
+        prevSave.slotType !== SlotTypes.DeletedEndLink
+      )
+        break;
+      currentSlot--;
+    }
+
+    return slotIndex;
+  };
+
+  const handleCopyMove = (action: "copy" | "move") => {
+    console.log(action);
+    if (selectedCard !== null && selectedSlot !== null) {
+      const card = memoryCards.find((c) => c.id === selectedCard);
+      if (card) {
+        const parentSlot = findParentSlot(card.card, selectedSlot);
+        const linkedSlots = findLinkedSlots(card.card, parentSlot);
+        const copiedSaves = linkedSlots.map(
+          (slotIndex) => card.card.getSaves()[slotIndex]
+        );
+        setCopiedSlots(copiedSaves);
       }
-    },
-    [selectedCard, selectedSlot, memoryCards, findParentSlot, findLinkedSlots]
-  );
+    }
+  };
 
-  const handleSlotClick = useCallback(
-    (index: number) => {
-      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
-      if (!card) return;
+  const handleSlotClick = (index: number) => {
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    if (!card) return;
 
-      const saves = card.getSaves();
-      const parentSlot = findParentSlot(card, index);
-      const linkedSlots = findLinkedSlots(card, parentSlot);
+    const saves = card.getSaves();
+    const parentSlot = findParentSlot(card, index);
+    const linkedSlots = findLinkedSlots(card, parentSlot);
 
-      setSelectedSlot((prev) =>
-        linkedSlots.includes(prev ?? -1) ? null : parentSlot
-      );
-      setSidebarOpen(true);
-      setSelectedGameId(saves[parentSlot].productCode);
-      setSelectedRegion(saves[parentSlot].region);
-    },
-    [
-      memoryCards,
-      selectedCard,
-      setSelectedSlot,
-      setSidebarOpen,
-      setSelectedGameId,
-      setSelectedRegion,
-      findParentSlot,
-      findLinkedSlots,
-    ]
-  );
+    setSelectedSlot((prev) =>
+      linkedSlots.includes(prev ?? -1) ? null : parentSlot
+    );
+    setSidebarOpen(true);
+    setSelectedGameId(saves[parentSlot].productCode);
+    setSelectedRegion(saves[parentSlot].region);
+  };
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-transparent p-4">
