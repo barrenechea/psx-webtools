@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
+import SaveMemoryCardDialog from "@/components/save-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,8 +38,8 @@ import {
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useGameData } from "@/hooks/use-game-data";
 import { useMemcarduino } from "@/hooks/use-memcarduino";
+import type { CardTypes } from "@/lib/ps1-memory-card";
 import PS1MemoryCard, {
-  CardTypes,
   type IconPalette,
   type SaveInfo,
   type SlotIconData,
@@ -198,6 +199,7 @@ export const MemoryCardManager: React.FC = () => {
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const [copiedSlots, setCopiedSlots] = useState<SaveInfo[]>([]);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
   const {
     isConnected,
@@ -396,19 +398,26 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const handleSaveMemoryCard = async () => {
+  const handleSaveMemoryCard = () => {
+    if (selectedCard !== null) {
+      const card = memoryCards.find((c) => c.id === selectedCard);
+      if (card) {
+        setIsSaveDialogOpen(true);
+      }
+    }
+  };
+
+  const handleSaveConfirm = async (fileName: string, format: CardTypes) => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
-        const success = await card.saveMemoryCard(
-          `memory_card_${Date.now()}.mcr`,
-          CardTypes.Raw
-        );
+        const success = await card.saveMemoryCard(fileName, format);
         if (success) {
           setError(null);
         } else {
           setError("Failed to save memory card");
         }
+        setIsSaveDialogOpen(false);
       }
     }
   };
@@ -941,6 +950,12 @@ export const MemoryCardManager: React.FC = () => {
         isOpen={isConnectDialogOpen}
         onOpenChange={setIsConnectDialogOpen}
         onConnect={handleConnect}
+      />
+      <SaveMemoryCardDialog
+        isOpen={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        defaultFileName={`${memoryCards.find((c) => c.id === selectedCard)?.name ?? "memory_card"}.mcr`}
+        onSave={handleSaveConfirm}
       />
     </div>
   );

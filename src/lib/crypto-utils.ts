@@ -163,6 +163,7 @@ export async function getHmac(
   const hash2 = new Uint8Array(0x54);
 
   buffer.set(saltSeed.subarray(0, 0x14));
+  // this next one fails
   buffer.set(await aesEcbDecrypt(buffer.subarray(0, 0x10), saveKey));
   salt.set(buffer.subarray(0, 0x10));
   buffer.set(saltSeed.subarray(0, 0x10));

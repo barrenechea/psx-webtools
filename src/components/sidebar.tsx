@@ -43,6 +43,7 @@ const NavItem: React.FC<NavItemProps> = ({ to, icon, label, isExpanded }) => (
 
 export const Sidebar: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const copyrightYear = `2024-${new Date().getFullYear()}`;
 
   return (
     <aside
@@ -105,7 +106,7 @@ export const Sidebar: React.FC = () => {
           <Separator className="mt-2 opacity-50" />
 
           <div className="p-4 text-center text-xs text-muted-foreground">
-            © 2024 Sebastian Barrenechea
+            © {copyrightYear} Sebastian Barrenechea
           </div>
         </>
       )}

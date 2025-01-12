@@ -41,6 +41,14 @@ export enum SingleSaveTypes {
   Psx,
 }
 
+export const CardExtensions = {
+  [CardTypes.Raw]: ".mcr",
+  [CardTypes.Gme]: ".gme", 
+  [CardTypes.Vgs]: ".vgs",
+  [CardTypes.Vmp]: ".vmp",
+  [CardTypes.Mcx]: ".mcx"
+} as const;
+
 export interface SaveInfo {
   slotNumber: number;
   name: string;
@@ -664,6 +672,10 @@ class PS1MemoryCard {
     //this.changedFlag = true;
   }
 
+  private getExtensionForType(cardType: CardTypes): string {
+    return CardExtensions[cardType] || ".mcr";
+  }
+
   public async saveMemoryCard(
     fileName: string,
     cardType: CardTypes
@@ -688,11 +700,14 @@ class PS1MemoryCard {
     }
 
     try {
+      const extension = this.getExtensionForType(cardType);
+      const fileNameWithExt = fileName.endsWith(extension) ? fileName : fileName + extension;
+      
       const blob = new Blob([outputData], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = fileName;
+      link.download = fileNameWithExt;
       link.click();
       URL.revokeObjectURL(url);
 
