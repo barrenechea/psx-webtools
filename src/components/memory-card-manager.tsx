@@ -76,7 +76,7 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
         <TooltipProvider>
           <Tooltip delayDuration={100}>
             <TooltipTrigger>
-              <Badge variant="red">Deleted</Badge>
+              <Badge variant="destructive">Deleted</Badge>
             </TooltipTrigger>
             <TooltipContent>
               <p>This save has been deleted but can be recovered</p>
@@ -89,7 +89,7 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
         <TooltipProvider>
           <Tooltip delayDuration={100}>
             <TooltipTrigger>
-              <Badge variant="pink">Corrupted</Badge>
+              <Badge variant="outline">Corrupted</Badge>
             </TooltipTrigger>
             <TooltipContent>
               <p>This save data is corrupted and may not be readable</p>
@@ -123,7 +123,7 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   return (
     <Card
       className={cn(
-        "mb-2 cursor-pointer border-none",
+        "mb-2 cursor-pointer border-none py-0",
         isSelected ? "bg-card" : "bg-card/40 hover:bg-card/80",
         isLink && "ml-4"
       )}
@@ -156,7 +156,7 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
                   <TooltipProvider>
                     <Tooltip delayDuration={100}>
                       <TooltipTrigger>
-                        <Badge>{slot.identifier}</Badge>
+                        <Badge variant="secondary">{slot.identifier}</Badge>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>Save identifier</p>
@@ -166,7 +166,7 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
                   <TooltipProvider>
                     <Tooltip delayDuration={100}>
                       <TooltipTrigger>
-                        <Badge>{slot.region}</Badge>
+                        <Badge variant="secondary">{slot.region}</Badge>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>Game region</p>
@@ -606,9 +606,9 @@ export const MemoryCardManager: React.FC = () => {
                       }}
                     >
                       {card.type === "device" ? (
-                        <MemoryStickIcon className="mr-2 size-4" />
+                        <MemoryStickIcon className="size-4" />
                       ) : (
-                        <FileIcon className="mr-2 size-4" />
+                        <FileIcon className="size-4" />
                       )}
                       <span className="max-w-44 truncate">{card.name}</span>
                     </Button>
@@ -733,7 +733,7 @@ export const MemoryCardManager: React.FC = () => {
                             <div className="flex items-center">
                               {copiedSlots.length > 0 ? (
                                 <div className="group relative">
-                                  <div className="absolute -inset-0.5 animate-tilt rounded-lg bg-gradient-to-r from-pink-600 to-purple-600 opacity-75 blur transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
+                                  <div className="absolute -inset-0.5 animate-tilt rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
                                   <div className="relative size-8">
                                     <PS1BlockIcon
                                       iconData={
@@ -772,7 +772,7 @@ export const MemoryCardManager: React.FC = () => {
                         </Tooltip>
                       </TooltipProvider>
                     </div>
-                    <ScrollArea className="grow" type="auto">
+                    <ScrollArea className="grow" type="always">
                       <div className="bg-card/60 p-4">
                         {memoryCards
                           .find((card) => card.id === selectedCard)

@@ -139,7 +139,7 @@ export function MemcarduinoFlasher() {
                       )
                     }
                   >
-                    <SelectTrigger id="board-select">
+                    <SelectTrigger id="board-select" className="mt-2">
                       <SelectValue placeholder="Choose a board" />
                     </SelectTrigger>
                     <SelectContent>
@@ -162,7 +162,7 @@ export function MemcarduinoFlasher() {
                     value={selectedVersion}
                     onValueChange={setSelectedVersion}
                   >
-                    <SelectTrigger id="version-select">
+                    <SelectTrigger id="version-select" className="mt-2">
                       <SelectValue placeholder="Choose a version" />
                     </SelectTrigger>
                     <SelectContent>

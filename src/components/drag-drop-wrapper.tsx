@@ -80,7 +80,7 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
     >
       {children}
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm transition-opacity duration-300">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-xs transition-opacity duration-300">
           <div className="rounded-lg border-2 border-dashed border-primary p-8 text-center">
             <p className="text-lg font-semibold">
               Drop your memory card file here

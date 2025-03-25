@@ -46,13 +46,13 @@ function Index() {
                 <Button asChild>
                   <Link to="/memcarduino-flasher">
                     Open MemCARDuino Flasher
-                    <ArrowRightIcon className="ml-2 size-4" />
+                    <ArrowRightIcon className="size-4" />
                   </Link>
                 </Button>
                 <Button asChild>
                   <Link to="/memory-card-manager">
                     Open Memory Card Manager
-                    <ArrowRightIcon className="ml-2 size-4" />
+                    <ArrowRightIcon className="size-4" />
                   </Link>
                 </Button>
                 <Button variant="outline" asChild>
@@ -61,7 +61,7 @@ function Index() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <GithubIcon className="mr-2 size-4" />
+                    <GithubIcon className="size-4" />
                     View on GitHub
                   </a>
                 </Button>
