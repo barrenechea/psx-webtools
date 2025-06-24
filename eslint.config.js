@@ -3,9 +3,7 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
-//import tailwindcss from "eslint-plugin-tailwindcss";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
-import reactCompiler from "eslint-plugin-react-compiler";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -32,19 +30,16 @@ export default tseslint.config(
     plugins: {
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
-      //tailwindcss,
       "simple-import-sort": simpleImportSort,
-      "react-compiler": reactCompiler,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-compiler/react-compiler": "error",
       "react-refresh/only-export-components": [
         "warn",
         { allowConstantExport: true },
       ],
       "@typescript-eslint/consistent-type-imports": "error",
-
+      "react-hooks/react-compiler": "error",
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
     },
