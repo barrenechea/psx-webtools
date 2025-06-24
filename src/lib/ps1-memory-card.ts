@@ -243,6 +243,22 @@ class PS1MemoryCard {
     }
   }
 
+  private writeDataToRawCard(): void {
+    for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
+      // Write header data
+      this.rawData.set(
+        this.headerData[slotNumber],
+        128 + slotNumber * 128
+      );
+
+      // Write save data
+      this.rawData.set(
+        this.saveData[slotNumber],
+        8192 + slotNumber * 8192
+      );
+    }
+  }
+
   private loadSlotTypes(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
       switch (this.headerData[i][0]) {
@@ -516,6 +532,7 @@ class PS1MemoryCard {
       }
     }
 
+    this.writeDataToRawCard();
     this.loadMemoryCardData();
     //this.changedFlag = true;
   }
@@ -527,6 +544,7 @@ class PS1MemoryCard {
       this.formatSlot(slot);
     }
 
+    this.writeDataToRawCard();
     this.loadMemoryCardData();
     //this.changedFlag = true;
   }
@@ -604,6 +622,7 @@ class PS1MemoryCard {
       }
     }
 
+    this.writeDataToRawCard();
     this.loadMemoryCardData();
     //this.changedFlag = true;
     return true;
@@ -654,8 +673,8 @@ class PS1MemoryCard {
       headerStart + 12
     );
 
-    this.loadStringData();
-    this.calculateXOR();
+    this.writeDataToRawCard();
+    this.loadMemoryCardData();
     //this.changedFlag = true;
   }
 
@@ -667,8 +686,8 @@ class PS1MemoryCard {
 
   public setIconBytes(slotNumber: number, iconBytes: Uint8Array): void {
     this.saveData[slotNumber].set(iconBytes.slice(0, 416), 96);
-    this.loadPalette();
-    this.loadIcons();
+    this.writeDataToRawCard();
+    this.loadMemoryCardData();
     //this.changedFlag = true;
   }
 

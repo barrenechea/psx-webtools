@@ -31,7 +31,7 @@ export default function AlphaNoticeDialog({
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4">
               <h4 className="mb-2 font-medium">Limited Functionality Notice</h4>
               <ul className="list-inside list-disc space-y-1 text-sm">
-                <li>Copy/Move functionality is currently disabled</li>
+                <li>Copy/Move/Paste functionality is experimental</li>
                 <li>Game save editing features are not implemented yet</li>
                 <li>Limited testing with different memory card formats</li>
                 <li>Some MemCARDuino features may be unstable</li>

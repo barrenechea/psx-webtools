@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-misused-promises */
 import {
   ArrowRightIcon,
+  ClipboardPasteIcon,
   CopyIcon,
   CpuIcon,
   FileIcon,
@@ -102,8 +103,8 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
   }
 };
 
-// features disabled in alpha
-const alphaDisabled = true;
+// enable copy/move/delete functionality for testing
+const alphaDisabled = false;
 
 const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   slot,
@@ -199,6 +200,7 @@ export const MemoryCardManager: React.FC = () => {
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const [copiedSlots, setCopiedSlots] = useState<SaveInfo[]>([]);
+  const [copiedSaveBytes, setCopiedSaveBytes] = useState<Uint8Array | null>(null);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
   const {
@@ -479,16 +481,44 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleCopyMove = (action: "copy" | "move") => {
-    console.log(action);
     if (selectedCard !== null && selectedSlot !== null) {
-      const card = memoryCards.find((c) => c.id === selectedCard);
-      if (card) {
-        const parentSlot = findParentSlot(card.card, selectedSlot);
-        const linkedSlots = findLinkedSlots(card.card, parentSlot);
-        const copiedSaves = linkedSlots.map(
-          (slotIndex) => card.card.getSaves()[slotIndex]
+      const cardEntry = memoryCards.find((c) => c.id === selectedCard);
+      if (cardEntry) {
+        const parentSlot = findParentSlot(cardEntry.card, selectedSlot);
+        const linkedSlots = findLinkedSlots(cardEntry.card, parentSlot);
+        const copiedSaves = linkedSlots.map((slotIndex) =>
+          cardEntry.card.getSaves()[slotIndex]
         );
         setCopiedSlots(copiedSaves);
+        setCopiedSaveBytes(cardEntry.card.getSaveBytes(parentSlot));
+        if (action === "move") {
+          cardEntry.card.formatSave(parentSlot);
+          setSelectedSlot(null);
+          setMemoryCards([...memoryCards]);
+        }
+      }
+    }
+  };
+
+  const handlePaste = () => {
+    if (
+      selectedCard !== null &&
+      selectedSlot !== null &&
+      copiedSaveBytes !== null
+    ) {
+      const cardEntry = memoryCards.find((c) => c.id === selectedCard);
+      if (cardEntry) {
+        const success = cardEntry.card.setSaveBytes(
+          selectedSlot,
+          copiedSaveBytes
+        );
+        if (success) {
+          setCopiedSlots([]);
+          setCopiedSaveBytes(null);
+          setMemoryCards([...memoryCards]);
+        } else {
+          setError("Not enough free space to paste save");
+        }
       }
     }
   };
@@ -550,6 +580,24 @@ export const MemoryCardManager: React.FC = () => {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">Move to buffer</TooltipContent>
+                </Tooltip>
+                <Tooltip delayDuration={100}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handlePaste}
+                      disabled={
+                        selectedSlot === null ||
+                        copiedSaveBytes === null ||
+                        alphaDisabled
+                      }
+                      aria-label="Paste from buffer"
+                    >
+                      <ClipboardPasteIcon className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Paste from buffer</TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
