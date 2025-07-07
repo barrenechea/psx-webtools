@@ -10,96 +10,54 @@
 
 import { createFileRoute } from '@tanstack/react-router'
 
-// Import Routes
+import { Route as rootRouteImport } from './routes/__root'
 
-import { Route as rootRoute } from './routes/__root'
-
-// Create Virtual Routes
-
-const IndexLazyImport = createFileRoute('/')()
-const MemoryCardManagerIndexLazyImport = createFileRoute(
+const IndexLazyRouteImport = createFileRoute('/')()
+const MemoryCardManagerIndexLazyRouteImport = createFileRoute(
   '/memory-card-manager/',
 )()
-const MemcarduinoFlasherIndexLazyImport = createFileRoute(
+const MemcarduinoFlasherIndexLazyRouteImport = createFileRoute(
   '/memcarduino-flasher/',
 )()
 
-// Create/Update Routes
-
-const IndexLazyRoute = IndexLazyImport.update({
+const IndexLazyRoute = IndexLazyRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/index.lazy').then((d) => d.Route))
-
-const MemoryCardManagerIndexLazyRoute = MemoryCardManagerIndexLazyImport.update(
-  {
+const MemoryCardManagerIndexLazyRoute =
+  MemoryCardManagerIndexLazyRouteImport.update({
     id: '/memory-card-manager/',
     path: '/memory-card-manager/',
-    getParentRoute: () => rootRoute,
-  } as any,
-).lazy(() =>
-  import('./routes/memory-card-manager/index.lazy').then((d) => d.Route),
-)
-
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import('./routes/memory-card-manager/index.lazy').then((d) => d.Route),
+  )
 const MemcarduinoFlasherIndexLazyRoute =
-  MemcarduinoFlasherIndexLazyImport.update({
+  MemcarduinoFlasherIndexLazyRouteImport.update({
     id: '/memcarduino-flasher/',
     path: '/memcarduino-flasher/',
-    getParentRoute: () => rootRoute,
+    getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import('./routes/memcarduino-flasher/index.lazy').then((d) => d.Route),
   )
-
-// Populate the FileRoutesByPath interface
-
-declare module '@tanstack/react-router' {
-  interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexLazyImport
-      parentRoute: typeof rootRoute
-    }
-    '/memcarduino-flasher/': {
-      id: '/memcarduino-flasher/'
-      path: '/memcarduino-flasher'
-      fullPath: '/memcarduino-flasher'
-      preLoaderRoute: typeof MemcarduinoFlasherIndexLazyImport
-      parentRoute: typeof rootRoute
-    }
-    '/memory-card-manager/': {
-      id: '/memory-card-manager/'
-      path: '/memory-card-manager'
-      fullPath: '/memory-card-manager'
-      preLoaderRoute: typeof MemoryCardManagerIndexLazyImport
-      parentRoute: typeof rootRoute
-    }
-  }
-}
-
-// Create and export the route tree
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexLazyRoute
   '/memcarduino-flasher': typeof MemcarduinoFlasherIndexLazyRoute
   '/memory-card-manager': typeof MemoryCardManagerIndexLazyRoute
 }
-
 export interface FileRoutesByTo {
   '/': typeof IndexLazyRoute
   '/memcarduino-flasher': typeof MemcarduinoFlasherIndexLazyRoute
   '/memory-card-manager': typeof MemoryCardManagerIndexLazyRoute
 }
-
 export interface FileRoutesById {
-  __root__: typeof rootRoute
+  __root__: typeof rootRouteImport
   '/': typeof IndexLazyRoute
   '/memcarduino-flasher/': typeof MemcarduinoFlasherIndexLazyRoute
   '/memory-card-manager/': typeof MemoryCardManagerIndexLazyRoute
 }
-
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths: '/' | '/memcarduino-flasher' | '/memory-card-manager'
@@ -108,11 +66,36 @@ export interface FileRouteTypes {
   id: '__root__' | '/' | '/memcarduino-flasher/' | '/memory-card-manager/'
   fileRoutesById: FileRoutesById
 }
-
 export interface RootRouteChildren {
   IndexLazyRoute: typeof IndexLazyRoute
   MemcarduinoFlasherIndexLazyRoute: typeof MemcarduinoFlasherIndexLazyRoute
   MemoryCardManagerIndexLazyRoute: typeof MemoryCardManagerIndexLazyRoute
+}
+
+declare module '@tanstack/react-router' {
+  interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/memory-card-manager/': {
+      id: '/memory-card-manager/'
+      path: '/memory-card-manager'
+      fullPath: '/memory-card-manager'
+      preLoaderRoute: typeof MemoryCardManagerIndexLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/memcarduino-flasher/': {
+      id: '/memcarduino-flasher/'
+      path: '/memcarduino-flasher'
+      fullPath: '/memcarduino-flasher'
+      preLoaderRoute: typeof MemcarduinoFlasherIndexLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+  }
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -120,31 +103,6 @@ const rootRouteChildren: RootRouteChildren = {
   MemcarduinoFlasherIndexLazyRoute: MemcarduinoFlasherIndexLazyRoute,
   MemoryCardManagerIndexLazyRoute: MemoryCardManagerIndexLazyRoute,
 }
-
-export const routeTree = rootRoute
+export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-/* ROUTE_MANIFEST_START
-{
-  "routes": {
-    "__root__": {
-      "filePath": "__root.tsx",
-      "children": [
-        "/",
-        "/memcarduino-flasher/",
-        "/memory-card-manager/"
-      ]
-    },
-    "/": {
-      "filePath": "index.lazy.tsx"
-    },
-    "/memcarduino-flasher/": {
-      "filePath": "memcarduino-flasher/index.lazy.tsx"
-    },
-    "/memory-card-manager/": {
-      "filePath": "memory-card-manager/index.lazy.tsx"
-    }
-  }
-}
-ROUTE_MANIFEST_END */
