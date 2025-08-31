@@ -7,9 +7,9 @@
  * @throws Will throw an error if decryption fails.
  */
 export async function aesCbcDecrypt(
-  data: Uint8Array,
-  mcxKey: Uint8Array,
-  mcxIv: Uint8Array
+  data: BufferSource,
+  mcxKey: BufferSource,
+  mcxIv: BufferSource
 ): Promise<Uint8Array> {
   const algorithm = { name: "AES-CBC", iv: mcxIv };
   const cryptoKey = await crypto.subtle.importKey(
@@ -52,7 +52,7 @@ export function uint8ArrayToString(array: Uint8Array): string {
  * @param key - The key as a Uint8Array.
  * @returns A Promise that resolves to a CryptoKey.
  */
-export async function createAesKey(key: Uint8Array): Promise<CryptoKey> {
+export async function createAesKey(key: BufferSource): Promise<CryptoKey> {
   return await crypto.subtle.importKey("raw", key, { name: "AES-CBC" }, false, [
     "encrypt",
     "decrypt",
@@ -67,7 +67,7 @@ export async function createAesKey(key: Uint8Array): Promise<CryptoKey> {
  * @returns A Promise that resolves to the processed block as a Uint8Array.
  */
 export async function aesEcbProcessBlock(
-  block: Uint8Array,
+  block: BufferSource,
   key: CryptoKey,
   encrypt: boolean
 ): Promise<Uint8Array> {
@@ -89,7 +89,7 @@ export async function aesEcbProcessBlock(
  */
 export async function aesEcbProcess(
   data: Uint8Array,
-  key: Uint8Array,
+  key: BufferSource,
   encrypt: boolean
 ): Promise<Uint8Array> {
   const cryptoKey = await createAesKey(key);
@@ -113,7 +113,7 @@ export async function aesEcbProcess(
  */
 export async function aesEcbEncrypt(
   toEncrypt: Uint8Array,
-  key: Uint8Array
+  key: BufferSource
 ): Promise<Uint8Array> {
   return aesEcbProcess(toEncrypt, key, true);
 }
@@ -126,7 +126,7 @@ export async function aesEcbEncrypt(
  */
 export async function aesEcbDecrypt(
   toDecrypt: Uint8Array,
-  key: Uint8Array
+  key: BufferSource
 ): Promise<Uint8Array> {
   return aesEcbProcess(toDecrypt, key, false);
 }
@@ -153,7 +153,7 @@ export function xorWithIv(destBuffer: Uint8Array, iv: Uint8Array): void {
 export async function getHmac(
   data: Uint8Array,
   saltSeed: Uint8Array,
-  saveKey: Uint8Array,
+  saveKey: BufferSource,
   saveIv: Uint8Array
 ): Promise<Uint8Array> {
   const buffer = new Uint8Array(0x14);
