@@ -149,6 +149,11 @@ export class Unirom extends HardwareInterface {
     onStatusUpdate: (status: string) => void
   ): Promise<string | null> {
     try {
+      // Check if Web Serial API is supported
+      if (!('serial' in navigator)) {
+        return 'Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.';
+      }
+
       onStatusUpdate("Requesting serial port access...");
       this.port = await navigator.serial.requestPort();
 

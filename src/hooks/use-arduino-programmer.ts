@@ -28,6 +28,11 @@ const useArduinoProgrammer = () => {
         hexData = hexFileSource;
       }
 
+      // Check if Web Serial API is supported
+      if (!('serial' in navigator)) {
+        throw new Error('Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.');
+      }
+
       setStatus("Requesting serial port access...");
       const port = await navigator.serial.requestPort();
       setStatus(`Opening port at ${board.baudRate} baud...`);
