@@ -722,7 +722,7 @@ class PS1MemoryCard {
       const extension = this.getExtensionForType(cardType);
       const fileNameWithExt = fileName.endsWith(extension) ? fileName : fileName + extension;
       
-      const blob = new Blob([outputData], { type: "application/octet-stream" });
+      const blob = new Blob([new Uint8Array(outputData)], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -839,7 +839,7 @@ class PS1MemoryCard {
     }
 
     try {
-      const blob = new Blob([outputData], { type: "application/octet-stream" });
+      const blob = new Blob([new Uint8Array(outputData)], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

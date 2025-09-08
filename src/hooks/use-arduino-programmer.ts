@@ -42,14 +42,14 @@ const useArduinoProgrammer = () => {
         chunk: string | Uint8Array,
         encodingOrCb?:
           | BufferEncoding
-          | ((error: Error | null | undefined) => void),
-        cb?: (error: Error | null | undefined) => void
+          | ((error?: Error | null) => void),
+        cb?: (error?: Error | null) => void
       ) => {
         const encoder = new TextEncoder();
         const callback = typeof encodingOrCb === "function" ? encodingOrCb : cb;
         void writer
           .write(typeof chunk === "string" ? encoder.encode(chunk) : chunk)
-          .then(() => callback && callback(null), callback);
+          .then(() => callback?.(), callback);
         return true;
       };
 

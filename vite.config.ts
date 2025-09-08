@@ -1,4 +1,4 @@
-import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -12,7 +12,7 @@ const ReactCompilerConfig = {};
 export default defineConfig({
   plugins: [
     nodePolyfills(),
-    TanStackRouterVite(),
+    tanstackRouter(),
     react({
       babel: {
         plugins: [["babel-plugin-react-compiler", ReactCompilerConfig]],
