@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -35,26 +35,44 @@ interface SavedSettings {
   saveSettings: boolean;
 }
 
+const DEFAULT_SETTINGS: SavedSettings = {
+  deviceType: "",
+  connectionMode: "",
+  saveSettings: false,
+};
+
 export const MemcarduinoConnectDialog: React.FC<
   MemcarduinoConnectDialogProps
 > = ({ isOpen, onOpenChange, onConnect }) => {
-  const [deviceType, setDeviceType] = useState<string>("");
-  const [connectionMode, setConnectionMode] = useState<string>("");
-  const [saveSettings, setSaveSettings] = useState(false);
+  const initialSettings = useMemo<SavedSettings>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_SETTINGS;
+    }
 
-  useEffect(() => {
-    const savedSettings = localStorage.getItem("memcarduinoSettings");
-    if (savedSettings) {
-      const {
-        deviceType: savedDeviceType,
-        connectionMode: savedConnectionMode,
-        saveSettings,
-      } = JSON.parse(savedSettings) as SavedSettings;
-      setDeviceType(savedDeviceType);
-      setConnectionMode(savedConnectionMode);
-      setSaveSettings(saveSettings);
+    const savedSettings = window.localStorage.getItem("memcarduinoSettings");
+    if (!savedSettings) {
+      return DEFAULT_SETTINGS;
+    }
+
+    try {
+      const parsed = JSON.parse(savedSettings) as Partial<SavedSettings>;
+      return {
+        deviceType: parsed.deviceType ?? "",
+        connectionMode: parsed.connectionMode ?? "",
+        saveSettings: parsed.saveSettings ?? false,
+      };
+    } catch {
+      return DEFAULT_SETTINGS;
     }
   }, []);
+
+  const [deviceType, setDeviceType] = useState<string>(
+    initialSettings.deviceType
+  );
+  const [connectionMode, setConnectionMode] = useState<string>(
+    initialSettings.connectionMode
+  );
+  const [saveSettings, setSaveSettings] = useState(initialSettings.saveSettings);
 
   const handleConnect = async () => {
     if (deviceType && connectionMode) {

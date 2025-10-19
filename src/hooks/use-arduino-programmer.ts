@@ -71,7 +71,6 @@ const useArduinoProgrammer = () => {
 
       if (reader) {
         // @ts-expect-error this is specific to the "readable-web-to-node-stream" library
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         await reader.reader.cancel();
       }
       if (writer) {
