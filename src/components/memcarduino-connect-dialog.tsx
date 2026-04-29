@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,38 +41,40 @@ const DEFAULT_SETTINGS: SavedSettings = {
   saveSettings: false,
 };
 
+const loadSavedSettings = (): SavedSettings => {
+  if (typeof window === "undefined") {
+    return DEFAULT_SETTINGS;
+  }
+
+  const savedSettings = window.localStorage.getItem("memcarduinoSettings");
+  if (!savedSettings) {
+    return DEFAULT_SETTINGS;
+  }
+
+  try {
+    const parsed = JSON.parse(savedSettings) as Partial<SavedSettings>;
+    return {
+      deviceType: parsed.deviceType ?? "",
+      connectionMode: parsed.connectionMode ?? "",
+      saveSettings: parsed.saveSettings ?? false,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+};
+
 export const MemcarduinoConnectDialog: React.FC<
   MemcarduinoConnectDialogProps
 > = ({ isOpen, onOpenChange, onConnect }) => {
-  const initialSettings = useMemo<SavedSettings>(() => {
-    if (typeof window === "undefined") {
-      return DEFAULT_SETTINGS;
-    }
-
-    const savedSettings = window.localStorage.getItem("memcarduinoSettings");
-    if (!savedSettings) {
-      return DEFAULT_SETTINGS;
-    }
-
-    try {
-      const parsed = JSON.parse(savedSettings) as Partial<SavedSettings>;
-      return {
-        deviceType: parsed.deviceType ?? "",
-        connectionMode: parsed.connectionMode ?? "",
-        saveSettings: parsed.saveSettings ?? false,
-      };
-    } catch {
-      return DEFAULT_SETTINGS;
-    }
-  }, []);
-
   const [deviceType, setDeviceType] = useState<string>(
-    initialSettings.deviceType
+    () => loadSavedSettings().deviceType
   );
   const [connectionMode, setConnectionMode] = useState<string>(
-    initialSettings.connectionMode
+    () => loadSavedSettings().connectionMode
   );
-  const [saveSettings, setSaveSettings] = useState(initialSettings.saveSettings);
+  const [saveSettings, setSaveSettings] = useState(
+    () => loadSavedSettings().saveSettings
+  );
 
   const handleConnect = async () => {
     if (deviceType && connectionMode) {

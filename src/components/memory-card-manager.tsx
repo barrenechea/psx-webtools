@@ -11,7 +11,7 @@ import {
   UsbIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import SaveMemoryCardDialog from "@/components/save-dialog";
@@ -104,6 +104,9 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
 
 // enable copy/move/delete functionality for testing
 const alphaDisabled = false;
+
+let lastCardId = 0;
+const nextCardId = (): number => ++lastCardId;
 
 const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   slot,
@@ -212,12 +215,6 @@ export const MemoryCardManager: React.FC = () => {
     firmwareVersion,
   } = useMemcarduino();
 
-  useEffect(() => {
-    if (connectionError) {
-      setError(connectionError);
-    }
-  }, [connectionError]);
-
   const {
     gameData,
     isLoading,
@@ -297,7 +294,7 @@ export const MemoryCardManager: React.FC = () => {
 
       if (card) {
         const newMemoryCard: MemoryCard = {
-          id: Date.now(),
+          id: nextCardId(),
           name: "MemCARDuino Read",
           type: "device",
           source: `MemCARDuino v${firmwareVersion}`,
@@ -355,7 +352,7 @@ export const MemoryCardManager: React.FC = () => {
         await card.loadFromFile(selectedFile);
 
         const newCard: MemoryCard = {
-          id: Date.now(),
+          id: nextCardId(),
           name: selectedFile.name,
           type: "file",
           source: selectedFile.name,
@@ -979,6 +976,7 @@ export const MemoryCardManager: React.FC = () => {
           {/* Status bar */}
           <div className="border-t border-border bg-muted/80 px-4 py-2 text-sm text-muted-foreground">
             {error ??
+              connectionError ??
               (selectedCard
                 ? `${
                     memoryCards
@@ -999,6 +997,7 @@ export const MemoryCardManager: React.FC = () => {
         onConnect={handleConnect}
       />
       <SaveMemoryCardDialog
+        key={selectedCard ?? "no-card"}
         isOpen={isSaveDialogOpen}
         onOpenChange={setIsSaveDialogOpen}
         defaultFileName={`${memoryCards.find((c) => c.id === selectedCard)?.name ?? "memory_card"}.mcr`}

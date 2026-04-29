@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,10 +40,6 @@ export const SaveDialog: React.FC<SaveDialogProps> = ({
     void onSave(fileName, saveType);
     onOpenChange(false);
   };
-
-  useEffect(() => {
-    setFileName(defaultFileName);
-  }, [defaultFileName]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
