@@ -1,7 +1,8 @@
-import { AlertCircle, CheckCircle2, GithubIcon } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type Board } from "stk500-esm";
 
+import GHLogo from "@/assets/gh-logo.svg?react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -234,7 +235,7 @@ export function MemcarduinoFlasher() {
             rel="noopener noreferrer"
             className="flex items-center space-x-2 underline hover:text-foreground"
           >
-            <GithubIcon className="size-4" />
+            <GHLogo className="size-4" />
             <span>View MemCARDuino on GitHub</span>
           </a>
         </div>

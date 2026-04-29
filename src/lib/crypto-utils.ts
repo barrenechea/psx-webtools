@@ -25,7 +25,7 @@ export async function aesCbcDecrypt(
     return new Uint8Array(decrypted);
   } catch (error) {
     console.error("Decryption failed:", error);
-    throw new Error("Failed to decrypt data");
+    throw new Error("Failed to decrypt data", { cause: error });
   }
 }
 

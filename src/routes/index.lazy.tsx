@@ -1,6 +1,7 @@
 import { createLazyFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRightIcon, GithubIcon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 
+import GHLogo from "@/assets/gh-logo.svg?react";
 import { Button } from "@/components/ui/button";
 
 export const Route = createLazyFileRoute("/")({
@@ -61,7 +62,7 @@ function Index() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <GithubIcon className="size-4" />
+                    <GHLogo className="size-4" />
                     View on GitHub
                   </a>
                 </Button>

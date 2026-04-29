@@ -1,0 +1,74 @@
+diff --git a/node_modules/vite-plugin-node-polyfills/dist/index.js b/node_modules/vite-plugin-node-polyfills/dist/index.js
+index 007d9a6..7b51e43 100644
+--- a/node_modules/vite-plugin-node-polyfills/dist/index.js
++++ b/node_modules/vite-plugin-node-polyfills/dist/index.js
+@@ -52,7 +52,26 @@ const v = (s, l) => d(s) === d(l), e = (s, l) => s ? s === !0 ? !0 : s === l : !
+     ""
+   ].join(`
+ `);
+-  return {
++  // Shim module names that need exact matching (not prefix matching)
++  const shimNames = new Set(['buffer', 'global', 'process'])
++  const resolvePlugin = {
++    name: "vite-plugin-node-polyfills:resolve",
++    enforce: "pre",
++    async resolveId(id, importer, opts) {
++      // Strip trailing slash for exact matching
++      const normalized = id.endsWith('/') ? id.slice(0, -1) : id;
++      const moduleName = d(normalized);
++      // Only handle shim modules that we manage
++      if (!shimNames.has(moduleName)) return null;
++      if (h(moduleName)) return null;
++      if (!l.protocolImports && w(normalized)) return null;
++      const target = y(moduleName) || p[moduleName];
++      if (!target) return null;
++      const resolved = await this.resolve(target, importer, { skipSelf: true, ...opts });
++      return resolved;
++    }
++  };
++  return [resolvePlugin, {
+     name: "vite-plugin-node-polyfills",
+     config(o, r) {
+       const i = r.command === "serve", c = !!this?.meta?.rolldownVersion, m = {
+@@ -78,10 +97,11 @@ const v = (s, l) => d(s) === d(l), e = (s, l) => s ? s === !0 ? !0 : s === l : !
+             ...Object.keys(b).length > 0 ? c ? { transform: { inject: b } } : { plugins: [x(b)] } : {}
+           }
+         },
+-        esbuild: {
+-          // In dev, the global polyfills need to be injected as a banner in order for isolated scripts (such as Vue SFCs) to have access to them.
+-          banner: i ? a : void 0
+-        },
++        // Vite 8+ (Rolldown) replaces esbuild with oxc for JS transforms
++        ...(c
++          ? { oxc: { jsxInject: i ? a : void 0 } }
++          : { esbuild: { banner: i ? a : void 0 } }
++        ),
+         optimizeDeps: {
+           exclude: [
+             ...u
+@@ -134,13 +154,21 @@ const v = (s, l) => d(s) === d(l), e = (s, l) => s ? s === !0 ? !0 : s === l : !
+         },
+         resolve: {
+           // https://github.com/niksy/node-stdlib-browser/blob/3e7cd7f3d115ac5c4593b550e7d8c4a82a0d4ac4/README.md?plain=1#L150
+-          alias: {
+-            ...p
+-          }
++          alias: c
++            ? (() => {
++                const aliasObj = {}
++                for (const [k, val] of Object.entries(p)) {
++                  // Skip shim modules - they're handled by resolveId
++                  if (shimNames.has(k)) continue;
++                  aliasObj[k] = val;
++                }
++                return aliasObj
++              })()
++            : p
+         }
+       };
+     }
+-  };
++  }];
+ };
+ export {
+   D as nodePolyfills
