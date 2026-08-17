@@ -35,6 +35,6 @@ if (!rootElement.innerHTML) {
           </LoadingDialogProvider>
         </ThemeProvider>
       </QueryClientProvider>
-    </StrictMode>
+    </StrictMode>,
   );
 }

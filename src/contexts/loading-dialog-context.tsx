@@ -7,7 +7,7 @@ interface LoadingDialogContextType {
   updateDialog: (
     status: string,
     additionalInfo?: string,
-    progress?: number
+    progress?: number,
   ) => void;
   hideDialog: () => void;
 }
@@ -20,27 +20,27 @@ export const useLoadingDialog = () => {
   const context = useContext(LoadingDialogContext);
   if (context === undefined) {
     throw new Error(
-      "useLoadingDialog must be used within a LoadingDialogProvider"
+      "useLoadingDialog must be used within a LoadingDialogProvider",
     );
   }
   return context;
 };
 
-export const LoadingDialogProvider: React.FC<{ children: React.JSX.Element }> = ({
-  children,
-}) => {
+export const LoadingDialogProvider: React.FC<{
+  children: React.JSX.Element;
+}> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState("");
   const [additionalInfo, setAdditionalInfo] = useState<string | undefined>(
-    undefined
+    undefined,
   );
   const [progress, setProgress] = useState<number | undefined>(undefined);
 
   const showDialog = (
     newTitle: string,
     newStatus: string,
-    newAdditionalInfo?: string
+    newAdditionalInfo?: string,
   ) => {
     setTitle(newTitle);
     setStatus(newStatus);
@@ -52,7 +52,7 @@ export const LoadingDialogProvider: React.FC<{ children: React.JSX.Element }> = 
   const updateDialog = (
     newStatus: string,
     newAdditionalInfo?: string,
-    newProgress?: number
+    newProgress?: number,
   ) => {
     setStatus(newStatus);
     setAdditionalInfo(newAdditionalInfo);

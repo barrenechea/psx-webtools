@@ -25,7 +25,7 @@ interface MemcarduinoConnectDialogProps {
   onConnect: (
     deviceType: string,
     connectionMode: string,
-    saveSettings: boolean
+    saveSettings: boolean,
   ) => Promise<void>;
 }
 
@@ -67,13 +67,13 @@ export const MemcarduinoConnectDialog: React.FC<
   MemcarduinoConnectDialogProps
 > = ({ isOpen, onOpenChange, onConnect }) => {
   const [deviceType, setDeviceType] = useState<string>(
-    () => loadSavedSettings().deviceType
+    () => loadSavedSettings().deviceType,
   );
   const [connectionMode, setConnectionMode] = useState<string>(
-    () => loadSavedSettings().connectionMode
+    () => loadSavedSettings().connectionMode,
   );
   const [saveSettings, setSaveSettings] = useState(
-    () => loadSavedSettings().saveSettings
+    () => loadSavedSettings().saveSettings,
   );
 
   const handleConnect = async () => {
@@ -82,7 +82,7 @@ export const MemcarduinoConnectDialog: React.FC<
       if (saveSettings) {
         localStorage.setItem(
           "memcarduinoSettings",
-          JSON.stringify({ deviceType, connectionMode, saveSettings })
+          JSON.stringify({ deviceType, connectionMode, saveSettings }),
         );
       } else {
         localStorage.removeItem("memcarduinoSettings");
@@ -125,7 +125,7 @@ export const MemcarduinoConnectDialog: React.FC<
             </SelectContent>
           </Select>
 
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-2 text-sm">
             Note: If you purchased a reader from AliExpress with the software as
             it comes, it's very likely to use an Arduino Nano in Legacy mode.
           </p>

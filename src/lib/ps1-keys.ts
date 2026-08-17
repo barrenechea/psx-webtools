@@ -35,6 +35,8 @@ export const saveIv = new Uint8Array([
  * @param data - The input data to generate the salt seed from.
  * @returns A Promise that resolves to the generated salt seed as a Uint8Array.
  */
-export async function generateSaltSeed(data: BufferSource): Promise<Uint8Array> {
+export async function generateSaltSeed(
+  data: BufferSource,
+): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-1", data));
 }

@@ -12,7 +12,7 @@ const useArduinoProgrammer = () => {
   const upload = async (
     board: Board,
     hexFileSource: string,
-    sourceType: "url" | "content"
+    sourceType: "url" | "content",
   ) => {
     try {
       setError(null);
@@ -29,8 +29,10 @@ const useArduinoProgrammer = () => {
       }
 
       // Check if Web Serial API is supported
-      if (!('serial' in navigator)) {
-        throw new Error('Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.');
+      if (!("serial" in navigator)) {
+        throw new Error(
+          "Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.",
+        );
       }
 
       setStatus("Requesting serial port access...");
@@ -45,10 +47,8 @@ const useArduinoProgrammer = () => {
       const serialStream = reader as unknown as Duplex;
       serialStream.write = (
         chunk: string | Uint8Array,
-        encodingOrCb?:
-          | BufferEncoding
-          | ((error?: Error | null) => void),
-        cb?: (error?: Error | null) => void
+        encodingOrCb?: BufferEncoding | ((error?: Error | null) => void),
+        cb?: (error?: Error | null) => void,
       ) => {
         const encoder = new TextEncoder();
         const callback = typeof encodingOrCb === "function" ? encodingOrCb : cb;

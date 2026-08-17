@@ -128,12 +128,12 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
       className={cn(
         "mb-2 cursor-pointer border-none py-0",
         isSelected ? "bg-card" : "bg-card/40 hover:bg-card/80",
-        isLink && "ml-4"
+        isLink && "ml-4",
       )}
       onClick={() => onClick(index)}
     >
-      <CardContent className="flex items-center p-3">
-        <div className="mr-2 w-6 text-xs text-muted-foreground">
+      <CardContent className="flex-row items-center gap-0 p-3">
+        <div className="text-muted-foreground mr-2 w-6 text-xs">
           {(index + 1).toString().padStart(2, "0")}
         </div>
         {!isFormatted ? (
@@ -146,10 +146,10 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
               />
             )}
             <div className="min-w-0 grow">
-              <h3 className="truncate text-sm font-medium text-foreground">
+              <h3 className="text-foreground truncate text-sm font-medium">
                 {isLink ? "Linked Save Data" : slot.name}
               </h3>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="text-muted-foreground truncate text-xs">
                 {isLink ? "Part of a multi-block save" : slot.productCode}
               </p>
             </div>
@@ -182,7 +182,7 @@ const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
             </div>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">Empty Slot</span>
+          <span className="text-muted-foreground text-sm">Empty Slot</span>
         )}
       </CardContent>
     </Card>
@@ -202,7 +202,9 @@ export const MemoryCardManager: React.FC = () => {
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const [copiedSlots, setCopiedSlots] = useState<SaveInfo[]>([]);
-  const [copiedSaveBytes, setCopiedSaveBytes] = useState<Uint8Array | null>(null);
+  const [copiedSaveBytes, setCopiedSaveBytes] = useState<Uint8Array | null>(
+    null,
+  );
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
   const {
@@ -263,7 +265,7 @@ export const MemoryCardManager: React.FC = () => {
   const handleDisconnect = async () => {
     showDialog(
       "Disconnecting from MemCARDuino",
-      "Initializing disconnection..."
+      "Initializing disconnection...",
     );
 
     try {
@@ -288,7 +290,7 @@ export const MemoryCardManager: React.FC = () => {
         updateDialog(
           `Reading memory card... ${Math.round(progress * 100)}%`,
           undefined,
-          progress
+          progress,
         );
       });
 
@@ -326,7 +328,7 @@ export const MemoryCardManager: React.FC = () => {
             updateDialog(
               `Writing to memory card... ${Math.round(progress * 100)}%`,
               undefined,
-              progress
+              progress,
             );
           });
 
@@ -482,8 +484,8 @@ export const MemoryCardManager: React.FC = () => {
       if (cardEntry) {
         const parentSlot = findParentSlot(cardEntry.card, selectedSlot);
         const linkedSlots = findLinkedSlots(cardEntry.card, parentSlot);
-        const copiedSaves = linkedSlots.map((slotIndex) =>
-          cardEntry.card.getSaves()[slotIndex]
+        const copiedSaves = linkedSlots.map(
+          (slotIndex) => cardEntry.card.getSaves()[slotIndex],
         );
         setCopiedSlots(copiedSaves);
         setCopiedSaveBytes(cardEntry.card.getSaveBytes(parentSlot));
@@ -506,7 +508,7 @@ export const MemoryCardManager: React.FC = () => {
       if (cardEntry) {
         const success = cardEntry.card.setSaveBytes(
           selectedSlot,
-          copiedSaveBytes
+          copiedSaveBytes,
         );
         if (success) {
           setCopiedSlots([]);
@@ -528,7 +530,7 @@ export const MemoryCardManager: React.FC = () => {
     const linkedSlots = findLinkedSlots(card, parentSlot);
 
     setSelectedSlot((prev) =>
-      linkedSlots.includes(prev ?? -1) ? null : parentSlot
+      linkedSlots.includes(prev ?? -1) ? null : parentSlot,
     );
     setSidebarOpen(true);
     setSelectedGameId(saves[parentSlot].productCode);
@@ -540,10 +542,10 @@ export const MemoryCardManager: React.FC = () => {
       <DragDropWrapper onFileDrop={(file) => void handleFileDrop(file)}>
         <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
           {/* Toolbar */}
-          <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
-            <h1 className="pl-2 font-light text-muted-foreground">
+          <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
+            <h1 className="text-muted-foreground pl-2 font-light">
               Memory Card Manager{" "}
-              <span className="text-xs text-destructive dark:text-red-400">
+              <span className="text-destructive text-xs dark:text-red-400">
                 Alpha
               </span>
             </h1>
@@ -593,7 +595,9 @@ export const MemoryCardManager: React.FC = () => {
                       <ClipboardPasteIcon className="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">Paste from buffer</TooltipContent>
+                  <TooltipContent side="bottom">
+                    Paste from buffer
+                  </TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
@@ -631,8 +635,8 @@ export const MemoryCardManager: React.FC = () => {
           {/* Main content */}
           <div className="flex grow overflow-hidden">
             {/* Sidebar */}
-            <div className="flex w-64 flex-col border-r border-border bg-muted/80">
-              <ScrollArea className="grow" type="auto">
+            <div className="border-border bg-muted/80 flex w-64 flex-col border-r">
+              <ScrollArea className="grow overflow-hidden" type="auto">
                 <div className="p-2">
                   {memoryCards.map((card) => (
                     <Button
@@ -640,8 +644,8 @@ export const MemoryCardManager: React.FC = () => {
                       variant="ghost"
                       className={`mb-1 w-full justify-start ${
                         selectedCard === card.id
-                          ? "cursor-default bg-card hover:bg-card"
-                          : "border-transparent bg-card/40 hover:bg-card/80"
+                          ? "bg-card hover:bg-card cursor-default"
+                          : "bg-card/40 hover:bg-card/80 border-transparent"
                       }`}
                       onClick={() => {
                         setSelectedSlot(null);
@@ -659,10 +663,10 @@ export const MemoryCardManager: React.FC = () => {
                   ))}
                 </div>
               </ScrollArea>
-              <div className="space-y-1 border-t border-border p-2">
+              <div className="border-border space-y-1 border-t p-2">
                 <Button
                   variant="ghost"
-                  className="w-full justify-start hover:bg-card/80"
+                  className="hover:bg-card/80 w-full justify-start"
                   onClick={() => void handleFileOpen()}
                 >
                   <FileIcon className="mr-2 size-4" />
@@ -673,7 +677,7 @@ export const MemoryCardManager: React.FC = () => {
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start hover:bg-card/80"
+                      className="hover:bg-card/80 w-full justify-start"
                     >
                       <MemoryStickIcon className="mr-2 size-4" />
                       Connect a device
@@ -705,7 +709,7 @@ export const MemoryCardManager: React.FC = () => {
                       onSelect={async () => {
                         showDialog(
                           "Connecting to Unirom",
-                          "Requesting serial port access..."
+                          "Requesting serial port access...",
                         );
                         try {
                           await connect("unirom", 115200, [], (status) => {
@@ -726,21 +730,21 @@ export const MemoryCardManager: React.FC = () => {
                   <>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start hover:bg-card/80"
+                      className="hover:bg-card/80 w-full justify-start"
                       onClick={() => void handleDisconnect()}
                     >
                       Disconnect MemCARDuino
                     </Button>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start hover:bg-card/80"
+                      className="hover:bg-card/80 w-full justify-start"
                       onClick={() => void handleReadFromDevice()}
                     >
                       Read from MemCARDuino
                     </Button>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start hover:bg-card/80"
+                      className="hover:bg-card/80 w-full justify-start"
                       onClick={() => void handleWriteToDevice()}
                       disabled={selectedCard === null}
                     >
@@ -756,7 +760,7 @@ export const MemoryCardManager: React.FC = () => {
               {selectedCard ? (
                 <>
                   <div className="flex grow flex-col">
-                    <div className="flex items-center justify-between border-b border-border bg-muted/80 p-4 px-6">
+                    <div className="border-border bg-muted/80 flex items-center justify-between border-b p-4 px-6">
                       <div>
                         <h2 className="mb-1 text-lg font-semibold">
                           {
@@ -764,7 +768,7 @@ export const MemoryCardManager: React.FC = () => {
                               ?.name
                           }
                         </h2>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-muted-foreground text-sm">
                           {`Opened via ${
                             memoryCards.find((card) => card.id === selectedCard)
                               ?.type
@@ -777,21 +781,21 @@ export const MemoryCardManager: React.FC = () => {
                             <div className="flex items-center">
                               {copiedSlots.length > 0 ? (
                                 <div className="group relative">
-                                  <div className="absolute -inset-0.5 animate-tilt rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
+                                  <div className="animate-tilt absolute -inset-0.5 rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
                                   <div className="relative size-8">
                                     <PS1BlockIcon
                                       iconData={
                                         memoryCards
                                           .find((c) => c.id === selectedCard)
                                           ?.card.getIconData(
-                                            copiedSlots[0].slotNumber
+                                            copiedSlots[0].slotNumber,
                                           ) ?? []
                                       }
                                       iconPalette={
                                         memoryCards
                                           .find((c) => c.id === selectedCard)
                                           ?.card.getIconPalette(
-                                            copiedSlots[0].slotNumber
+                                            copiedSlots[0].slotNumber,
                                           ) ?? []
                                       }
                                       iconFrameCount={
@@ -799,14 +803,14 @@ export const MemoryCardManager: React.FC = () => {
                                       }
                                     />
                                     {copiedSlots.length > 1 && (
-                                      <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                                      <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full text-[10px]">
                                         {copiedSlots.length}
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               ) : (
-                                <div className="size-8 rounded-sm border-2 border-dashed border-muted-foreground" />
+                                <div className="border-muted-foreground size-8 rounded-sm border-2 border-dashed" />
                               )}
                             </div>
                           </TooltipTrigger>
@@ -816,24 +820,24 @@ export const MemoryCardManager: React.FC = () => {
                         </Tooltip>
                       </TooltipProvider>
                     </div>
-                    <ScrollArea className="grow" type="always">
+                    <ScrollArea className="grow overflow-hidden" type="always">
                       <div className="bg-card/60 p-4">
                         {memoryCards
                           .find((card) => card.id === selectedCard)
                           ?.card.getSaves()
                           .map((save, index) => {
                             const card = memoryCards.find(
-                              (c) => c.id === selectedCard
+                              (c) => c.id === selectedCard,
                             )?.card;
                             if (!card) return null;
 
                             const parentSlot = findParentSlot(card, index);
                             const linkedSlots = findLinkedSlots(
                               card,
-                              parentSlot
+                              parentSlot,
                             );
                             const isSelected = linkedSlots.includes(
-                              selectedSlot ?? -1
+                              selectedSlot ?? -1,
                             );
                             return (
                               <MemoryCardSlot
@@ -851,7 +855,7 @@ export const MemoryCardManager: React.FC = () => {
                     </ScrollArea>
                   </div>
                   {sidebarOpen && (
-                    <div className="flex w-80 flex-col border-l border-border bg-muted/80">
+                    <div className="border-border bg-muted/80 flex w-80 flex-col border-l">
                       <div className="flex items-center justify-between p-4">
                         <div className="flex-row">
                           <div className="flex flex-row items-center space-x-1">
@@ -860,7 +864,7 @@ export const MemoryCardManager: React.FC = () => {
                               <Tooltip delayDuration={100}>
                                 <TooltipTrigger asChild>
                                   <Button variant="ghost" size="icon">
-                                    <InfoIcon className="size-3 text-muted-foreground" />
+                                    <InfoIcon className="text-muted-foreground size-3" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
@@ -872,7 +876,7 @@ export const MemoryCardManager: React.FC = () => {
                               </Tooltip>
                             </TooltipProvider>
                           </div>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-muted-foreground text-xs">
                             {selectedGameId}
                           </p>
                         </div>
@@ -888,16 +892,16 @@ export const MemoryCardManager: React.FC = () => {
                       <Separator />
                       {isLoading ? (
                         <div className="flex h-full items-center justify-center">
-                          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                          <div className="border-primary size-8 animate-spin rounded-full border-2 border-t-transparent"></div>
                         </div>
                       ) : gameDataError ? (
-                        <div className="text-center text-destructive">
+                        <div className="text-destructive text-center">
                           {gameDataError}
                         </div>
                       ) : gameData ? (
-                        <ScrollArea className="grow">
+                        <ScrollArea className="grow overflow-hidden">
                           <div className="space-y-6 p-4">
-                            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-muted">
+                            <div className="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-md">
                               {gameData.cover ? (
                                 <img
                                   src={gameData.cover}
@@ -905,7 +909,7 @@ export const MemoryCardManager: React.FC = () => {
                                   className="size-full object-cover"
                                 />
                               ) : (
-                                <div className="flex size-full items-center justify-center text-muted-foreground">
+                                <div className="text-muted-foreground flex size-full items-center justify-center">
                                   No cover available
                                 </div>
                               )}
@@ -914,23 +918,23 @@ export const MemoryCardManager: React.FC = () => {
                               <h4 className="mb-1 text-sm font-semibold">
                                 {gameData.officialTitle}
                               </h4>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-muted-foreground text-xs">
                                 Developed by {gameData.developer}
                               </p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-muted-foreground text-xs">
                                 Published by {gameData.publisher}
                               </p>
                             </div>
                             <Separator />
                             <div className="space-y-3">
                               <div>
-                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
                                   Genre / Style
                                 </p>
                                 <p className="text-sm">{gameData.genre}</p>
                               </div>
                               <div>
-                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
                                   Release Date
                                 </p>
                                 <p className="text-sm">
@@ -938,7 +942,7 @@ export const MemoryCardManager: React.FC = () => {
                                 </p>
                               </div>
                               <div>
-                                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
                                   Discs
                                 </p>
                                 <p className="text-sm">{gameData.discs}</p>
@@ -947,8 +951,8 @@ export const MemoryCardManager: React.FC = () => {
                           </div>
                         </ScrollArea>
                       ) : (
-                        <div className="flex h-full flex-col items-center justify-center p-4 pb-16 text-center text-muted-foreground">
-                          <div className="mb-4 size-16 rounded-full bg-muted/50 p-4">
+                        <div className="text-muted-foreground flex h-full flex-col items-center justify-center p-4 pb-16 text-center">
+                          <div className="bg-muted/50 mb-4 size-16 rounded-full p-4">
                             <FileIcon className="size-8" />
                           </div>
                           <p className="text-lg font-semibold">
@@ -963,7 +967,7 @@ export const MemoryCardManager: React.FC = () => {
                   )}
                 </>
               ) : (
-                <div className="flex grow flex-col items-center justify-center bg-card/80 p-4 text-muted-foreground">
+                <div className="bg-card/80 text-muted-foreground flex grow flex-col items-center justify-center p-4">
                   <p className="mb-4 text-lg">No memory card selected</p>
                   <p className="text-sm">
                     Open a memory card file or connect a device to get started
@@ -974,7 +978,7 @@ export const MemoryCardManager: React.FC = () => {
           </div>
 
           {/* Status bar */}
-          <div className="border-t border-border bg-muted/80 px-4 py-2 text-sm text-muted-foreground">
+          <div className="border-border bg-muted/80 text-muted-foreground border-t px-4 py-2 text-sm">
             {error ??
               connectionError ??
               (selectedCard

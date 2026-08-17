@@ -25,7 +25,7 @@ const NavItem: React.FC<NavItemProps> = ({ to, icon, label, isExpanded }) => (
     to={to}
     className={cn(
       "group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-      isExpanded ? "justify-start" : "justify-center"
+      isExpanded ? "justify-start" : "justify-center",
     )}
     activeProps={{
       className: "bg-accent text-accent-foreground",
@@ -50,15 +50,15 @@ export const Sidebar: React.FC = () => {
       className={cn(
         "flex h-screen flex-col transition-all duration-300 ease-in-out",
         "bg-background/80 backdrop-blur-xl",
-        "border-r border-border/50",
-        isExpanded ? "w-64" : "w-20"
+        "border-border/50 border-r",
+        isExpanded ? "w-64" : "w-20",
       )}
     >
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center space-x-3">
           <PSLogo className="size-8" />
           {isExpanded && (
-            <h1 className="text-lg font-semibold text-foreground">
+            <h1 className="text-foreground text-lg font-semibold">
               PSX WebTools
             </h1>
           )}
@@ -68,7 +68,7 @@ export const Sidebar: React.FC = () => {
           size="icon"
           onClick={() => setIsExpanded(!isExpanded)}
           aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
-          className="rounded-full hover:bg-accent/10"
+          className="hover:bg-accent/10 rounded-full"
         >
           {isExpanded ? (
             <ChevronLeft className="size-4" />
@@ -105,7 +105,7 @@ export const Sidebar: React.FC = () => {
         <>
           <Separator className="mt-2 opacity-50" />
 
-          <div className="p-4 text-center text-xs text-muted-foreground">
+          <div className="text-muted-foreground p-4 text-center text-xs">
             © {copyrightYear} Sebastian Barrenechea
           </div>
         </>

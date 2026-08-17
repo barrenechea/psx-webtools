@@ -59,7 +59,7 @@ const memcarduinoVersions = [{ name: "v0.9", value: "0.9" }];
 
 export function MemcarduinoFlasher() {
   const [selectedBoard, setSelectedBoard] = useState<BoardwithExtension | null>(
-    null
+    null,
   );
   const [selectedVersion, setSelectedVersion] = useState("");
   const { upload, progress, error, status } = useArduinoProgrammer();
@@ -106,8 +106,8 @@ export function MemcarduinoFlasher() {
     <div className="flex size-full items-center justify-center bg-transparent p-4">
       <div className="flex w-full max-w-4xl flex-col overflow-hidden rounded-xl shadow-xl">
         {/* Toolbar */}
-        <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
-          <h1 className="pl-2 font-light text-muted-foreground">
+        <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
+          <h1 className="text-muted-foreground pl-2 font-light">
             MemCARDuino Flasher{" "}
             <span className="text-xs text-sky-500 dark:text-sky-400">Beta</span>
           </h1>
@@ -115,18 +115,18 @@ export function MemcarduinoFlasher() {
 
         {/* Main content */}
         <div className="flex grow overflow-hidden">
-          <div className="flex grow flex-col bg-card/80">
-            <div className="flex items-center justify-between border-b border-border bg-muted/80 p-4 px-6">
+          <div className="bg-card/80 flex grow flex-col">
+            <div className="border-border bg-muted/80 flex items-center justify-between border-b p-4 px-6">
               <div>
                 <h2 className="mb-1 text-lg font-semibold">
                   Flash MemCARDuino Firmware
                 </h2>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   Select your board and MemCARDuino version to flash
                 </p>
               </div>
             </div>
-            <ScrollArea className="grow" type="auto">
+            <ScrollArea className="grow overflow-hidden" type="auto">
               <div className="space-y-6 p-6">
                 <div className="space-y-2">
                   <label htmlFor="board-select" className="text-sm font-medium">
@@ -136,11 +136,11 @@ export function MemcarduinoFlasher() {
                     value={selectedBoard?.name}
                     onValueChange={(value) =>
                       setSelectedBoard(
-                        arduinoBoards.find((b) => b.name === value) ?? null
+                        arduinoBoards.find((b) => b.name === value) ?? null,
                       )
                     }
                   >
-                    <SelectTrigger id="board-select" className="mt-2">
+                    <SelectTrigger id="board-select" className="mt-2 w-full">
                       <SelectValue placeholder="Choose a board" />
                     </SelectTrigger>
                     <SelectContent>
@@ -163,7 +163,7 @@ export function MemcarduinoFlasher() {
                     value={selectedVersion}
                     onValueChange={setSelectedVersion}
                   >
-                    <SelectTrigger id="version-select" className="mt-2">
+                    <SelectTrigger id="version-select" className="mt-2 w-full">
                       <SelectValue placeholder="Choose a version" />
                     </SelectTrigger>
                     <SelectContent>
@@ -206,14 +206,14 @@ export function MemcarduinoFlasher() {
         </div>
 
         {/* Status bar */}
-        <div className="flex items-center justify-between border-t border-border bg-muted/80 px-4 py-2 text-sm text-muted-foreground">
+        <div className="border-border bg-muted/80 text-muted-foreground flex items-center justify-between border-t px-4 py-2 text-sm">
           <span>
             Powered by{" "}
             <a
               href="https://github.com/barrenechea/stk500-esm"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-foreground"
+              className="hover:text-foreground underline"
             >
               stk500-esm
             </a>
@@ -224,7 +224,7 @@ export function MemcarduinoFlasher() {
               href="https://github.com/barrenechea/memcarduino-builder"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-foreground"
+              className="hover:text-foreground underline"
             >
               memcarduino-builder
             </a>
@@ -233,7 +233,7 @@ export function MemcarduinoFlasher() {
             href="https://github.com/ShendoXT/memcarduino"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center space-x-2 underline hover:text-foreground"
+            className="hover:text-foreground flex items-center space-x-2 underline"
           >
             <GHLogo className="size-4" />
             <span>View MemCARDuino on GitHub</span>

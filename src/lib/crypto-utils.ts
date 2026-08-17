@@ -9,7 +9,7 @@
 export async function aesCbcDecrypt(
   data: BufferSource,
   mcxKey: BufferSource,
-  mcxIv: BufferSource
+  mcxIv: BufferSource,
 ): Promise<Uint8Array> {
   const algorithm = { name: "AES-CBC", iv: mcxIv };
   const cryptoKey = await crypto.subtle.importKey(
@@ -17,7 +17,7 @@ export async function aesCbcDecrypt(
     mcxKey,
     algorithm,
     false,
-    ["decrypt"]
+    ["decrypt"],
   );
 
   try {
@@ -69,13 +69,13 @@ export async function createAesKey(key: BufferSource): Promise<CryptoKey> {
 export async function aesEcbProcessBlock(
   block: BufferSource,
   key: CryptoKey,
-  encrypt: boolean
+  encrypt: boolean,
 ): Promise<Uint8Array> {
   const iv = new Uint8Array(16); // Zero IV for ECB
   const result = await crypto.subtle[encrypt ? "encrypt" : "decrypt"](
     { name: "AES-CBC", iv },
     key,
-    block
+    block,
   );
   return new Uint8Array(result).slice(0, 16);
 }
@@ -90,7 +90,7 @@ export async function aesEcbProcessBlock(
 export async function aesEcbProcess(
   data: Uint8Array,
   key: BufferSource,
-  encrypt: boolean
+  encrypt: boolean,
 ): Promise<Uint8Array> {
   const cryptoKey = await createAesKey(key);
   const blockSize = 16;
@@ -113,7 +113,7 @@ export async function aesEcbProcess(
  */
 export async function aesEcbEncrypt(
   toEncrypt: Uint8Array,
-  key: BufferSource
+  key: BufferSource,
 ): Promise<Uint8Array> {
   return aesEcbProcess(toEncrypt, key, true);
 }
@@ -126,7 +126,7 @@ export async function aesEcbEncrypt(
  */
 export async function aesEcbDecrypt(
   toDecrypt: Uint8Array,
-  key: BufferSource
+  key: BufferSource,
 ): Promise<Uint8Array> {
   return aesEcbProcess(toDecrypt, key, false);
 }
@@ -154,7 +154,7 @@ export async function getHmac(
   data: Uint8Array,
   saltSeed: Uint8Array,
   saveKey: BufferSource,
-  saveIv: Uint8Array
+  saveIv: Uint8Array,
 ): Promise<Uint8Array> {
   const buffer = new Uint8Array(0x14);
   const salt = new Uint8Array(0x40);

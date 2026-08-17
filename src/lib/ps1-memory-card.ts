@@ -43,10 +43,10 @@ export enum SingleSaveTypes {
 
 export const CardExtensions = {
   [CardTypes.Raw]: ".mcr",
-  [CardTypes.Gme]: ".gme", 
+  [CardTypes.Gme]: ".gme",
   [CardTypes.Vgs]: ".vgs",
   [CardTypes.Vmp]: ".vmp",
-  [CardTypes.Mcx]: ".mcx"
+  [CardTypes.Mcx]: ".mcx",
 } as const;
 
 export interface SaveInfo {
@@ -72,7 +72,7 @@ class PS1MemoryCard {
   private cardType: CardTypes = CardTypes.Raw;
   private saves: SaveInfo[] = [];
   private slotTypes: SlotTypes[] = new Array<SlotTypes>(SLOT_COUNT).fill(
-    SlotTypes.Formatted
+    SlotTypes.Formatted,
   );
   private iconPalette: IconPalette[] = [];
   private iconData: SlotIconData[] = [];
@@ -83,11 +83,11 @@ class PS1MemoryCard {
   // New properties to match C# implementation
   private headerData: Uint8Array[] = Array.from(
     { length: SLOT_COUNT },
-    () => new Uint8Array(HEADER_SIZE)
+    () => new Uint8Array(HEADER_SIZE),
   );
   private saveData: Uint8Array[] = Array.from(
     { length: SLOT_COUNT },
-    () => new Uint8Array(BYTES_PER_SLOT)
+    () => new Uint8Array(BYTES_PER_SLOT),
   );
 
   private saveComments: string[] = new Array<string>(SLOT_COUNT).fill("");
@@ -100,13 +100,13 @@ class PS1MemoryCard {
 
   private initializeIconData(): void {
     this.iconPalette = Array.from({ length: SLOT_COUNT }, () =>
-      Array.from({ length: 16 }, (): RGBAColor => [0, 0, 0, 0])
+      Array.from({ length: 16 }, (): RGBAColor => [0, 0, 0, 0]),
     );
 
     this.iconData = Array.from({ length: SLOT_COUNT }, () =>
       Array.from({ length: 3 }, () =>
-        Array.from({ length: ICON_SIZE * ICON_SIZE }, () => 0)
-      )
+        Array.from({ length: ICON_SIZE * ICON_SIZE }, () => 0),
+      ),
     );
   }
 
@@ -122,7 +122,7 @@ class PS1MemoryCard {
   public loadFromRawData(data: Uint8Array): void {
     if (data.length !== TOTAL_CARD_SIZE) {
       throw new Error(
-        `Invalid data size. Expected ${TOTAL_CARD_SIZE} bytes, got ${data.length} bytes.`
+        `Invalid data size. Expected ${TOTAL_CARD_SIZE} bytes, got ${data.length} bytes.`,
       );
     }
     this.rawData = data;
@@ -178,7 +178,7 @@ class PS1MemoryCard {
           return { cardType: CardTypes.Gme, startOffset: 3904 };
         } else {
           throw new Error(
-            `'${this.cardName}' is not a supported Memory Card format.`
+            `'${this.cardName}' is not a supported Memory Card format.`,
           );
         }
     }
@@ -188,7 +188,7 @@ class PS1MemoryCard {
     const headerBytes = data.slice(0, 11);
     const trimmedBytes = headerBytes.filter(
       // added 0x80 for PMV
-      (byte) => byte !== 0x0 && byte !== 0x1 && byte !== 0x3f && byte !== 0x80
+      (byte) => byte !== 0x0 && byte !== 0x1 && byte !== 0x3f && byte !== 0x80,
     );
     return new TextDecoder("ascii").decode(trimmedBytes);
   }
@@ -207,7 +207,7 @@ class PS1MemoryCard {
   private loadGMEComments(data: Uint8Array): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
       const comment = this.arrayToString(
-        data.slice(64 + 256 * i, 64 + 256 * (i + 1))
+        data.slice(64 + 256 * i, 64 + 256 * (i + 1)),
       ).replace(/\0/g, "");
       this.saveComments[i] = comment;
     }
@@ -233,12 +233,12 @@ class PS1MemoryCard {
     for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
       // Load header data
       this.headerData[slotNumber].set(
-        this.rawData.slice(128 + slotNumber * 128, 256 + slotNumber * 128)
+        this.rawData.slice(128 + slotNumber * 128, 256 + slotNumber * 128),
       );
 
       // Load save data
       this.saveData[slotNumber].set(
-        this.rawData.slice(8192 + slotNumber * 8192, 16384 + slotNumber * 8192)
+        this.rawData.slice(8192 + slotNumber * 8192, 16384 + slotNumber * 8192),
       );
     }
   }
@@ -246,16 +246,10 @@ class PS1MemoryCard {
   private writeDataToRawCard(): void {
     for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
       // Write header data
-      this.rawData.set(
-        this.headerData[slotNumber],
-        128 + slotNumber * 128
-      );
+      this.rawData.set(this.headerData[slotNumber], 128 + slotNumber * 128);
 
       // Write save data
-      this.rawData.set(
-        this.saveData[slotNumber],
-        8192 + slotNumber * 8192
-      );
+      this.rawData.set(this.saveData[slotNumber], 8192 + slotNumber * 8192);
     }
   }
 
@@ -372,13 +366,13 @@ class PS1MemoryCard {
 
   private getProductCode(slotNumber: number): string {
     return this.arrayToString(
-      this.headerData[slotNumber].slice(12, 22)
+      this.headerData[slotNumber].slice(12, 22),
     ).replace(/\0/g, "");
   }
 
   private getIdentifier(slotNumber: number): string {
     return this.arrayToString(
-      this.headerData[slotNumber].slice(22, 30)
+      this.headerData[slotNumber].slice(22, 30),
     ).replace(/\0/g, "");
   }
 
@@ -386,7 +380,7 @@ class PS1MemoryCard {
     const nameBytes = this.saveData[slotNumber].slice(4, 68);
     let nullTerminator = nameBytes.findIndex(
       (byte, index) =>
-        index % 2 === 0 && byte === 0 && nameBytes[index + 1] === 0
+        index % 2 === 0 && byte === 0 && nameBytes[index + 1] === 0,
     );
     if (nullTerminator === -1) nullTerminator = 64;
 
@@ -394,7 +388,7 @@ class PS1MemoryCard {
     try {
       const shiftJisDecoder = new TextDecoder("shift-jis");
       const decodedName = shiftJisDecoder.decode(
-        nameBytes.slice(0, nullTerminator)
+        nameBytes.slice(0, nullTerminator),
       );
       return this.normalizeFullWidthChars(decodedName);
     } catch (error) {
@@ -569,7 +563,7 @@ class PS1MemoryCard {
     for (let i = 0; i < saveSlots.length; i++) {
       saveBytes.set(
         this.saveData[saveSlots[i]],
-        HEADER_SIZE + i * BYTES_PER_SLOT
+        HEADER_SIZE + i * BYTES_PER_SLOT,
       );
     }
 
@@ -578,7 +572,7 @@ class PS1MemoryCard {
 
   public setSaveBytes(slotNumber: number, saveBytes: Uint8Array): boolean {
     const requiredSlots = Math.ceil(
-      (saveBytes.length - HEADER_SIZE) / BYTES_PER_SLOT
+      (saveBytes.length - HEADER_SIZE) / BYTES_PER_SLOT,
     );
     const freeSlots = this.findFreeSlots(slotNumber, requiredSlots);
 
@@ -599,7 +593,7 @@ class PS1MemoryCard {
     for (let i = 0; i < requiredSlots; i++) {
       const srcStart = HEADER_SIZE + i * BYTES_PER_SLOT;
       this.saveData[freeSlots[i]].set(
-        saveBytes.slice(srcStart, srcStart + BYTES_PER_SLOT)
+        saveBytes.slice(srcStart, srcStart + BYTES_PER_SLOT),
       );
     }
 
@@ -642,7 +636,7 @@ class PS1MemoryCard {
     slotNumber: number,
     productCode: string,
     identifier: string,
-    region: string
+    region: string,
   ): void {
     productCode = productCode.padEnd(10, " ").slice(0, 10);
     identifier = identifier.padEnd(8, "\0").slice(0, 8);
@@ -666,11 +660,11 @@ class PS1MemoryCard {
     this.headerData[slotNumber].set(encoder.encode(region), headerStart);
     this.headerData[slotNumber].set(
       encoder.encode(productCode),
-      headerStart + 2
+      headerStart + 2,
     );
     this.headerData[slotNumber].set(
       encoder.encode(identifier),
-      headerStart + 12
+      headerStart + 12,
     );
 
     this.writeDataToRawCard();
@@ -697,7 +691,7 @@ class PS1MemoryCard {
 
   public async saveMemoryCard(
     fileName: string,
-    cardType: CardTypes
+    cardType: CardTypes,
   ): Promise<boolean> {
     let outputData: Uint8Array;
 
@@ -720,9 +714,13 @@ class PS1MemoryCard {
 
     try {
       const extension = this.getExtensionForType(cardType);
-      const fileNameWithExt = fileName.endsWith(extension) ? fileName : fileName + extension;
-      
-      const blob = new Blob([new Uint8Array(outputData)], { type: "application/octet-stream" });
+      const fileNameWithExt = fileName.endsWith(extension)
+        ? fileName
+        : fileName + extension;
+
+      const blob = new Blob([new Uint8Array(outputData)], {
+        type: "application/octet-stream",
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -801,7 +799,7 @@ class PS1MemoryCard {
   public async saveSingleSave(
     fileName: string,
     slotNumber: number,
-    saveType: SingleSaveTypes
+    saveType: SingleSaveTypes,
   ): Promise<boolean> {
     const saveData = this.getSaveBytes(slotNumber);
     let outputData: Uint8Array;
@@ -821,10 +819,10 @@ class PS1MemoryCard {
         const arHeader = new Uint8Array(54);
         const encoder = new TextEncoder();
         const productCodeBytes = encoder.encode(
-          this.saves[slotNumber].productCode
+          this.saves[slotNumber].productCode,
         );
         const identifierBytes = encoder.encode(
-          this.saves[slotNumber].identifier
+          this.saves[slotNumber].identifier,
         );
         const nameBytes = encoder.encode(this.saves[slotNumber].name);
         arHeader.set(productCodeBytes, 0);
@@ -832,14 +830,16 @@ class PS1MemoryCard {
         arHeader.set(nameBytes, 21);
         outputData = this.concatUint8Arrays(
           arHeader,
-          saveData.slice(HEADER_SIZE)
+          saveData.slice(HEADER_SIZE),
         );
         break;
       }
     }
 
     try {
-      const blob = new Blob([new Uint8Array(outputData)], { type: "application/octet-stream" });
+      const blob = new Blob([new Uint8Array(outputData)], {
+        type: "application/octet-stream",
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -878,7 +878,7 @@ class PS1MemoryCard {
 
   public async openSingleSave(
     file: File,
-    slotNumber: number
+    slotNumber: number,
   ): Promise<boolean> {
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -928,14 +928,14 @@ class PS1MemoryCard {
     }
     // // Return a blank icon if no data is available
     return new Array<IconData>(3).fill(
-      new Array<number>(ICON_SIZE * ICON_SIZE).fill(0)
+      new Array<number>(ICON_SIZE * ICON_SIZE).fill(0),
     );
   }
 
   public getIconPalette(slotNumber: number): IconPalette {
     if (this.iconPalette[slotNumber]) {
       return this.iconPalette[slotNumber].map(([r, g, b]) =>
-        (r | g | b) === 0 ? [0, 0, 0, 0] : [r, g, b, 255]
+        (r | g | b) === 0 ? [0, 0, 0, 0] : [r, g, b, 255],
       );
     }
     return new Array<RGBAColor>(16).fill([0, 0, 0, 0]); // Return a blank palette if no data is available

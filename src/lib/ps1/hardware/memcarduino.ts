@@ -52,12 +52,12 @@ export class MemCARDuino extends HardwareInterface {
     deviceType: string,
     baudRate: number,
     signalsConfig: SerialOutputSignals[],
-    onStatusUpdate: (status: string) => void
+    onStatusUpdate: (status: string) => void,
   ): Promise<string | null> {
     try {
       // Check if Web Serial API is supported
-      if (!('serial' in navigator)) {
-        return 'Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.';
+      if (!("serial" in navigator)) {
+        return "Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.";
       }
 
       onStatusUpdate("Requesting serial port access...");
@@ -94,7 +94,7 @@ export class MemCARDuino extends HardwareInterface {
       this.firmwareVersion = versionData[0];
 
       onStatusUpdate(
-        `MemCARDuino detected. Firmware version: ${this.firmware()}`
+        `MemCARDuino detected. Firmware version: ${this.firmware()}`,
       );
       return null; // Success
     } catch (error) {
@@ -143,14 +143,14 @@ export class MemCARDuino extends HardwareInterface {
     return new Promise((_, reject) =>
       setTimeout(
         () => reject(new Error(`Operation timed out after ${ms}ms`)),
-        ms
-      )
+        ms,
+      ),
     );
   }
 
   private async readDataFromPort(
     count: number,
-    timeout = 5000
+    timeout = 5000,
   ): Promise<Uint8Array> {
     if (!this.reader) throw new Error("Port not opened");
     const result = new Uint8Array(count);
@@ -166,7 +166,7 @@ export class MemCARDuino extends HardwareInterface {
         offset += value.length;
       } catch (error) {
         console.error(
-          `Error reading data from port: ${(error as Error).message}`
+          `Error reading data from port: ${(error as Error).message}`,
         );
         this.reader.releaseLock();
         return new Uint8Array(0);
@@ -176,7 +176,7 @@ export class MemCARDuino extends HardwareInterface {
   }
 
   override async readMemoryCardFrame(
-    frameNumber: number
+    frameNumber: number,
   ): Promise<Uint8Array | null> {
     const frameMsb = (frameNumber >> 8) & 0xff;
     const frameLsb = frameNumber & 0xff;
@@ -206,7 +206,7 @@ export class MemCARDuino extends HardwareInterface {
 
   override async writeMemoryCardFrame(
     frameNumber: number,
-    frameData: Uint8Array
+    frameData: Uint8Array,
   ): Promise<boolean> {
     const frameMsb = (frameNumber >> 8) & 0xff;
     const frameLsb = frameNumber & 0xff;
@@ -218,7 +218,7 @@ export class MemCARDuino extends HardwareInterface {
 
     await this.sendDataToPort(MCinoCommands.MCW);
     await this.writer?.write(
-      new Uint8Array([frameMsb, frameLsb, ...frameData, xorData])
+      new Uint8Array([frameMsb, frameLsb, ...frameData, xorData]),
     );
 
     const response = await this.readDataFromPort(1);
@@ -249,7 +249,7 @@ export class MemCARDuino extends HardwareInterface {
   }
 
   override async dumpPocketStationBIOS(
-    part: number
+    part: number,
   ): Promise<Uint8Array | null> {
     if (this.firmwareVersion < MemCARDuino.PocketCommandsMin) {
       return null;

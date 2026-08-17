@@ -28,7 +28,7 @@ export default function AlphaNoticeDialog({
               an early alpha stage, and many features are still under
               development.
             </p>
-            <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4">
+            <div className="border-destructive/20 bg-destructive/10 rounded-lg border p-4">
               <h4 className="mb-2 font-medium">Limited Functionality Notice</h4>
               <ul className="list-inside list-disc space-y-1 text-sm">
                 <li>Copy/Move/Paste functionality is experimental</li>
@@ -37,7 +37,7 @@ export default function AlphaNoticeDialog({
                 <li>Some MemCARDuino features may be unstable</li>
               </ul>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Please note that this is a work in progress, and we appreciate
               your understanding and feedback as we continue to improve the
               application.

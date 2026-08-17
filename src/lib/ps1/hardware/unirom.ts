@@ -42,7 +42,7 @@ export class Unirom extends HardwareInterface {
 
   private async readExactBytes(
     count: number,
-    timeout = 1000
+    timeout = 1000,
   ): Promise<Uint8Array> {
     if (!this.reader) throw new Error("Port not opened");
 
@@ -60,7 +60,7 @@ export class Unirom extends HardwareInterface {
 
       result.set(
         value.slice(0, Math.min(value.length, count - offset)),
-        offset
+        offset,
       );
       offset += value.length;
     }
@@ -107,7 +107,7 @@ export class Unirom extends HardwareInterface {
   }
 
   private async initUnirom(
-    onStatusUpdate: (status: string) => void
+    onStatusUpdate: (status: string) => void,
   ): Promise<void> {
     onStatusUpdate("Initializing Unirom...");
     await this.flushInput();
@@ -146,12 +146,12 @@ export class Unirom extends HardwareInterface {
     _deviceType: string,
     _baudRate: number,
     _signalsConfig: SerialOutputSignals[],
-    onStatusUpdate: (status: string) => void
+    onStatusUpdate: (status: string) => void,
   ): Promise<string | null> {
     try {
       // Check if Web Serial API is supported
-      if (!('serial' in navigator)) {
-        return 'Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.';
+      if (!("serial" in navigator)) {
+        return "Web Serial API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.";
       }
 
       onStatusUpdate("Requesting serial port access...");
@@ -194,7 +194,7 @@ export class Unirom extends HardwareInterface {
   }
 
   override async readMemoryCardFrame(
-    frameNumber: number
+    frameNumber: number,
   ): Promise<Uint8Array | null> {
     try {
       if (!this.storedInRam) {
@@ -231,7 +231,7 @@ export class Unirom extends HardwareInterface {
         const checksumData = await this.readExactBytes(4);
         this.lastChecksum = new DataView(checksumData.buffer).getUint32(
           0,
-          true
+          true,
         );
       }
 
@@ -244,7 +244,7 @@ export class Unirom extends HardwareInterface {
 
   override async writeMemoryCardFrame(
     frameNumber: number,
-    frameData: Uint8Array
+    frameData: Uint8Array,
   ): Promise<boolean> {
     try {
       // First frame setup
@@ -253,7 +253,7 @@ export class Unirom extends HardwareInterface {
         new DataView(setupData.buffer).setUint32(
           0,
           this.frameCount * 128,
-          true
+          true,
         ); // Size in bytes
         new DataView(setupData.buffer).setUint32(4, this.lastChecksum, true);
 
@@ -270,7 +270,7 @@ export class Unirom extends HardwareInterface {
       // Process complete chunks (2048 bytes = 16 frames)
       if ((frameNumber + 1) % 16 === 0 || frameNumber === 1023) {
         const success = await this.writeMemoryCardChunk(
-          this.chunkBuffer.slice(0, this.chunkBufferIndex)
+          this.chunkBuffer.slice(0, this.chunkBufferIndex),
         );
         this.chunkBufferIndex = 0;
         return success;

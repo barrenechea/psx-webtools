@@ -52,11 +52,11 @@ function mapRegionToApi(region: string): string {
 
 export async function fetchGameData(
   region: string,
-  gameId: string
+  gameId: string,
 ): Promise<GameData> {
   const apiRegion = mapRegionToApi(region);
   const response = await fetch(
-    `https://psxdata.barrenechea.cl/${apiRegion}/${gameId}.json`
+    `https://psxdata.barrenechea.cl/${apiRegion}/${gameId}.json`,
   );
 
   if (!response.ok) {

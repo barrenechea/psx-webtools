@@ -80,12 +80,12 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
     >
       {children}
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-xs transition-opacity duration-300">
-          <div className="rounded-lg border-2 border-dashed border-primary p-8 text-center">
+        <div className="bg-background/80 absolute inset-0 z-50 flex items-center justify-center backdrop-blur-xs transition-opacity duration-300">
+          <div className="border-primary rounded-lg border-2 border-dashed p-8 text-center">
             <p className="text-lg font-semibold">
               Drop your memory card file here
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Supported formats: .mcr, .mcd, .gme, .vgs, .vmp, .psm, .ps1, .bin,
               .mem, .psx, .pda, .mc, .ddf, .mc1, .mc2, .srm
             </p>

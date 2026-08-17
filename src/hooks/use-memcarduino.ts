@@ -7,7 +7,7 @@ import PS1MemoryCard from "@/lib/ps1-memory-card";
 
 export function useMemcarduino() {
   const [memcarduino, setMemcarduino] = useState<HardwareInterface | null>(
-    null
+    null,
   );
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +17,7 @@ export function useMemcarduino() {
     deviceType: string,
     baudRate: number,
     signalsConfig: SerialOutputSignals[],
-    onStatusUpdate: (status: string) => void
+    onStatusUpdate: (status: string) => void,
   ) => {
     try {
       const device = deviceType === "unirom" ? new Unirom() : new MemCARDuino();
@@ -27,7 +27,7 @@ export function useMemcarduino() {
         deviceType,
         baudRate,
         signalsConfig,
-        onStatusUpdate
+        onStatusUpdate,
       );
       if (result === null) {
         setMemcarduino(device);
@@ -61,7 +61,7 @@ export function useMemcarduino() {
   };
 
   const readMemoryCard = async (
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
   ): Promise<PS1MemoryCard | null> => {
     if (!memcarduino) {
       setError("MemCARDuino not connected");
@@ -94,7 +94,7 @@ export function useMemcarduino() {
 
   const writeMemoryCard = async (
     card: PS1MemoryCard,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
   ): Promise<boolean> => {
     if (!memcarduino) {
       setError("MemCARDuino not connected");

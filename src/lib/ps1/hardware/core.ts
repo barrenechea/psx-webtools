@@ -118,7 +118,7 @@ export abstract class HardwareInterface {
     port: string,
     speed: number,
     signalsConfig: SerialOutputSignals[],
-    onStatusUpdate: (status: string) => void
+    onStatusUpdate: (status: string) => void,
   ): Promise<string | null> {
     console.error(port);
     console.error(speed);
@@ -151,7 +151,7 @@ export abstract class HardwareInterface {
 
   writeMemoryCardFrame(
     frameNumber: number,
-    frameData: Uint8Array
+    frameData: Uint8Array,
   ): Promise<boolean> {
     console.error("writeMemoryCardFrame not implemented");
     console.error(frameNumber);

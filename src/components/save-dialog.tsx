@@ -65,7 +65,7 @@ export const SaveDialog: React.FC<SaveDialogProps> = ({
               value={saveType.toString()}
               onValueChange={(value) => setSaveType(parseInt(value))}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select format" />
               </SelectTrigger>
               <SelectContent>

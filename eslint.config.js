@@ -5,6 +5,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
+import eslintConfigPrettier from "eslint-config-prettier/flat";
 
 export default defineConfig([
   globalIgnores(["dist"]),
@@ -32,4 +33,6 @@ export default defineConfig([
       "simple-import-sort/exports": "error",
     },
   },
+  // Prettier config MUST be last to override formatting rules
+  eslintConfigPrettier,
 ]);
