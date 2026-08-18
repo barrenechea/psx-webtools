@@ -25,7 +25,7 @@ const TanStackRouterDevtools = import.meta.env.PROD
 export const Route = createRootRoute({
   component: () => (
     <TooltipProvider delayDuration={0}>
-      <div className="flex w-full flex-row">
+      <div className="flex h-screen w-full flex-row">
         <Sidebar />
         <div className="relative flex-1">
           <div className="animate-background-shine bg-gradient-shine dark:bg-gradient-shine-dark absolute inset-0 bg-[length:400%]" />

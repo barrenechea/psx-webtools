@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+
+import { cn } from "@/lib/utils";
 
 interface DragDropWrapperProps {
-  onFileDrop: (file: File) => void;
+  onFileDrop: (files: File[]) => void;
   children: React.ReactNode;
 }
 
@@ -10,88 +12,67 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
   children,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const dragCounter = useRef(0);
-  const timeoutRef = useRef<number | null>(null);
-
-  const handleDrag = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
 
   const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    dragCounter.current++;
-    if (event.dataTransfer.items && event.dataTransfer.items.length > 0) {
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    dragCounter.current--;
-    if (dragCounter.current === 0) {
-      setIsDragging(false);
-    }
+    setIsDragging(true);
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
-    if (timeoutRef.current !== null) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = window.setTimeout(() => {
-      if (dragCounter.current > 0) {
-        setIsDragging(true);
-      }
-    }, 50);
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(false);
-    dragCounter.current = 0;
     const files = Array.from(event.dataTransfer.files);
     if (files.length > 0) {
-      onFileDrop(files[0]);
+      onFileDrop(files);
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
+  const handleOverlayDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.target === event.currentTarget) {
+      setIsDragging(false);
+    }
+  };
 
   return (
     <div
       onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      onDrag={handleDrag}
-      className="flex size-full justify-center"
+      className="relative flex h-full w-full justify-center"
     >
       {children}
-      {isDragging && (
-        <div className="bg-background/80 absolute inset-0 z-50 flex items-center justify-center backdrop-blur-xs transition-opacity duration-300">
-          <div className="border-primary rounded-lg border-2 border-dashed p-8 text-center">
-            <p className="text-lg font-semibold">
-              Drop your memory card file here
-            </p>
-            <p className="text-muted-foreground text-sm">
-              Supported formats: .mcr, .mcd, .gme, .vgs, .vmp, .psm, .ps1, .bin,
-              .mem, .psx, .pda, .mc, .ddf, .mc1, .mc2, .srm
-            </p>
-          </div>
+      <div
+        aria-hidden={!isDragging}
+        onDragLeave={handleOverlayDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={cn(
+          "absolute inset-0 z-50 flex items-center justify-center backdrop-blur-xs transition-opacity duration-200",
+          isDragging
+            ? "bg-background/80 opacity-100"
+            : "pointer-events-none invisible opacity-0",
+        )}
+      >
+        <div className="border-primary pointer-events-none rounded-lg border-2 border-dashed p-8 text-center">
+          <p className="text-lg font-semibold">
+            Drop your memory card files here
+          </p>
+          <p className="text-muted-foreground text-sm">
+            Supported formats: .mcr, .mcd, .gme, .vgs, .vmp, .psm, .ps1, .bin,
+            .mem, .psx, .pda, .mc, .ddf, .mc1, .mc2, .srm
+          </p>
         </div>
-      )}
+      </div>
     </div>
   );
 };

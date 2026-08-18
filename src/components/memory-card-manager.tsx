@@ -11,7 +11,7 @@ import {
   UsbIcon,
   XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import SaveMemoryCardDialog from "@/components/save-dialog";
@@ -206,6 +206,7 @@ export const MemoryCardManager: React.FC = () => {
     null,
   );
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
     isConnected,
@@ -346,46 +347,51 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const handleFileOpen = async (file?: File) => {
-    try {
-      const selectedFile = file ?? (await selectFile());
-      if (selectedFile) {
+  const handleFilesOpen = async (files: File[]) => {
+    if (files.length === 0) return;
+
+    const openedCards: MemoryCard[] = [];
+    const errors: string[] = [];
+
+    for (const file of files) {
+      try {
         const card = new PS1MemoryCard();
-        await card.loadFromFile(selectedFile);
-
-        const newCard: MemoryCard = {
+        await card.loadFromFile(file);
+        openedCards.push({
           id: nextCardId(),
-          name: selectedFile.name,
+          name: file.name,
           type: "file",
-          source: selectedFile.name,
-          card: card,
-        };
-
-        setMemoryCards((prevCards) => [...prevCards, newCard]);
-        setSelectedCard(newCard.id);
-        setError(null);
+          source: file.name,
+          card,
+        });
+      } catch (err) {
+        errors.push(`${file.name}: ${(err as Error).message}`);
       }
-    } catch (err) {
-      setError(`Error opening file: ${(err as Error).message}`);
     }
+
+    if (openedCards.length > 0) {
+      setMemoryCards((prevCards) => [...prevCards, ...openedCards]);
+      setSelectedCard(openedCards[openedCards.length - 1].id);
+    }
+
+    setError(
+      errors.length > 0 ? `Error opening file: ${errors.join("; ")}` : null,
+    );
   };
 
-  const handleFileDrop = async (file: File) => {
-    await handleFileOpen(file);
+  const handleOpenFromFileClick = () => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
   };
 
-  const selectFile = (): Promise<File | undefined> => {
-    return new Promise((resolve) => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept =
-        ".mcr,.mcd,.gme,.vgs,.vmp,.psm,.ps1,.bin,.mem,.psx,.pda,.mc,.ddf,.mc1,.mc2,.srm";
-      input.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        resolve(file);
-      };
-      input.click();
-    });
+  const handleFileInputChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    void handleFilesOpen(files);
   };
 
   const handleDelete = () => {
@@ -538,9 +544,10 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-transparent p-4">
-      <DragDropWrapper onFileDrop={(file) => void handleFileDrop(file)}>
-        <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
+    <>
+      <DragDropWrapper onFileDrop={(files) => void handleFilesOpen(files)}>
+        <div className="flex h-full w-full items-center justify-center bg-transparent p-4">
+          <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
           {/* Toolbar */}
           <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
             <h1 className="text-muted-foreground pl-2 font-light">
@@ -664,10 +671,18 @@ export const MemoryCardManager: React.FC = () => {
                 </div>
               </ScrollArea>
               <div className="border-border space-y-1 border-t p-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".mcr,.mcd,.gme,.vgs,.vmp,.psm,.ps1,.bin,.mem,.psx,.pda,.mc,.ddf,.mc1,.mc2,.srm"
+                  className="sr-only"
+                  multiple
+                  onChange={handleFileInputChange}
+                />
                 <Button
                   variant="ghost"
                   className="hover:bg-card/80 w-full justify-start"
-                  onClick={() => void handleFileOpen()}
+                  onClick={handleOpenFromFileClick}
                 >
                   <FileIcon className="mr-2 size-4" />
                   Open from file
@@ -994,7 +1009,8 @@ export const MemoryCardManager: React.FC = () => {
           isOpen={isAlphaNoticeOpen}
           onClose={() => setIsAlphaNoticeOpen(false)}
         />
-      </DragDropWrapper>
+      </div>
+    </DragDropWrapper>
       <MemcarduinoConnectDialog
         isOpen={isConnectDialogOpen}
         onOpenChange={setIsConnectDialogOpen}
@@ -1007,6 +1023,6 @@ export const MemoryCardManager: React.FC = () => {
         defaultFileName={`${memoryCards.find((c) => c.id === selectedCard)?.name ?? "memory_card"}.mcr`}
         onSave={handleSaveConfirm}
       />
-    </div>
+    </>
   );
 };
