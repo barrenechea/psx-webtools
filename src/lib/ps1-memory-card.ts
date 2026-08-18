@@ -1,4 +1,4 @@
-import { aesCbcDecrypt, getHmac } from "@/lib/crypto-utils";
+import { aesCbcDecrypt, aesCbcEncrypt, getHmac } from "@/lib/crypto-utils";
 import {
   generateSaltSeed,
   mcxIv,
@@ -142,7 +142,8 @@ class PS1MemoryCard {
     if (this.cardType === CardTypes.Gme) {
       this.loadGMEComments(fileData);
     } else if (this.cardType === CardTypes.Mcx) {
-      this.rawData = await this.decryptMcxCard(fileData);
+      const decrypted = await this.decryptMcxCard(fileData);
+      this.rawData = decrypted.slice(0x80, 0x80 + TOTAL_CARD_SIZE);
     }
 
     this.cardName = file.name;
@@ -706,7 +707,7 @@ class PS1MemoryCard {
         outputData = await this.makeVmpCard();
         break;
       case CardTypes.Mcx:
-        outputData = this.makeMcxCard();
+        outputData = await this.makeMcxCard();
         break;
       default:
         outputData = this.rawData;
@@ -790,10 +791,18 @@ class PS1MemoryCard {
     return vmpCard;
   }
 
-  private makeMcxCard(): Uint8Array {
-    // Implement MCX card creation logic
-    // This is a placeholder and should be replaced with actual MCX card creation
-    return this.rawData;
+  private async makeMcxCard(): Promise<Uint8Array> {
+    const mcxCard = new Uint8Array(0x200a0);
+    mcxCard.set(this.rawData.subarray(0, 0x20000), 0x80);
+
+    const hash = await crypto.subtle.digest(
+      "SHA-256",
+      mcxCard.subarray(0, 0x20080),
+    );
+    mcxCard.set(new Uint8Array(hash), 0x20080);
+
+    mcxCard.set(await aesCbcEncrypt(mcxCard, mcxKey, mcxIv));
+    return mcxCard;
   }
 
   public async saveSingleSave(

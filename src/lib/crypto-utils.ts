@@ -1,35 +1,4 @@
 /**
- * Decrypts data using AES-CBC algorithm.
- * @param data - The encrypted data as a Uint8Array.
- * @param mcxKey - The key used for decryption as a Uint8Array.
- * @param mcxIv - The initialization vector used for decryption as a Uint8Array.
- * @returns A Promise that resolves to the decrypted data as a Uint8Array.
- * @throws Will throw an error if decryption fails.
- */
-export async function aesCbcDecrypt(
-  data: BufferSource,
-  mcxKey: BufferSource,
-  mcxIv: BufferSource,
-): Promise<Uint8Array> {
-  const algorithm = { name: "AES-CBC", iv: mcxIv };
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    mcxKey,
-    algorithm,
-    false,
-    ["decrypt"],
-  );
-
-  try {
-    const decrypted = await crypto.subtle.decrypt(algorithm, cryptoKey, data);
-    return new Uint8Array(decrypted);
-  } catch (error) {
-    console.error("Decryption failed:", error);
-    throw new Error("Failed to decrypt data", { cause: error });
-  }
-}
-
-/**
  * Converts a string to a Uint8Array.
  * @param str - The input string to convert.
  * @returns A Uint8Array representation of the input string.
@@ -257,6 +226,49 @@ function aesEcbDecryptBlocks(data: Uint8Array, key: Uint8Array): Uint8Array {
   return out;
 }
 
+function aesCbcEncryptBlocks(
+  data: Uint8Array,
+  key: Uint8Array,
+  iv: Uint8Array,
+): Uint8Array {
+  const roundKeys = aesExpandKey(key);
+  const blockCount = Math.ceil(data.length / 16);
+  const out = new Uint8Array(blockCount * 16);
+  let prev: Uint8Array = iv.slice(0, 16);
+  for (let b = 0; b < blockCount; b++) {
+    const start = b * 16;
+    const block = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+      const ptByte = start + i < data.length ? data[start + i] : 0;
+      block[i] = ptByte ^ prev[i];
+    }
+    const ct = aesEncryptBlock(block, roundKeys);
+    out.set(ct, b * 16);
+    prev = ct;
+  }
+  return out;
+}
+
+function aesCbcDecryptBlocks(
+  data: Uint8Array,
+  key: Uint8Array,
+  iv: Uint8Array,
+): Uint8Array {
+  const n = data.length - (data.length % 16);
+  const roundKeys = aesExpandKey(key);
+  const out = new Uint8Array(n);
+  let prev: Uint8Array = iv.slice(0, 16);
+  for (let b = 0; b < n; b += 16) {
+    const ctBlock = data.subarray(b, b + 16);
+    const ptBlock = aesDecryptBlock(ctBlock, roundKeys);
+    for (let i = 0; i < 16; i++) {
+      out[b + i] = ptBlock[i] ^ prev[i];
+    }
+    prev = ctBlock;
+  }
+  return out;
+}
+
 function asUint8Array(bufferSource: BufferSource): Uint8Array {
   if (bufferSource instanceof Uint8Array) return bufferSource;
   if (bufferSource instanceof ArrayBuffer) return new Uint8Array(bufferSource);
@@ -301,6 +313,39 @@ export async function aesEcbDecrypt(
 ): Promise<Uint8Array> {
   const keyBytes = asUint8Array(key);
   return aesEcbDecryptBlocks(toDecrypt, keyBytes);
+}
+
+/**
+ * Encrypts data using AES-128-CBC mode with zero padding (matching the
+ * reference implementation's PaddingMode.Zeros). A trailing partial block is
+ * zero-padded; when the input is already block-aligned no extra block is added.
+ * @param toEncrypt - The data to encrypt as a Uint8Array.
+ * @param key - The 16-byte key.
+ * @param iv - The 16-byte initialization vector.
+ * @returns A Promise that resolves to the encrypted data as a Uint8Array.
+ */
+export async function aesCbcEncrypt(
+  toEncrypt: Uint8Array,
+  key: BufferSource,
+  iv: BufferSource,
+): Promise<Uint8Array> {
+  return aesCbcEncryptBlocks(toEncrypt, asUint8Array(key), asUint8Array(iv));
+}
+
+/**
+ * Decrypts data using AES-128-CBC mode. Only complete 16-byte blocks are
+ * decrypted (matching the reference implementation).
+ * @param toDecrypt - The data to decrypt as a Uint8Array.
+ * @param key - The 16-byte key.
+ * @param iv - The 16-byte initialization vector.
+ * @returns A Promise that resolves to the decrypted data as a Uint8Array.
+ */
+export async function aesCbcDecrypt(
+  toDecrypt: Uint8Array,
+  key: BufferSource,
+  iv: BufferSource,
+): Promise<Uint8Array> {
+  return aesCbcDecryptBlocks(toDecrypt, asUint8Array(key), asUint8Array(iv));
 }
 
 /**
