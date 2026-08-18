@@ -1041,6 +1041,10 @@ class PS1MemoryCard {
         // Raw save
         const header = new Uint8Array(HEADER_SIZE);
         header[0] = SlotTypes.Initial;
+        // Write the filename into the header (product code/identifier area,
+        // bytes 10-29), matching the reference.
+        const nameBytes = new TextEncoder().encode(file.name);
+        header.set(nameBytes.slice(0, 20), 10);
         saveData = this.concatUint8Arrays(header, inputData);
       } else if (saveType === "V") {
         // PSV save
