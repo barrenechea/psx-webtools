@@ -704,14 +704,15 @@ class PS1MemoryCard {
       return false;
     }
 
-    // Copy header
-    this.headerData[slotNumber].set(saveBytes.slice(0, HEADER_SIZE));
+    // Copy header to the first slot of the new save (matches the reference,
+    // which places the header at freeSlots[0], not necessarily slotNumber).
+    this.headerData[freeSlots[0]].set(saveBytes.slice(0, HEADER_SIZE));
 
     // Set save size in header
     const saveSize = saveBytes.length - HEADER_SIZE;
-    this.headerData[slotNumber][4] = saveSize & 0xff;
-    this.headerData[slotNumber][5] = (saveSize >> 8) & 0xff;
-    this.headerData[slotNumber][6] = (saveSize >> 16) & 0xff;
+    this.headerData[freeSlots[0]][4] = saveSize & 0xff;
+    this.headerData[freeSlots[0]][5] = (saveSize >> 8) & 0xff;
+    this.headerData[freeSlots[0]][6] = (saveSize >> 16) & 0xff;
 
     // Copy data
     for (let i = 0; i < requiredSlots; i++) {
@@ -748,9 +749,12 @@ class PS1MemoryCard {
 
   private findFreeSlots(startSlot: number, count: number): number[] {
     const freeSlots: number[] = [];
-    for (let i = startSlot; i < SLOT_COUNT && freeSlots.length < count; i++) {
-      if (this.slotTypes[i] === SlotTypes.Formatted) {
-        freeSlots.push(i);
+    // Scan `count`-worth of slots starting at startSlot, wrapping around the
+    // end of the card back to slot 0 (matches the reference).
+    for (let i = 0; i < SLOT_COUNT && freeSlots.length < count; i++) {
+      const currentSlot = (i + startSlot) % SLOT_COUNT;
+      if (this.slotTypes[currentSlot] === SlotTypes.Formatted) {
+        freeSlots.push(currentSlot);
       }
     }
     return freeSlots;
