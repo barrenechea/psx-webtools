@@ -3,11 +3,13 @@ import {
   ClipboardPasteIcon,
   CopyIcon,
   CpuIcon,
+  DownloadIcon,
   FileIcon,
   InfoIcon,
   MemoryStickIcon,
   SaveIcon,
   TrashIcon,
+  UploadIcon,
   UsbIcon,
   XIcon,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import { useRef, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import SaveMemoryCardDialog from "@/components/save-dialog";
+import SaveSingleSaveDialog from "@/components/save-single-save-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,10 +41,11 @@ import {
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useGameData } from "@/hooks/use-game-data";
 import { useMemcarduino } from "@/hooks/use-memcarduino";
-import type { CardTypes } from "@/lib/ps1-memory-card";
 import PS1MemoryCard, {
+  CardTypes,
   type IconPalette,
   type SaveInfo,
+  SingleSaveTypes,
   type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
@@ -206,7 +210,9 @@ export const MemoryCardManager: React.FC = () => {
     null,
   );
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [isSingleSaveDialogOpen, setIsSingleSaveDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const singleSaveFileInputRef = useRef<HTMLInputElement>(null);
 
   const {
     isConnected,
@@ -484,6 +490,62 @@ export const MemoryCardManager: React.FC = () => {
     return slotIndex;
   };
 
+  const selectedSaveInfo =
+    selectedSlot !== null
+      ? memoryCards.find((c) => c.id === selectedCard)?.card.getSaves()[
+          selectedSlot
+        ]
+      : undefined;
+  const isSlotEmpty = selectedSaveInfo?.slotType === SlotTypes.Formatted;
+
+  const handleExportSingleSave = () => {
+    if (selectedCard === null || selectedSlot === null || isSlotEmpty) return;
+    setIsSingleSaveDialogOpen(true);
+  };
+
+  const handleExportSingleSaveConfirm = async (
+    fileName: string,
+    saveType: SingleSaveTypes,
+  ) => {
+    if (selectedCard !== null && selectedSlot !== null) {
+      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      if (card) {
+        const parentSlot = findParentSlot(card, selectedSlot);
+        const success = await card.saveSingleSave(
+          fileName,
+          parentSlot,
+          saveType,
+        );
+        setError(success ? null : "Failed to export save");
+      }
+    }
+    setIsSingleSaveDialogOpen(false);
+  };
+
+  const handleImportSingleSave = () => {
+    const input = singleSaveFileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
+
+  const handleImportSingleSaveChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || selectedCard === null || selectedSlot === null) return;
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    if (!card) return;
+    const success = await card.openSingleSave(file, selectedSlot);
+    if (success) {
+      setError(null);
+      setMemoryCards([...memoryCards]);
+    } else {
+      setError("Failed to import save");
+    }
+  };
+
   const handleCopyMove = (action: "copy" | "move") => {
     if (selectedCard !== null && selectedSlot !== null) {
       const cardEntry = memoryCards.find((c) => c.id === selectedCard);
@@ -548,480 +610,537 @@ export const MemoryCardManager: React.FC = () => {
       <DragDropWrapper onFileDrop={(files) => void handleFilesOpen(files)}>
         <div className="flex h-full w-full items-center justify-center bg-transparent p-4">
           <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
-          {/* Toolbar */}
-          <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
-            <h1 className="text-muted-foreground pl-2 font-light">
-              Memory Card Manager{" "}
-              <span className="text-destructive text-xs dark:text-red-400">
-                Alpha
-              </span>
-            </h1>
-            <TooltipProvider>
-              <div className="flex space-x-2">
-                <Tooltip delayDuration={100}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleCopyMove("copy")}
-                      disabled={selectedSlot === null || alphaDisabled}
-                      aria-label="Copy to buffer"
-                    >
-                      <CopyIcon className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Copy to buffer</TooltipContent>
-                </Tooltip>
-                <Tooltip delayDuration={100}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleCopyMove("move")}
-                      disabled={selectedSlot === null || alphaDisabled}
-                      aria-label="Move to buffer"
-                    >
-                      <ArrowRightIcon className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Move to buffer</TooltipContent>
-                </Tooltip>
-                <Tooltip delayDuration={100}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handlePaste}
-                      disabled={
-                        selectedSlot === null ||
-                        copiedSaveBytes === null ||
-                        alphaDisabled
-                      }
-                      aria-label="Paste from buffer"
-                    >
-                      <ClipboardPasteIcon className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    Paste from buffer
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip delayDuration={100}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleDelete}
-                      disabled={selectedSlot === null || alphaDisabled}
-                      aria-label="Delete save"
-                    >
-                      <TrashIcon className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Delete save</TooltipContent>
-                </Tooltip>
-                <Tooltip delayDuration={100}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void handleSaveMemoryCard()}
-                      disabled={selectedCard === null}
-                      aria-label="Save memory card"
-                    >
-                      <SaveIcon className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    Save memory card
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </TooltipProvider>
-          </div>
-          {/* Main content */}
-          <div className="flex grow overflow-hidden">
-            {/* Sidebar */}
-            <div className="border-border bg-muted/80 flex w-64 flex-col border-r">
-              <ScrollArea className="grow overflow-hidden" type="auto">
-                <div className="p-2">
-                  {memoryCards.map((card) => (
-                    <Button
-                      key={card.id}
-                      variant="ghost"
-                      className={`mb-1 w-full justify-start ${
-                        selectedCard === card.id
-                          ? "bg-card hover:bg-card cursor-default"
-                          : "bg-card/40 hover:bg-card/80 border-transparent"
-                      }`}
-                      onClick={() => {
-                        setSelectedSlot(null);
-                        setSelectedCard(card.id);
-                        setSidebarOpen(false);
-                      }}
-                    >
-                      {card.type === "device" ? (
-                        <MemoryStickIcon className="size-4" />
-                      ) : (
-                        <FileIcon className="size-4" />
-                      )}
-                      <span className="max-w-44 truncate">{card.name}</span>
-                    </Button>
-                  ))}
-                </div>
-              </ScrollArea>
-              <div className="border-border space-y-1 border-t p-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".mcr,.mcd,.gme,.vgs,.vmp,.psm,.ps1,.bin,.mem,.psx,.pda,.mc,.ddf,.mc1,.mc2,.srm"
-                  className="sr-only"
-                  multiple
-                  onChange={handleFileInputChange}
-                />
-                <Button
-                  variant="ghost"
-                  className="hover:bg-card/80 w-full justify-start"
-                  onClick={handleOpenFromFileClick}
-                >
-                  <FileIcon className="mr-2 size-4" />
-                  Open from file
-                </Button>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="hover:bg-card/80 w-full justify-start"
-                    >
-                      <MemoryStickIcon className="mr-2 size-4" />
-                      Connect a device
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="right">
-                    <DropdownMenuLabel>
-                      <div className="flex items-center">
-                        <UsbIcon className="mr-2 size-4" />
-                        USB Devices
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem disabled>
-                      None yet, check back later
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>
-                      <div className="flex items-center">
-                        <CpuIcon className="mr-2 size-4" />
-                        Serial Devices
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem
-                      onSelect={() => setIsConnectDialogOpen(true)}
-                    >
-                      MemCARDuino
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={async () => {
-                        showDialog(
-                          "Connecting to Unirom",
-                          "Requesting serial port access...",
-                        );
-                        try {
-                          await connect("unirom", 115200, [], (status) => {
-                            updateDialog(status);
-                          });
-                          setTimeout(hideDialog, 1000);
-                        } catch (err) {
-                          setError((err as Error).message);
-                          hideDialog();
+            {/* Toolbar */}
+            <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
+              <h1 className="text-muted-foreground pl-2 font-light">
+                Memory Card Manager{" "}
+                <span className="text-destructive text-xs dark:text-red-400">
+                  Alpha
+                </span>
+              </h1>
+              <TooltipProvider>
+                <div className="flex space-x-2">
+                  <Tooltip delayDuration={100}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleCopyMove("copy")}
+                        disabled={selectedSlot === null || alphaDisabled}
+                        aria-label="Copy to buffer"
+                      >
+                        <CopyIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      Copy to buffer
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip delayDuration={100}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleCopyMove("move")}
+                        disabled={selectedSlot === null || alphaDisabled}
+                        aria-label="Move to buffer"
+                      >
+                        <ArrowRightIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      Move to buffer
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip delayDuration={100}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handlePaste}
+                        disabled={
+                          selectedSlot === null ||
+                          copiedSaveBytes === null ||
+                          alphaDisabled
                         }
-                      }}
-                    >
-                      Unirom (kinda broken)
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {isConnected && (
+                        aria-label="Paste from buffer"
+                      >
+                        <ClipboardPasteIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      Paste from buffer
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip delayDuration={100}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleDelete}
+                        disabled={selectedSlot === null || alphaDisabled}
+                        aria-label="Delete save"
+                      >
+                        <TrashIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Delete save</TooltipContent>
+                  </Tooltip>
+                  <Tooltip delayDuration={100}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void handleSaveMemoryCard()}
+                        disabled={selectedCard === null}
+                        aria-label="Save memory card"
+                      >
+                        <SaveIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      Save memory card
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip delayDuration={100}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleExportSingleSave}
+                        disabled={selectedSlot === null || isSlotEmpty}
+                        aria-label="Export save"
+                      >
+                        <DownloadIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Export save</TooltipContent>
+                  </Tooltip>
+                  <Tooltip delayDuration={100}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleImportSingleSave}
+                        disabled={selectedSlot === null || !isSlotEmpty}
+                        aria-label="Import save"
+                      >
+                        <UploadIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Import save</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
+            </div>
+            {/* Main content */}
+            <div className="flex grow overflow-hidden">
+              {/* Sidebar */}
+              <div className="border-border bg-muted/80 flex w-64 flex-col border-r">
+                <ScrollArea className="grow overflow-hidden" type="auto">
+                  <div className="p-2">
+                    {memoryCards.map((card) => (
+                      <Button
+                        key={card.id}
+                        variant="ghost"
+                        className={`mb-1 w-full justify-start ${
+                          selectedCard === card.id
+                            ? "bg-card hover:bg-card cursor-default"
+                            : "bg-card/40 hover:bg-card/80 border-transparent"
+                        }`}
+                        onClick={() => {
+                          setSelectedSlot(null);
+                          setSelectedCard(card.id);
+                          setSidebarOpen(false);
+                        }}
+                      >
+                        {card.type === "device" ? (
+                          <MemoryStickIcon className="size-4" />
+                        ) : (
+                          <FileIcon className="size-4" />
+                        )}
+                        <span className="max-w-44 truncate">{card.name}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </ScrollArea>
+                <div className="border-border space-y-1 border-t p-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".mcr,.mcd,.gme,.vgs,.vmp,.psm,.ps1,.bin,.mem,.psx,.pda,.mc,.ddf,.mc1,.mc2,.srm"
+                    className="sr-only"
+                    multiple
+                    onChange={handleFileInputChange}
+                  />
+                  <Button
+                    variant="ghost"
+                    className="hover:bg-card/80 w-full justify-start"
+                    onClick={handleOpenFromFileClick}
+                  >
+                    <FileIcon className="mr-2 size-4" />
+                    Open from file
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="hover:bg-card/80 w-full justify-start"
+                      >
+                        <MemoryStickIcon className="mr-2 size-4" />
+                        Connect a device
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right">
+                      <DropdownMenuLabel>
+                        <div className="flex items-center">
+                          <UsbIcon className="mr-2 size-4" />
+                          USB Devices
+                        </div>
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem disabled>
+                        None yet, check back later
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>
+                        <div className="flex items-center">
+                          <CpuIcon className="mr-2 size-4" />
+                          Serial Devices
+                        </div>
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem
+                        onSelect={() => setIsConnectDialogOpen(true)}
+                      >
+                        MemCARDuino
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={async () => {
+                          showDialog(
+                            "Connecting to Unirom",
+                            "Requesting serial port access...",
+                          );
+                          try {
+                            await connect("unirom", 115200, [], (status) => {
+                              updateDialog(status);
+                            });
+                            setTimeout(hideDialog, 1000);
+                          } catch (err) {
+                            setError((err as Error).message);
+                            hideDialog();
+                          }
+                        }}
+                      >
+                        Unirom (kinda broken)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {isConnected && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        className="hover:bg-card/80 w-full justify-start"
+                        onClick={() => void handleDisconnect()}
+                      >
+                        Disconnect MemCARDuino
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="hover:bg-card/80 w-full justify-start"
+                        onClick={() => void handleReadFromDevice()}
+                      >
+                        Read from MemCARDuino
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="hover:bg-card/80 w-full justify-start"
+                        onClick={() => void handleWriteToDevice()}
+                        disabled={selectedCard === null}
+                      >
+                        Write to MemCARDuino
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Card content */}
+              <div className="flex grow flex-row bg-transparent">
+                {selectedCard ? (
                   <>
-                    <Button
-                      variant="ghost"
-                      className="hover:bg-card/80 w-full justify-start"
-                      onClick={() => void handleDisconnect()}
-                    >
-                      Disconnect MemCARDuino
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="hover:bg-card/80 w-full justify-start"
-                      onClick={() => void handleReadFromDevice()}
-                    >
-                      Read from MemCARDuino
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="hover:bg-card/80 w-full justify-start"
-                      onClick={() => void handleWriteToDevice()}
-                      disabled={selectedCard === null}
-                    >
-                      Write to MemCARDuino
-                    </Button>
+                    <div className="flex grow flex-col">
+                      <div className="border-border bg-muted/80 flex items-center justify-between border-b p-4 px-6">
+                        <div>
+                          <h2 className="mb-1 text-lg font-semibold">
+                            {
+                              memoryCards.find(
+                                (card) => card.id === selectedCard,
+                              )?.name
+                            }
+                          </h2>
+                          <p className="text-muted-foreground text-sm">
+                            {`Opened via ${
+                              memoryCards.find(
+                                (card) => card.id === selectedCard,
+                              )?.type
+                            } "${memoryCards.find((card) => card.id === selectedCard)?.source}"`}
+                          </p>
+                        </div>
+                        <TooltipProvider>
+                          <Tooltip delayDuration={100}>
+                            <TooltipTrigger>
+                              <div className="flex items-center">
+                                {copiedSlots.length > 0 ? (
+                                  <div className="group relative">
+                                    <div className="animate-tilt absolute -inset-0.5 rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
+                                    <div className="relative size-8">
+                                      <PS1BlockIcon
+                                        iconData={
+                                          memoryCards
+                                            .find((c) => c.id === selectedCard)
+                                            ?.card.getIconData(
+                                              copiedSlots[0].slotNumber,
+                                            ) ?? []
+                                        }
+                                        iconPalette={
+                                          memoryCards
+                                            .find((c) => c.id === selectedCard)
+                                            ?.card.getIconPalette(
+                                              copiedSlots[0].slotNumber,
+                                            ) ?? []
+                                        }
+                                        iconFrameCount={
+                                          copiedSlots[0].iconFrameCount
+                                        }
+                                      />
+                                      {copiedSlots.length > 1 && (
+                                        <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full text-[10px]">
+                                          {copiedSlots.length}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="border-muted-foreground size-8 rounded-sm border-2 border-dashed" />
+                                )}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Temporary Buffer</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <ScrollArea
+                        className="grow overflow-hidden"
+                        type="always"
+                      >
+                        <div className="bg-card/60 p-4">
+                          {memoryCards
+                            .find((card) => card.id === selectedCard)
+                            ?.card.getSaves()
+                            .map((save, index) => {
+                              const card = memoryCards.find(
+                                (c) => c.id === selectedCard,
+                              )?.card;
+                              if (!card) return null;
+
+                              const parentSlot = findParentSlot(card, index);
+                              const linkedSlots = findLinkedSlots(
+                                card,
+                                parentSlot,
+                              );
+                              const isSelected = linkedSlots.includes(
+                                selectedSlot ?? -1,
+                              );
+                              return (
+                                <MemoryCardSlot
+                                  key={index}
+                                  slot={save}
+                                  index={index}
+                                  isSelected={isSelected}
+                                  onClick={handleSlotClick}
+                                  iconData={card.getIconData(index)}
+                                  iconPalette={card.getIconPalette(index)}
+                                />
+                              );
+                            })}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                    {sidebarOpen && (
+                      <div className="border-border bg-muted/80 flex w-80 flex-col border-l">
+                        <div className="flex items-center justify-between p-4">
+                          <div className="flex-row">
+                            <div className="flex flex-row items-center space-x-1">
+                              <p className="font-semibold">Game Details</p>
+                              <TooltipProvider>
+                                <Tooltip delayDuration={100}>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon">
+                                      <InfoIcon className="text-muted-foreground size-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      Game details provided by The PlayStation
+                                      DataCenter
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                            <p className="text-muted-foreground text-xs">
+                              {selectedGameId}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSidebarOpen(false)}
+                            className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          >
+                            <XIcon className="size-4" />
+                          </Button>
+                        </div>
+                        <Separator />
+                        {isLoading ? (
+                          <div className="flex h-full items-center justify-center">
+                            <div className="border-primary size-8 animate-spin rounded-full border-2 border-t-transparent"></div>
+                          </div>
+                        ) : gameDataError ? (
+                          <div className="text-destructive text-center">
+                            {gameDataError}
+                          </div>
+                        ) : gameData ? (
+                          <ScrollArea className="grow overflow-hidden">
+                            <div className="space-y-6 p-4">
+                              <div className="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-md">
+                                {gameData.cover ? (
+                                  <img
+                                    src={gameData.cover}
+                                    alt="Game cover"
+                                    className="size-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="text-muted-foreground flex size-full items-center justify-center">
+                                    No cover available
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <h4 className="mb-1 text-sm font-semibold">
+                                  {gameData.officialTitle}
+                                </h4>
+                                <p className="text-muted-foreground text-xs">
+                                  Developed by {gameData.developer}
+                                </p>
+                                <p className="text-muted-foreground text-xs">
+                                  Published by {gameData.publisher}
+                                </p>
+                              </div>
+                              <Separator />
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                                    Genre / Style
+                                  </p>
+                                  <p className="text-sm">{gameData.genre}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                                    Release Date
+                                  </p>
+                                  <p className="text-sm">
+                                    {gameData.releaseDate}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                                    Discs
+                                  </p>
+                                  <p className="text-sm">{gameData.discs}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </ScrollArea>
+                        ) : (
+                          <div className="text-muted-foreground flex h-full flex-col items-center justify-center p-4 pb-16 text-center">
+                            <div className="bg-muted/50 mb-4 size-16 rounded-full p-4">
+                              <FileIcon className="size-8" />
+                            </div>
+                            <p className="text-lg font-semibold">
+                              Empty Slot Selected
+                            </p>
+                            <p className="mt-2 text-sm">
+                              Select a save slot to view game details
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
+                ) : (
+                  <div className="bg-card/80 text-muted-foreground flex grow flex-col items-center justify-center p-4">
+                    <p className="mb-4 text-lg">No memory card selected</p>
+                    <p className="text-sm">
+                      Open a memory card file or connect a device to get started
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Card content */}
-            <div className="flex grow flex-row bg-transparent">
-              {selectedCard ? (
-                <>
-                  <div className="flex grow flex-col">
-                    <div className="border-border bg-muted/80 flex items-center justify-between border-b p-4 px-6">
-                      <div>
-                        <h2 className="mb-1 text-lg font-semibold">
-                          {
-                            memoryCards.find((card) => card.id === selectedCard)
-                              ?.name
-                          }
-                        </h2>
-                        <p className="text-muted-foreground text-sm">
-                          {`Opened via ${
-                            memoryCards.find((card) => card.id === selectedCard)
-                              ?.type
-                          } "${memoryCards.find((card) => card.id === selectedCard)?.source}"`}
-                        </p>
-                      </div>
-                      <TooltipProvider>
-                        <Tooltip delayDuration={100}>
-                          <TooltipTrigger>
-                            <div className="flex items-center">
-                              {copiedSlots.length > 0 ? (
-                                <div className="group relative">
-                                  <div className="animate-tilt absolute -inset-0.5 rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
-                                  <div className="relative size-8">
-                                    <PS1BlockIcon
-                                      iconData={
-                                        memoryCards
-                                          .find((c) => c.id === selectedCard)
-                                          ?.card.getIconData(
-                                            copiedSlots[0].slotNumber,
-                                          ) ?? []
-                                      }
-                                      iconPalette={
-                                        memoryCards
-                                          .find((c) => c.id === selectedCard)
-                                          ?.card.getIconPalette(
-                                            copiedSlots[0].slotNumber,
-                                          ) ?? []
-                                      }
-                                      iconFrameCount={
-                                        copiedSlots[0].iconFrameCount
-                                      }
-                                    />
-                                    {copiedSlots.length > 1 && (
-                                      <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full text-[10px]">
-                                        {copiedSlots.length}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="border-muted-foreground size-8 rounded-sm border-2 border-dashed" />
-                              )}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Temporary Buffer</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    <ScrollArea className="grow overflow-hidden" type="always">
-                      <div className="bg-card/60 p-4">
-                        {memoryCards
-                          .find((card) => card.id === selectedCard)
-                          ?.card.getSaves()
-                          .map((save, index) => {
-                            const card = memoryCards.find(
-                              (c) => c.id === selectedCard,
-                            )?.card;
-                            if (!card) return null;
-
-                            const parentSlot = findParentSlot(card, index);
-                            const linkedSlots = findLinkedSlots(
-                              card,
-                              parentSlot,
-                            );
-                            const isSelected = linkedSlots.includes(
-                              selectedSlot ?? -1,
-                            );
-                            return (
-                              <MemoryCardSlot
-                                key={index}
-                                slot={save}
-                                index={index}
-                                isSelected={isSelected}
-                                onClick={handleSlotClick}
-                                iconData={card.getIconData(index)}
-                                iconPalette={card.getIconPalette(index)}
-                              />
-                            );
-                          })}
-                      </div>
-                    </ScrollArea>
-                  </div>
-                  {sidebarOpen && (
-                    <div className="border-border bg-muted/80 flex w-80 flex-col border-l">
-                      <div className="flex items-center justify-between p-4">
-                        <div className="flex-row">
-                          <div className="flex flex-row items-center space-x-1">
-                            <p className="font-semibold">Game Details</p>
-                            <TooltipProvider>
-                              <Tooltip delayDuration={100}>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon">
-                                    <InfoIcon className="text-muted-foreground size-3" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>
-                                    Game details provided by The PlayStation
-                                    DataCenter
-                                  </p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            {selectedGameId}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setSidebarOpen(false)}
-                          className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        >
-                          <XIcon className="size-4" />
-                        </Button>
-                      </div>
-                      <Separator />
-                      {isLoading ? (
-                        <div className="flex h-full items-center justify-center">
-                          <div className="border-primary size-8 animate-spin rounded-full border-2 border-t-transparent"></div>
-                        </div>
-                      ) : gameDataError ? (
-                        <div className="text-destructive text-center">
-                          {gameDataError}
-                        </div>
-                      ) : gameData ? (
-                        <ScrollArea className="grow overflow-hidden">
-                          <div className="space-y-6 p-4">
-                            <div className="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-md">
-                              {gameData.cover ? (
-                                <img
-                                  src={gameData.cover}
-                                  alt="Game cover"
-                                  className="size-full object-cover"
-                                />
-                              ) : (
-                                <div className="text-muted-foreground flex size-full items-center justify-center">
-                                  No cover available
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <h4 className="mb-1 text-sm font-semibold">
-                                {gameData.officialTitle}
-                              </h4>
-                              <p className="text-muted-foreground text-xs">
-                                Developed by {gameData.developer}
-                              </p>
-                              <p className="text-muted-foreground text-xs">
-                                Published by {gameData.publisher}
-                              </p>
-                            </div>
-                            <Separator />
-                            <div className="space-y-3">
-                              <div>
-                                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                                  Genre / Style
-                                </p>
-                                <p className="text-sm">{gameData.genre}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                                  Release Date
-                                </p>
-                                <p className="text-sm">
-                                  {gameData.releaseDate}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                                  Discs
-                                </p>
-                                <p className="text-sm">{gameData.discs}</p>
-                              </div>
-                            </div>
-                          </div>
-                        </ScrollArea>
-                      ) : (
-                        <div className="text-muted-foreground flex h-full flex-col items-center justify-center p-4 pb-16 text-center">
-                          <div className="bg-muted/50 mb-4 size-16 rounded-full p-4">
-                            <FileIcon className="size-8" />
-                          </div>
-                          <p className="text-lg font-semibold">
-                            Empty Slot Selected
-                          </p>
-                          <p className="mt-2 text-sm">
-                            Select a save slot to view game details
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="bg-card/80 text-muted-foreground flex grow flex-col items-center justify-center p-4">
-                  <p className="mb-4 text-lg">No memory card selected</p>
-                  <p className="text-sm">
-                    Open a memory card file or connect a device to get started
-                  </p>
-                </div>
-              )}
+            {/* Status bar */}
+            <div className="border-border bg-muted/80 text-muted-foreground border-t px-4 py-2 text-sm">
+              {error ??
+                connectionError ??
+                (selectedCard
+                  ? `${
+                      memoryCards
+                        .find((card) => card.id === selectedCard)
+                        ?.card.getSaves().length ?? 0
+                    } items`
+                  : "No memory card selected")}
             </div>
           </div>
-
-          {/* Status bar */}
-          <div className="border-border bg-muted/80 text-muted-foreground border-t px-4 py-2 text-sm">
-            {error ??
-              connectionError ??
-              (selectedCard
-                ? `${
-                    memoryCards
-                      .find((card) => card.id === selectedCard)
-                      ?.card.getSaves().length ?? 0
-                  } items`
-                : "No memory card selected")}
-          </div>
+          <AlphaNoticeDialog
+            isOpen={isAlphaNoticeOpen}
+            onClose={() => setIsAlphaNoticeOpen(false)}
+          />
         </div>
-        <AlphaNoticeDialog
-          isOpen={isAlphaNoticeOpen}
-          onClose={() => setIsAlphaNoticeOpen(false)}
-        />
-      </div>
-    </DragDropWrapper>
+      </DragDropWrapper>
       <MemcarduinoConnectDialog
         isOpen={isConnectDialogOpen}
         onOpenChange={setIsConnectDialogOpen}
         onConnect={handleConnect}
       />
+      <input
+        ref={singleSaveFileInputRef}
+        type="file"
+        accept=".mcs,.ps1,.psv,.mcb,.mcx,.pda,.psx,.psm,.bin,.raw"
+        className="sr-only"
+        onChange={(e) => void handleImportSingleSaveChange(e)}
+      />
       <SaveMemoryCardDialog
         key={selectedCard ?? "no-card"}
         isOpen={isSaveDialogOpen}
         onOpenChange={setIsSaveDialogOpen}
-        defaultFileName={`${memoryCards.find((c) => c.id === selectedCard)?.name ?? "memory_card"}.mcr`}
+        defaultFileName={
+          memoryCards.find((c) => c.id === selectedCard)?.name ?? "memory_card"
+        }
+        defaultFormat={
+          memoryCards.find((c) => c.id === selectedCard)?.card.getCardType() ??
+          CardTypes.Raw
+        }
         onSave={handleSaveConfirm}
+      />
+      <SaveSingleSaveDialog
+        key={`${selectedCard ?? "no-card"}-${selectedSlot ?? "no-slot"}`}
+        isOpen={isSingleSaveDialogOpen}
+        onOpenChange={setIsSingleSaveDialogOpen}
+        defaultFileName={`${selectedSaveInfo?.regionRaw ?? ""}${selectedSaveInfo?.productCode ?? ""}${selectedSaveInfo?.identifier ?? ""}`}
+        onSave={handleExportSingleSaveConfirm}
       />
     </>
   );

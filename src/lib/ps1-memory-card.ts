@@ -49,6 +49,91 @@ export const CardExtensions = {
   [CardTypes.Mcx]: ".mcx",
 } as const;
 
+export const SingleSaveExtensions = {
+  [SingleSaveTypes.Mcs]: ".mcs",
+  [SingleSaveTypes.Raw]: ".raw",
+  [SingleSaveTypes.Psv]: ".psv",
+  [SingleSaveTypes.Psx]: ".mcb",
+} as const;
+
+// Extensions accepted for a raw/standard memory card (mirrors the reference
+// "Standard Memory Card" import group). The card content is identical; only
+// the file name suffix differs.
+export const RAW_EXTENSIONS: string[] = [
+  ".mcr",
+  ".bin",
+  ".ddf",
+  ".mc",
+  ".mcd",
+  ".mci",
+  ".ps",
+  ".psm",
+  ".srm",
+  ".vm1",
+  ".vmc",
+  ".sav",
+];
+
+// All known PS1 card / single-save extensions. Derived from the format maps
+// above so every extension the UI can produce is also stripped by
+// withSingleExtension (prevents stacked names like "card.mci.mcd").
+const KNOWN_FILE_EXTENSIONS = Array.from(
+  new Set([
+    ...Object.values(CardExtensions),
+    ...Object.values(SingleSaveExtensions),
+    ...RAW_EXTENSIONS,
+    // Additional raw/import variants accepted on load but not tied to a
+    // specific save format.
+    ".ps1",
+    ".mem",
+    ".mc1",
+    ".mc2",
+    ".pda",
+    ".psx",
+  ]),
+);
+
+/**
+ * Strips any stacked known extensions from a file name and appends the target
+ * extension exactly once, so the result always ends with a single, correct
+ * extension (e.g. "card.mcr.mcr" + ".gme" -> "card.gme").
+ */
+export function withSingleExtension(
+  fileName: string,
+  targetExtension: string,
+): string {
+  let name = fileName.trim();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const lower = name.toLowerCase();
+    for (const ext of KNOWN_FILE_EXTENSIONS) {
+      if (lower.endsWith(ext)) {
+        name = name.slice(0, name.length - ext.length);
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (!name.toLowerCase().endsWith(targetExtension.toLowerCase())) {
+    name += targetExtension;
+  }
+  return name;
+}
+
+export function hasFileExtension(name: string): boolean {
+  const base = name.split("/").pop() ?? name;
+  const lastDot = base.lastIndexOf(".");
+  return lastDot > 0 && lastDot < base.length - 1;
+}
+
+export function getFileExtension(name: string): string {
+  const base = name.split("/").pop() ?? name;
+  const lastDot = base.lastIndexOf(".");
+  if (lastDot <= 0 || lastDot >= base.length - 1) return "";
+  return base.slice(lastDot).toLowerCase();
+}
+
 export interface SaveInfo {
   slotNumber: number;
   name: string;
@@ -70,6 +155,11 @@ export type SlotIconData = IconData[]; // Icons for a single slot (up to 3 icons
 class PS1MemoryCard {
   private rawData: Uint8Array;
   private cardType: CardTypes = CardTypes.Raw;
+
+  getCardType(): CardTypes {
+    return this.cardType;
+  }
+
   private saves: SaveInfo[] = [];
   private slotTypes: SlotTypes[] = new Array<SlotTypes>(SLOT_COUNT).fill(
     SlotTypes.Formatted,
@@ -715,9 +805,9 @@ class PS1MemoryCard {
 
     try {
       const extension = this.getExtensionForType(cardType);
-      const fileNameWithExt = fileName.endsWith(extension)
+      const fileNameWithExt = hasFileExtension(fileName)
         ? fileName
-        : fileName + extension;
+        : withSingleExtension(fileName, extension);
 
       const blob = new Blob([new Uint8Array(outputData)], {
         type: "application/octet-stream",
@@ -846,13 +936,16 @@ class PS1MemoryCard {
     }
 
     try {
+      const extension = SingleSaveExtensions[saveType] || ".mcs";
+      const fileNameWithExt = withSingleExtension(fileName, extension);
+
       const blob = new Blob([new Uint8Array(outputData)], {
         type: "application/octet-stream",
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = fileName;
+      link.download = fileNameWithExt;
       link.click();
       URL.revokeObjectURL(url);
       return true;
@@ -894,17 +987,22 @@ class PS1MemoryCard {
       const inputData = new Uint8Array(arrayBuffer);
       let saveData: Uint8Array;
 
-      if (this.arrayToString(inputData.slice(0, 2)) === "Q") {
+      // Match the reference: read the 2-byte type tag and strip null padding.
+      // MCS is "Q\0" -> "Q", PSV is "\0V" -> "V", RAW is "SC"/"sc".
+      const saveType = this.arrayToString(inputData.slice(0, 2)).replace(
+        /\0/g,
+        "",
+      );
+
+      if (saveType === "Q") {
         // MCS save
         saveData = inputData;
-      } else if (
-        this.arrayToString(inputData.slice(0, 2)).toLowerCase() === "sc"
-      ) {
+      } else if (saveType === "SC" || saveType === "sc") {
         // Raw save
         const header = new Uint8Array(HEADER_SIZE);
         header[0] = SlotTypes.Initial;
         saveData = this.concatUint8Arrays(header, inputData);
-      } else if (this.arrayToString(inputData.slice(0, 1)) === "V") {
+      } else if (saveType === "V") {
         // PSV save
         if (inputData[60] !== 1) {
           throw new Error("Not a valid PS1 PSV save");
