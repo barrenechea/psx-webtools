@@ -168,7 +168,11 @@ class PS1MemoryCard {
   private iconData: SlotIconData[] = [];
   private cardName: string | null = null;
   //private cardLocation: string | null = null;
-  //private changedFlag = false;
+  private changedFlag = false;
+
+  public get changed(): boolean {
+    return this.changedFlag;
+  }
 
   // New properties to match C# implementation
   private headerData: Uint8Array[] = Array.from(
@@ -652,7 +656,7 @@ class PS1MemoryCard {
 
     this.writeDataToRawCard();
     this.loadMemoryCardData();
-    //this.changedFlag = true;
+    this.changedFlag = true;
   }
 
   public formatSave(slotNumber: number): void {
@@ -664,7 +668,7 @@ class PS1MemoryCard {
 
     this.writeDataToRawCard();
     this.loadMemoryCardData();
-    //this.changedFlag = true;
+    this.changedFlag = true;
   }
 
   private formatSlot(slotNumber: number): void {
@@ -743,7 +747,7 @@ class PS1MemoryCard {
 
     this.writeDataToRawCard();
     this.loadMemoryCardData();
-    //this.changedFlag = true;
+    this.changedFlag = true;
     return true;
   }
 
@@ -797,7 +801,7 @@ class PS1MemoryCard {
 
     this.writeDataToRawCard();
     this.loadMemoryCardData();
-    //this.changedFlag = true;
+    this.changedFlag = true;
   }
 
   public getIconBytes(slotNumber: number): Uint8Array {
@@ -810,7 +814,7 @@ class PS1MemoryCard {
     this.saveData[slotNumber].set(iconBytes.slice(0, 416), 96);
     this.writeDataToRawCard();
     this.loadMemoryCardData();
-    //this.changedFlag = true;
+    this.changedFlag = true;
   }
 
   private getExtensionForType(cardType: CardTypes): string {
@@ -860,7 +864,7 @@ class PS1MemoryCard {
       URL.revokeObjectURL(url);
 
       this.cardName = fileName;
-      //this.changedFlag = false;
+      this.changedFlag = false;
       return true;
     } catch (error) {
       console.error("Failed to save memory card:", error);

@@ -68,6 +68,46 @@ interface MemoryCard {
   card: PS1MemoryCard;
 }
 
+interface CardListItemProps {
+  name: string;
+  type: "file" | "device";
+  changed: boolean;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+const CardListItem: React.FC<CardListItemProps> = ({
+  name,
+  type,
+  changed,
+  isSelected,
+  onClick,
+}) => (
+  <Button
+    variant="ghost"
+    className={`mb-1 w-full justify-start ${
+      isSelected
+        ? "bg-card hover:bg-card cursor-default"
+        : "bg-card/40 hover:bg-card/80 border-transparent"
+    }`}
+    onClick={onClick}
+  >
+    {type === "device" ? (
+      <MemoryStickIcon className="size-4" />
+    ) : (
+      <FileIcon className="size-4" />
+    )}
+    <span className="max-w-44 truncate">{name}</span>
+    {changed && (
+      <span
+        title="Unsaved changes"
+        aria-label="Unsaved changes"
+        className="ml-auto size-2 shrink-0 rounded-full bg-amber-500"
+      />
+    )}
+  </Button>
+);
+
 interface MemoryCardSlotProps {
   slot: SaveInfo;
   index: number;
@@ -754,27 +794,18 @@ export const MemoryCardManager: React.FC = () => {
                 <ScrollArea className="grow overflow-hidden" type="auto">
                   <div className="p-2">
                     {memoryCards.map((card) => (
-                      <Button
+                      <CardListItem
                         key={card.id}
-                        variant="ghost"
-                        className={`mb-1 w-full justify-start ${
-                          selectedCard === card.id
-                            ? "bg-card hover:bg-card cursor-default"
-                            : "bg-card/40 hover:bg-card/80 border-transparent"
-                        }`}
+                        name={card.name}
+                        type={card.type}
+                        changed={card.card.changed}
+                        isSelected={selectedCard === card.id}
                         onClick={() => {
                           setSelectedSlot(null);
                           setSelectedCard(card.id);
                           setSidebarOpen(false);
                         }}
-                      >
-                        {card.type === "device" ? (
-                          <MemoryStickIcon className="size-4" />
-                        ) : (
-                          <FileIcon className="size-4" />
-                        )}
-                        <span className="max-w-44 truncate">{card.name}</span>
-                      </Button>
+                      />
                     ))}
                   </div>
                 </ScrollArea>
