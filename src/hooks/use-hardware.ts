@@ -1,40 +1,44 @@
 import { useState } from "react";
 
 import type { HardwareInterface } from "@/lib/ps1/hardware/core";
-import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
-import { Unirom } from "@/lib/ps1/hardware/unirom";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 
-export function useMemcarduino() {
-  const [memcarduino, setMemcarduino] = useState<HardwareInterface | null>(
-    null,
-  );
+export interface HardwareStartConfig {
+  deviceType: string;
+  baudRate: number;
+  signalsConfig: SerialOutputSignals[];
+}
+
+// Manages a single hardware connection (MemCARDuino, Unirom, ...). The
+// concrete device is created by the caller and passed in, so this hook stays
+// device-agnostic and the connect dialogs can each own their own hardware.
+export function useHardwareConnection() {
+  const [device, setDevice] = useState<HardwareInterface | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
 
   const connect = async (
-    deviceType: string,
-    baudRate: number,
-    signalsConfig: SerialOutputSignals[],
+    hardware: HardwareInterface,
+    startConfig: HardwareStartConfig,
     onStatusUpdate: (status: string) => void,
   ) => {
     try {
-      const device = deviceType === "unirom" ? new Unirom() : new MemCARDuino();
-
-      onStatusUpdate(`Attempting connection at ${baudRate} baud...`);
-      const result = await device.start(
-        deviceType,
-        baudRate,
-        signalsConfig,
+      onStatusUpdate(
+        `Attempting connection at ${startConfig.baudRate} baud...`,
+      );
+      const result = await hardware.start(
+        startConfig.deviceType,
+        startConfig.baudRate,
+        startConfig.signalsConfig,
         onStatusUpdate,
       );
       if (result === null) {
-        setMemcarduino(device);
+        setDevice(hardware);
         setIsConnected(true);
         setError(null);
-        setFirmwareVersion(device.firmware());
-        onStatusUpdate(`Connected successfully at ${baudRate} baud.`);
+        setFirmwareVersion(hardware.firmware());
+        onStatusUpdate("Connected successfully.");
       } else {
         throw new Error(result);
       }
@@ -45,12 +49,12 @@ export function useMemcarduino() {
   };
 
   const disconnect = async (onStatusUpdate: (status: string) => void) => {
-    if (memcarduino) {
+    if (device) {
       try {
         onStatusUpdate("Closing connection...");
-        await memcarduino.stop();
+        await device.stop();
         onStatusUpdate("Disconnected successfully.");
-        setMemcarduino(null);
+        setDevice(null);
         setIsConnected(false);
         setFirmwareVersion(null);
       } catch (err) {
@@ -64,8 +68,8 @@ export function useMemcarduino() {
     onProgress?: (progress: number) => void,
     fixData = false,
   ): Promise<PS1MemoryCard | null> => {
-    if (!memcarduino) {
-      setError("MemCARDuino not connected");
+    if (!device) {
+      setError("Device not connected");
       return null;
     }
 
@@ -76,7 +80,7 @@ export function useMemcarduino() {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       for (let i = 0; i < 1024; i++) {
-        const frame = await memcarduino.readMemoryCardFrame(i);
+        const frame = await device.readMemoryCardFrame(i);
         if (frame === null) {
           throw new Error(`Failed to read frame ${i}`);
         }
@@ -97,8 +101,8 @@ export function useMemcarduino() {
     card: PS1MemoryCard,
     onProgress?: (progress: number) => void,
   ): Promise<boolean> => {
-    if (!memcarduino) {
-      setError("MemCARDuino not connected");
+    if (!device) {
+      setError("Device not connected");
       return false;
     }
 
@@ -108,7 +112,7 @@ export function useMemcarduino() {
 
       for (let i = 0; i < 1024; i++) {
         const frame = card.getRawData(i * 128, 128);
-        const success = await memcarduino.writeMemoryCardFrame(i, frame);
+        const success = await device.writeMemoryCardFrame(i, frame);
         if (!success) {
           throw new Error(`Failed to write frame ${i}`);
         }

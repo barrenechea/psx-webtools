@@ -43,10 +43,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { UniromConnectDialog } from "@/components/unirom-connect-dialog";
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useGameData } from "@/hooks/use-game-data";
-import { useMemcarduino } from "@/hooks/use-memcarduino";
+import { useHardwareConnection } from "@/hooks/use-hardware";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
+import { Unirom } from "@/lib/ps1/hardware/unirom";
 import PS1MemoryCard, {
   CardTypes,
   type IconPalette,
@@ -251,6 +254,8 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
+  const [isUniromDialogOpen, setIsUniromDialogOpen] = useState(false);
+  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
   const [copiedSlots, setCopiedSlots] = useState<SaveInfo[]>([]);
   const [copiedSaveBytes, setCopiedSaveBytes] = useState<Uint8Array | null>(
     null,
@@ -272,7 +277,7 @@ export const MemoryCardManager: React.FC = () => {
     readMemoryCard,
     writeMemoryCard,
     firmwareVersion,
-  } = useMemcarduino();
+  } = useHardwareConnection();
 
   const {
     gameData,
@@ -280,22 +285,25 @@ export const MemoryCardManager: React.FC = () => {
     error: gameDataError,
   } = useGameData("PS1", selectedRegion ?? "", selectedGameId ?? "");
 
-  const handleConnect = async (deviceType: string, connectionMode: string) => {
-    showDialog("Connecting to device", "Initializing connection...");
+  const handleMemcarduinoConnect = async (
+    deviceType: string,
+    connectionMode: string,
+  ) => {
+    showDialog("Connecting to MemCARDuino", "Initializing connection...");
 
     try {
-      let baudRate;
-      if (deviceType === "unirom") {
-        baudRate = 115200; // Unirom uses fixed baud rate
-      } else {
-        baudRate = connectionMode === "fast" ? 115200 : 38400;
-      }
-      const signalsConfig = getSignalsConfig(deviceType);
+      const baudRate = connectionMode === "fast" ? 115200 : 38400;
+      const signalsConfig = getMemcarduinoSignalsConfig(deviceType);
 
-      await connect(deviceType, baudRate, signalsConfig, (status) => {
-        updateDialog(status);
-      });
+      await connect(
+        new MemCARDuino(),
+        { deviceType, baudRate, signalsConfig },
+        (status) => {
+          updateDialog(status);
+        },
+      );
 
+      setConnectedDevice("MemCARDuino");
       setTimeout(hideDialog, 1000);
       setIsConnectDialogOpen(false);
     } catch (err) {
@@ -304,7 +312,33 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const getSignalsConfig = (deviceType: string): SerialOutputSignals[] => {
+  const handleUniromConnect = async (cardSlot: number) => {
+    showDialog("Connecting to Unirom", "Initializing connection...");
+
+    try {
+      const device = new Unirom();
+      device.cardSlot = cardSlot;
+
+      await connect(
+        device,
+        { deviceType: "unirom", baudRate: 115200, signalsConfig: [] },
+        (status) => {
+          updateDialog(status);
+        },
+      );
+
+      setConnectedDevice("Unirom");
+      setTimeout(hideDialog, 1000);
+      setIsUniromDialogOpen(false);
+    } catch (err) {
+      setError((err as Error).message);
+      hideDialog();
+    }
+  };
+
+  const getMemcarduinoSignalsConfig = (
+    deviceType: string,
+  ): SerialOutputSignals[] => {
     switch (deviceType) {
       case "esp8266_esp32":
         return [];
@@ -320,16 +354,14 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleDisconnect = async () => {
-    showDialog(
-      "Disconnecting from MemCARDuino",
-      "Initializing disconnection...",
-    );
+    showDialog("Disconnecting from device", "Initializing disconnection...");
 
     try {
       await disconnect((status) => {
         updateDialog(status);
       });
 
+      setConnectedDevice(null);
       updateDialog("Disconnected successfully!");
       setTimeout(hideDialog, 1000);
     } catch (err) {
@@ -354,9 +386,9 @@ export const MemoryCardManager: React.FC = () => {
       if (card) {
         const newMemoryCard: MemoryCard = {
           id: nextCardId(),
-          name: "MemCARDuino Read",
+          name: `${connectedDevice ?? "Device"} Read`,
           type: "device",
-          source: `MemCARDuino v${firmwareVersion}`,
+          source: `${connectedDevice ?? "Device"} v${firmwareVersion}`,
           card: card,
         };
 
@@ -868,28 +900,9 @@ export const MemoryCardManager: React.FC = () => {
                             MemCARDuino
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onSelect={async () => {
-                              showDialog(
-                                "Connecting to Unirom",
-                                "Requesting serial port access...",
-                              );
-                              try {
-                                await connect(
-                                  "unirom",
-                                  115200,
-                                  [],
-                                  (status) => {
-                                    updateDialog(status);
-                                  },
-                                );
-                                setTimeout(hideDialog, 1000);
-                              } catch (err) {
-                                setError((err as Error).message);
-                                hideDialog();
-                              }
-                            }}
+                            onSelect={() => setIsUniromDialogOpen(true)}
                           >
-                            Unirom (kinda broken)
+                            Unirom
                           </DropdownMenuItem>
                         </DropdownMenuSubContent>
                       </DropdownMenuSub>
@@ -914,14 +927,14 @@ export const MemoryCardManager: React.FC = () => {
                         className="hover:bg-card/80 w-full justify-start"
                         onClick={() => void handleDisconnect()}
                       >
-                        Disconnect MemCARDuino
+                        Disconnect {connectedDevice ?? "device"}
                       </Button>
                       <Button
                         variant="ghost"
                         className="hover:bg-card/80 w-full justify-start"
                         onClick={() => void handleReadFromDevice()}
                       >
-                        Read from MemCARDuino
+                        Read from {connectedDevice ?? "device"}
                       </Button>
                       <Button
                         variant="ghost"
@@ -929,7 +942,7 @@ export const MemoryCardManager: React.FC = () => {
                         onClick={() => void handleWriteToDevice()}
                         disabled={selectedCard === null}
                       >
-                        Write to MemCARDuino
+                        Write to {connectedDevice ?? "device"}
                       </Button>
                     </>
                   )}
@@ -1185,7 +1198,12 @@ export const MemoryCardManager: React.FC = () => {
       <MemcarduinoConnectDialog
         isOpen={isConnectDialogOpen}
         onOpenChange={setIsConnectDialogOpen}
-        onConnect={handleConnect}
+        onConnect={handleMemcarduinoConnect}
+      />
+      <UniromConnectDialog
+        isOpen={isUniromDialogOpen}
+        onOpenChange={setIsUniromDialogOpen}
+        onConnect={handleUniromConnect}
       />
       <input
         ref={singleSaveFileInputRef}

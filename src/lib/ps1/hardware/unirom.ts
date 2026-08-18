@@ -40,6 +40,21 @@ export class Unirom extends HardwareInterface {
     return SupportedFeatures.TcpMode;
   }
 
+  // A promise that rejects after `ms`, used to bound each serial read.
+  private createTimeoutPromise(ms: number): Promise<never> {
+    return new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Unirom read timed out after ${ms}ms`)),
+        ms,
+      ),
+    );
+  }
+
+  // Read exactly `count` bytes. Each underlying read() is raced against a
+  // timeout, so a silent device fails fast instead of hanging forever
+  // (Web Serial's reader.read() blocks until data arrives, so a "total
+  // elapsed" check alone can never fire). This mirrors the reference's
+  // "no data for N ms" watchdog.
   private async readExactBytes(
     count: number,
     timeout = 1000,
@@ -48,47 +63,52 @@ export class Unirom extends HardwareInterface {
 
     const result = new Uint8Array(count);
     let offset = 0;
-    const startTime = Date.now();
 
     while (offset < count) {
-      if (Date.now() - startTime > timeout) {
-        throw new Error("Read timeout");
+      let chunk: Uint8Array | undefined;
+      try {
+        ({ value: chunk } = await Promise.race([
+          this.reader.read(),
+          this.createTimeoutPromise(timeout),
+        ]));
+      } catch {
+        throw new Error(`Unirom read timed out after ${timeout}ms`);
       }
+      if (!chunk) continue;
 
-      const { value } = await this.reader.read();
-      if (!value) continue;
-
-      result.set(
-        value.slice(0, Math.min(value.length, count - offset)),
-        offset,
-      );
-      offset += value.length;
+      const toCopy = Math.min(chunk.length, count - offset);
+      result.set(chunk.subarray(0, toCopy), offset);
+      offset += toCopy;
     }
 
     return result;
   }
 
+  // Read until `match` appears in the stream, or the device goes silent for
+  // `timeout` ms (per-read timeout, see readExactBytes).
   private async readUntil(match: string, timeout = 1000): Promise<boolean> {
     if (!this.reader) throw new Error("Port not opened");
 
     let buffer = "";
-    const startTime = Date.now();
 
-    while (!buffer.includes(match)) {
-      if (Date.now() - startTime > timeout) {
+    for (;;) {
+      let chunk: Uint8Array | undefined;
+      try {
+        ({ value: chunk } = await Promise.race([
+          this.reader.read(),
+          this.createTimeoutPromise(timeout),
+        ]));
+      } catch {
         return false;
       }
+      if (!chunk) continue;
 
-      const { value } = await this.reader.read();
-      if (!value) continue;
-
-      buffer += new TextDecoder().decode(value);
+      buffer += new TextDecoder().decode(chunk);
       while (buffer.length > match.length) {
         buffer = buffer.slice(1);
       }
+      if (buffer.includes(match)) return true;
     }
-
-    return true;
   }
 
   private async writeData(data: Uint8Array | string): Promise<void> {
@@ -198,8 +218,10 @@ export class Unirom extends HardwareInterface {
   ): Promise<Uint8Array | null> {
     try {
       if (!this.storedInRam) {
-        // Wait for initial RAM storage response
-        const response = await this.readExactBytes(12);
+        // The device copies the card into its RAM after MCRD, which takes a
+        // moment, so allow a generous timeout for the "stored in RAM" response
+        // and the DUMP handshake.
+        const response = await this.readExactBytes(12, 15000);
         const address = new DataView(response.buffer, 4, 4).getUint32(0, true);
         const size = new DataView(response.buffer, 8, 4).getUint32(0, true);
 
@@ -207,17 +229,18 @@ export class Unirom extends HardwareInterface {
         await this.writeData(UniromCommands.DUMP_COMMAND);
 
         // Read handshake
-        await this.readExactBytes(16);
+        await this.readExactBytes(16, 15000);
 
         // Send RAM address and size
         const addressAndSize = new Uint8Array(8);
         new DataView(addressAndSize.buffer).setUint32(0, address, true);
         new DataView(addressAndSize.buffer).setUint32(4, size, true);
         await this.writeData(addressAndSize);
-        return null;
+        // Fall through: the device is now streaming, so read frame 0 below
+        // rather than returning null (the caller can't retry on null).
       }
 
-      // Request more data every 16 frames
+      // Request more data every 16 frames (2048 bytes)
       if (frameNumber !== 0 && frameNumber % 16 === 0) {
         await this.writeData(UniromCommands.MORE_DATA);
       }
@@ -247,6 +270,13 @@ export class Unirom extends HardwareInterface {
     frameData: Uint8Array,
   ): Promise<boolean> {
     try {
+      // A new write session starts at frame 0 — re-send the size/checksum
+      // setup and clear any partial chunk buffer from a previous session.
+      if (frameNumber === 0) {
+        this.firstRun = true;
+        this.chunkBufferIndex = 0;
+      }
+
       // First frame setup
       if (this.firstRun) {
         const setupData = new Uint8Array(8);
