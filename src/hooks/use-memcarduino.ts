@@ -62,6 +62,7 @@ export function useMemcarduino() {
 
   const readMemoryCard = async (
     onProgress?: (progress: number) => void,
+    fixData = false,
   ): Promise<PS1MemoryCard | null> => {
     if (!memcarduino) {
       setError("MemCARDuino not connected");
@@ -79,7 +80,7 @@ export function useMemcarduino() {
         if (frame === null) {
           throw new Error(`Failed to read frame ${i}`);
         }
-        card.setRawData(i * 128, frame);
+        card.setRawData(i * 128, frame, fixData);
 
         if (onProgress) {
           onProgress((i + 1) / 1024);

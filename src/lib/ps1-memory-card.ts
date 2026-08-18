@@ -204,22 +204,22 @@ class PS1MemoryCard {
     return this.rawData.slice(offset, offset + length);
   }
 
-  public setRawData(offset: number, data: Uint8Array): void {
+  public setRawData(offset: number, data: Uint8Array, fixData = false): void {
     this.rawData.set(data, offset);
-    this.loadMemoryCardData();
+    this.loadMemoryCardData(fixData);
   }
 
-  public loadFromRawData(data: Uint8Array): void {
+  public loadFromRawData(data: Uint8Array, fixData = false): void {
     if (data.length !== TOTAL_CARD_SIZE) {
       throw new Error(
         `Invalid data size. Expected ${TOTAL_CARD_SIZE} bytes, got ${data.length} bytes.`,
       );
     }
     this.rawData = data;
-    this.loadMemoryCardData();
+    this.loadMemoryCardData(fixData);
   }
 
-  async loadFromFile(file: File): Promise<void> {
+  async loadFromFile(file: File, fixData = false): Promise<void> {
     const arrayBuffer = await file.arrayBuffer();
     const fileData = new Uint8Array(arrayBuffer);
 
@@ -238,7 +238,7 @@ class PS1MemoryCard {
 
     this.cardName = file.name;
     //this.cardLocation = URL.createObjectURL(file);
-    this.loadMemoryCardData();
+    this.loadMemoryCardData(fixData);
   }
 
   private async determineCardType(data: Uint8Array): Promise<{
@@ -308,7 +308,7 @@ class PS1MemoryCard {
     return String.fromCharCode.apply(null, Array.from(array));
   }
 
-  private loadMemoryCardData(): void {
+  private loadMemoryCardData(fixXor: boolean = true): void {
     this.loadDataFromRawCard();
     this.loadSlotTypes();
     this.findBrokenLinks();
@@ -317,7 +317,10 @@ class PS1MemoryCard {
     this.loadPalette();
     this.loadIcons();
     this.loadIconFrames();
-    this.calculateXOR();
+    // Only recompute header XOR checksums when asked. On load this is opt-in
+    // (see "try to fix corrupted cards"); after in-card edits it's always done
+    // so the headers stay valid. FreePSXBoot/bootable cards must NOT be fixed.
+    if (fixXor) this.calculateXOR();
   }
 
   private loadDataFromRawCard(): void {
@@ -341,6 +344,36 @@ class PS1MemoryCard {
 
       // Write save data
       this.rawData.set(this.saveData[slotNumber], 8192 + slotNumber * 8192);
+    }
+  }
+
+  // Rebuild the raw buffer from the in-memory header/save data so a save
+  // always reflects the current state (including any "fix corrupted cards" XOR
+  // repair done at load time). When fixData is set the card is rebuilt as a
+  // clean card (fresh signature and reserved slots).
+  private loadDataToRawCard(fixData: boolean): void {
+    if (fixData) {
+      this.rawData.fill(0);
+      this.rawData[0] = 0x4d; // M
+      this.rawData[1] = 0x43; // C
+      this.rawData[127] = 0x0e; // XOR (precalculated)
+      this.rawData[8064] = 0x4d; // M
+      this.rawData[8065] = 0x43; // C
+      this.rawData[8191] = 0x0e; // XOR (precalculated)
+    }
+
+    this.writeDataToRawCard();
+
+    if (!fixData) return;
+
+    // Create authentic data (just for completeness)
+    for (let i = 0; i < 20; i++) {
+      this.rawData[2048 + i * 128] = 0xff;
+      this.rawData[2048 + i * 128 + 1] = 0xff;
+      this.rawData[2048 + i * 128 + 2] = 0xff;
+      this.rawData[2048 + i * 128 + 3] = 0xff;
+      this.rawData[2048 + i * 128 + 8] = 0xff;
+      this.rawData[2048 + i * 128 + 9] = 0xff;
     }
   }
 
@@ -783,7 +816,10 @@ class PS1MemoryCard {
   public async saveMemoryCard(
     fileName: string,
     cardType: CardTypes,
+    fixData: boolean,
   ): Promise<boolean> {
+    this.loadDataToRawCard(fixData);
+
     let outputData: Uint8Array;
 
     switch (cardType) {

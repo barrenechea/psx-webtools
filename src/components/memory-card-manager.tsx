@@ -5,6 +5,7 @@ import {
   CpuIcon,
   DownloadIcon,
   FileIcon,
+  FolderOpenIcon,
   InfoIcon,
   MemoryStickIcon,
   SaveIcon,
@@ -23,10 +24,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import PS1BlockIcon from "@/components/ui/ps1-icon";
@@ -41,6 +46,7 @@ import {
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useGameData } from "@/hooks/use-game-data";
 import { useMemcarduino } from "@/hooks/use-memcarduino";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 import PS1MemoryCard, {
   CardTypes,
   type IconPalette,
@@ -211,6 +217,10 @@ export const MemoryCardManager: React.FC = () => {
   );
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [isSingleSaveDialogOpen, setIsSingleSaveDialogOpen] = useState(false);
+  const [fixCorrupted, setFixCorrupted] = usePersistentState(
+    "psx-webtools.fixCorruptedCards",
+    false,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const singleSaveFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -299,7 +309,7 @@ export const MemoryCardManager: React.FC = () => {
           undefined,
           progress,
         );
-      });
+      }, fixCorrupted);
 
       if (card) {
         const newMemoryCard: MemoryCard = {
@@ -362,7 +372,7 @@ export const MemoryCardManager: React.FC = () => {
     for (const file of files) {
       try {
         const card = new PS1MemoryCard();
-        await card.loadFromFile(file);
+        await card.loadFromFile(file, fixCorrupted);
         openedCards.push({
           id: nextCardId(),
           name: file.name,
@@ -423,7 +433,11 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
-        const success = await card.saveMemoryCard(fileName, format);
+        const success = await card.saveMemoryCard(
+          fileName,
+          format,
+          fixCorrupted,
+        );
         if (success) {
           setError(null);
         } else {
@@ -773,66 +787,93 @@ export const MemoryCardManager: React.FC = () => {
                     multiple
                     onChange={handleFileInputChange}
                   />
-                  <Button
-                    variant="ghost"
-                    className="hover:bg-card/80 w-full justify-start"
-                    onClick={handleOpenFromFileClick}
-                  >
-                    <FileIcon className="mr-2 size-4" />
-                    Open from file
-                  </Button>
-
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         className="hover:bg-card/80 w-full justify-start"
                       >
-                        <MemoryStickIcon className="mr-2 size-4" />
-                        Connect a device
+                        <FolderOpenIcon className="mr-2 size-4" />
+                        Open...
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right">
-                      <DropdownMenuLabel>
-                        <div className="flex items-center">
-                          <UsbIcon className="mr-2 size-4" />
-                          USB Devices
-                        </div>
-                      </DropdownMenuLabel>
-                      <DropdownMenuItem disabled>
-                        None yet, check back later
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuLabel>
-                        <div className="flex items-center">
-                          <CpuIcon className="mr-2 size-4" />
-                          Serial Devices
-                        </div>
-                      </DropdownMenuLabel>
+                    <DropdownMenuContent side="right" className="w-56">
                       <DropdownMenuItem
-                        onSelect={() => setIsConnectDialogOpen(true)}
-                      >
-                        MemCARDuino
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={async () => {
-                          showDialog(
-                            "Connecting to Unirom",
-                            "Requesting serial port access...",
-                          );
-                          try {
-                            await connect("unirom", 115200, [], (status) => {
-                              updateDialog(status);
-                            });
-                            setTimeout(hideDialog, 1000);
-                          } catch (err) {
-                            setError((err as Error).message);
-                            hideDialog();
-                          }
+                        onSelect={(event) => {
+                          // Keep the menu open so the native file picker can
+                          // open from within this user gesture.
+                          event.preventDefault();
+                          handleOpenFromFileClick();
                         }}
                       >
-                        Unirom (kinda broken)
+                        <FileIcon />
+                        Open from file
                       </DropdownMenuItem>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <MemoryStickIcon />
+                          Connect a device
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-48">
+                          <DropdownMenuLabel>
+                            <div className="flex items-center">
+                              <UsbIcon className="mr-2 size-4" />
+                              USB Devices
+                            </div>
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem disabled>
+                            None yet, check back later
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>
+                            <div className="flex items-center">
+                              <CpuIcon className="mr-2 size-4" />
+                              Serial Devices
+                            </div>
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onSelect={() => setIsConnectDialogOpen(true)}
+                          >
+                            MemCARDuino
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={async () => {
+                              showDialog(
+                                "Connecting to Unirom",
+                                "Requesting serial port access...",
+                              );
+                              try {
+                                await connect(
+                                  "unirom",
+                                  115200,
+                                  [],
+                                  (status) => {
+                                    updateDialog(status);
+                                  },
+                                );
+                                setTimeout(hideDialog, 1000);
+                              } catch (err) {
+                                setError((err as Error).message);
+                                hideDialog();
+                              }
+                            }}
+                          >
+                            Unirom (kinda broken)
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuCheckboxItem
+                        checked={fixCorrupted}
+                        onCheckedChange={(checked) => setFixCorrupted(checked)}
+                        onSelect={(event) => {
+                          // Keep the menu open; this is a setting, not a
+                          // navigational action.
+                          event.preventDefault();
+                        }}
+                      >
+                        Try to fix corrupted cards
+                      </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                   {isConnected && (
