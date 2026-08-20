@@ -4,7 +4,6 @@ import PS1BlockIcon from "@/components/ui/ps1-icon";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
@@ -14,6 +13,8 @@ import {
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 import { cn } from "@/lib/utils";
+
+export type SlotAction = "editHeader" | "editComment" | "info" | "remove";
 
 interface MemoryCardSlotProps {
   slot: SaveInfo;
@@ -30,29 +31,25 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
     case SlotTypes.DeletedMiddleLink:
     case SlotTypes.DeletedEndLink:
       return (
-        <TooltipProvider>
-          <Tooltip delayDuration={100}>
-            <TooltipTrigger>
-              <Badge variant="destructive">Deleted</Badge>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>This save has been deleted but can be recovered</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            <Badge variant="destructive">Deleted</Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>This save has been deleted but can be recovered</p>
+          </TooltipContent>
+        </Tooltip>
       );
     case SlotTypes.Corrupted:
       return (
-        <TooltipProvider>
-          <Tooltip delayDuration={100}>
-            <TooltipTrigger>
-              <Badge variant="outline">Corrupted</Badge>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>This save data is corrupted and may not be readable</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            <Badge variant="outline">Corrupted</Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>This save data is corrupted and may not be readable</p>
+          </TooltipContent>
+        </Tooltip>
       );
     default:
       return null;
@@ -76,6 +73,7 @@ export const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
 
   return (
     <Card
+      data-slot-index={index}
       className={cn(
         "mb-2 cursor-pointer border-none py-0",
         isSelected ? "bg-card" : "bg-card/40 hover:bg-card/80",
@@ -107,26 +105,22 @@ export const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
             <div className="ml-2 flex flex-wrap gap-1">
               {!isLink && (
                 <>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={100}>
-                      <TooltipTrigger>
-                        <Badge variant="secondary">{slot.identifier}</Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Save identifier</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={100}>
-                      <TooltipTrigger>
-                        <Badge variant="secondary">{slot.region}</Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Game region</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Badge variant="secondary">{slot.identifier}</Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Save identifier</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Badge variant="secondary">{slot.region}</Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Game region</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </>
               )}
               {getSlotTypeBadge(slot.slotType)}

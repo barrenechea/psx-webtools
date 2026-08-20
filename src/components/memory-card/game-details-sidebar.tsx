@@ -6,7 +6,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useGameData } from "@/hooks/use-game-data";
@@ -34,18 +33,16 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
         <div className="flex-row">
           <div className="flex flex-row items-center space-x-1">
             <p className="font-semibold">Game Details</p>
-            <TooltipProvider>
-              <Tooltip delayDuration={100}>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <InfoIcon className="text-muted-foreground size-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Game details provided by The PlayStation DataCenter</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <InfoIcon className="text-muted-foreground size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Game details provided by The PlayStation DataCenter</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
           <p className="text-muted-foreground text-xs">{gameId}</p>
         </div>

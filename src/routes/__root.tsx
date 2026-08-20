@@ -24,7 +24,7 @@ const TanStackRouterDevtools = import.meta.env.PROD
 
 export const Route = createRootRoute({
   component: () => (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delayDuration={100}>
       <div className="flex h-screen w-full flex-row">
         <Sidebar />
         <div className="relative flex-1">

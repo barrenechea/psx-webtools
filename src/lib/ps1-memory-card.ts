@@ -147,6 +147,16 @@ export interface SaveInfo {
   comment: string;
 }
 
+// A whole-slot snapshot used by the undo/redo history. Each affected slot
+// stores its full 128-byte header and 8192-byte data; the GME comment is
+// captured for the first (master) slot only.
+interface UndoItem {
+  slots: number[];
+  header: Uint8Array[];
+  data: Uint8Array[];
+  saveComment: string;
+}
+
 type RGBAColor = [number, number, number, number];
 export type IconPalette = RGBAColor[];
 type IconData = number[]; // Single icon data is a 1D array of numbers
@@ -169,9 +179,39 @@ class PS1MemoryCard {
   private cardName: string | null = null;
   //private cardLocation: string | null = null;
   private changedFlag = false;
+  private savedState: Uint8Array | null = null;
+
+  private undoList: UndoItem[] = [];
+  private redoList: UndoItem[] = [];
 
   public get changed(): boolean {
-    return this.changedFlag;
+    if (!this.changedFlag) return false;
+    // The card was edited but may have since been reverted (e.g. fully undone);
+    // clear the indicator once its bytes match the last saved/loaded state.
+    return !(this.savedState !== null && this.rawDataEquals(this.savedState));
+  }
+
+  // A card read from a device is of unknown origin, so it is treated as edited
+  // (mirrors the reference's OpenMemoryCardStream).
+  public markChanged(): void {
+    this.changedFlag = true;
+    this.savedState = null;
+  }
+
+  private rawDataEquals(other: Uint8Array): boolean {
+    if (other.length !== this.rawData.length) return false;
+    for (let i = 0; i < this.rawData.length; i++) {
+      if (this.rawData[i] !== other[i]) return false;
+    }
+    return true;
+  }
+
+  public get undoCount(): number {
+    return this.undoList.length;
+  }
+
+  public get redoCount(): number {
+    return this.redoList.length;
   }
 
   // New properties to match C# implementation
@@ -219,58 +259,87 @@ class PS1MemoryCard {
         `Invalid data size. Expected ${TOTAL_CARD_SIZE} bytes, got ${data.length} bytes.`,
       );
     }
-    this.rawData = data;
+    this.rawData = data.slice();
     this.loadMemoryCardData(fixData);
+    this.savedState = this.rawData.slice();
   }
 
   async loadFromFile(file: File, fixData = false): Promise<void> {
     const arrayBuffer = await file.arrayBuffer();
     const fileData = new Uint8Array(arrayBuffer);
 
-    const { cardType, startOffset } = await this.determineCardType(fileData);
+    this.cardName = file.name;
+    const { cardType, startOffset, loadComments } =
+      await this.determineCardType(fileData);
     this.cardType = cardType;
 
-    // Extract raw data based on the determined offset
-    this.rawData = fileData.slice(startOffset, startOffset + TOTAL_CARD_SIZE);
+    // Extract raw data based on the determined offset. Copy into a full-size
+    // buffer so a truncated file can't leave a short rawData (which would
+    // overrun the next save).
+    const raw = fileData.slice(startOffset, startOffset + TOTAL_CARD_SIZE);
+    this.rawData = new Uint8Array(TOTAL_CARD_SIZE);
+    this.rawData.set(raw);
 
-    if (this.cardType === CardTypes.Gme) {
+    if (loadComments) {
       this.loadGMEComments(fileData);
     } else if (this.cardType === CardTypes.Mcx) {
       const decrypted = await this.decryptMcxCard(fileData);
       this.rawData = decrypted.slice(0x80, 0x80 + TOTAL_CARD_SIZE);
     }
 
-    this.cardName = file.name;
     //this.cardLocation = URL.createObjectURL(file);
     this.loadMemoryCardData(fixData);
+    this.savedState = this.rawData.slice();
   }
 
   private async determineCardType(data: Uint8Array): Promise<{
     cardType: CardTypes;
     startOffset: number;
+    loadComments: boolean;
   }> {
     const fileSize = data.length;
     const headerString = this.getHeaderString(data);
 
     switch (headerString) {
       case "MC":
-        return { cardType: CardTypes.Raw, startOffset: 0 };
+        return { cardType: CardTypes.Raw, startOffset: 0, loadComments: false };
       case "123-456-STD":
-        return { cardType: CardTypes.Gme, startOffset: 3904 };
+        return {
+          cardType: CardTypes.Gme,
+          startOffset: 3904,
+          loadComments: true,
+        };
       case "VgsM":
-        return { cardType: CardTypes.Vgs, startOffset: 64 };
+        return {
+          cardType: CardTypes.Vgs,
+          startOffset: 64,
+          loadComments: false,
+        };
       case "PMV":
-        return { cardType: CardTypes.Vmp, startOffset: 128 };
+        return {
+          cardType: CardTypes.Vmp,
+          startOffset: 128,
+          loadComments: false,
+        };
       default:
         if (await this.isMcxCard(data)) {
-          return { cardType: CardTypes.Mcx, startOffset: 128 };
+          return {
+            cardType: CardTypes.Mcx,
+            startOffset: 128,
+            loadComments: false,
+          };
         } else if (
           fileSize === 134976 &&
           data[3904] === 77 &&
           data[3905] === 67
         ) {
-          // 'M' and 'C'
-          return { cardType: CardTypes.Gme, startOffset: 3904 };
+          // 'M' and 'C' — GME detected without the "123-456-STD" signature
+          // (corrupted header), so the comment area can't be trusted.
+          return {
+            cardType: CardTypes.Gme,
+            startOffset: 3904,
+            loadComments: false,
+          };
         } else {
           throw new Error(
             `'${this.cardName}' is not a supported Memory Card format.`,
@@ -430,6 +499,8 @@ class PS1MemoryCard {
     let currentSlot = initialSlot;
 
     for (let i = 0; i < SLOT_COUNT; i++) {
+      if (this.slotTypes[currentSlot] === SlotTypes.Corrupted) break;
+
       const nextSlot = this.headerData[currentSlot][8];
 
       if (nextSlot === 0xff || nextSlot >= SLOT_COUNT) break;
@@ -448,6 +519,12 @@ class PS1MemoryCard {
     }
 
     return links;
+  }
+
+  // Public view of a save's full slot chain (initial first), used by the info
+  // dialog and per-slot actions.
+  public getSaveLinks(slotNumber: number): number[] {
+    return this.findSaveLinks(slotNumber);
   }
 
   private loadStringData(): void {
@@ -538,12 +615,11 @@ class PS1MemoryCard {
   }
 
   private getSaveSize(slotNumber: number): number {
-    return (
-      (this.headerData[slotNumber][4] |
-        (this.headerData[slotNumber][5] << 8) |
-        (this.headerData[slotNumber][6] << 16)) /
-      1024
-    );
+    const size =
+      this.headerData[slotNumber][4] |
+      (this.headerData[slotNumber][5] << 8) |
+      (this.headerData[slotNumber][6] << 16);
+    return Math.trunc(size / 1024);
   }
 
   private getIconFrameCount(slotNumber: number): number {
@@ -621,6 +697,9 @@ class PS1MemoryCard {
         xorChecksum ^= this.headerData[slotNumber][i];
       }
       this.headerData[slotNumber][127] = xorChecksum;
+      // Keep the serialized buffer in sync so a hardware write (which reads
+      // rawData directly) carries a valid checksum, not the pre-edit value.
+      this.rawData[128 + slotNumber * 128 + 127] = xorChecksum;
     }
   }
 
@@ -630,6 +709,7 @@ class PS1MemoryCard {
 
   public toggleDeleteSave(slotNumber: number): void {
     const saveSlots = this.findSaveLinks(slotNumber);
+    this.pushToUndoRedoBuffer(saveSlots, this.undoList, true);
 
     for (const slot of saveSlots) {
       switch (this.slotTypes[slot]) {
@@ -661,6 +741,7 @@ class PS1MemoryCard {
 
   public formatSave(slotNumber: number): void {
     const saveSlots = this.findSaveLinks(slotNumber);
+    this.pushToUndoRedoBuffer(saveSlots, this.undoList, true);
 
     for (const slot of saveSlots) {
       this.formatSlot(slot);
@@ -677,6 +758,70 @@ class PS1MemoryCard {
     this.headerData[slotNumber][0] = SlotTypes.Formatted;
     this.headerData[slotNumber][8] = 0xff;
     this.headerData[slotNumber][9] = 0xff;
+    this.saveComments[slotNumber] = "";
+  }
+
+  // Format every slot on the card into a clean, blank state. Used to create a
+  // new card; leaves the card unmodified (changedFlag stays false). Rebuilds the
+  // raw buffer as a clean card (signature + reserved area) so the result is a
+  // valid card even when saved without "fix corrupted".
+  public formatCard(): void {
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      this.formatSlot(i);
+    }
+    this.loadDataToRawCard(true);
+    this.loadMemoryCardData();
+    this.changedFlag = false;
+    this.savedState = this.rawData.slice();
+  }
+
+  // Snapshot the current state of the given slots onto a history buffer before
+  // a mutation runs. `clearRedo` wipes the redo branch (any new edit invalidates
+  // it); the undo/redo operations pass false so they don't clobber the branch
+  // they are moving into.
+  private pushToUndoRedoBuffer(
+    slots: number[],
+    target: UndoItem[],
+    clearRedo: boolean,
+  ): void {
+    target.push({
+      slots: [...slots],
+      header: slots.map((slot) => this.headerData[slot].slice()),
+      data: slots.map((slot) => this.saveData[slot].slice()),
+      saveComment: this.saveComments[slots[0]] ?? "",
+    });
+    if (clearRedo) {
+      this.redoList = [];
+    }
+  }
+
+  private restoreSlotsFromUndoRedo(buffer: UndoItem[]): void {
+    const item = buffer[buffer.length - 1];
+    for (let i = 0; i < item.slots.length; i++) {
+      const slot = item.slots[i];
+      this.headerData[slot].set(item.header[i]);
+      this.saveData[slot].set(item.data[i]);
+    }
+    this.saveComments[item.slots[0]] = item.saveComment;
+    buffer.pop();
+    this.writeDataToRawCard();
+    this.loadMemoryCardData();
+  }
+
+  public undo(): boolean {
+    if (this.undoList.length < 1) return false;
+    const lastUndo = this.undoList[this.undoList.length - 1];
+    this.pushToUndoRedoBuffer(lastUndo.slots, this.redoList, false);
+    this.restoreSlotsFromUndoRedo(this.undoList);
+    return true;
+  }
+
+  public redo(): boolean {
+    if (this.redoList.length < 1) return false;
+    const lastRedo = this.redoList[this.redoList.length - 1];
+    this.pushToUndoRedoBuffer(lastRedo.slots, this.undoList, false);
+    this.restoreSlotsFromUndoRedo(this.redoList);
+    return true;
   }
 
   public getSaveBytes(slotNumber: number): Uint8Array {
@@ -702,11 +847,16 @@ class PS1MemoryCard {
     const requiredSlots = Math.ceil(
       (saveBytes.length - HEADER_SIZE) / BYTES_PER_SLOT,
     );
+    if (requiredSlots < 1) {
+      return false;
+    }
     const freeSlots = this.findFreeSlots(slotNumber, requiredSlots);
 
     if (freeSlots.length < requiredSlots) {
       return false;
     }
+
+    this.pushToUndoRedoBuffer(freeSlots, this.undoList, true);
 
     // Copy header to the first slot of the new save (matches the reference,
     // which places the header at freeSlots[0], not necessarily slotNumber).
@@ -770,6 +920,7 @@ class PS1MemoryCard {
     identifier: string,
     region: string,
   ): void {
+    this.pushToUndoRedoBuffer([slotNumber], this.undoList, true);
     productCode = productCode.padEnd(10, " ").slice(0, 10);
     identifier = identifier.padEnd(8, "\0").slice(0, 8);
 
@@ -788,20 +939,26 @@ class PS1MemoryCard {
     }
 
     const headerStart = 10;
-    const encoder = new TextEncoder();
-    this.headerData[slotNumber].set(encoder.encode(region), headerStart);
-    this.headerData[slotNumber].set(
-      encoder.encode(productCode),
-      headerStart + 2,
-    );
-    this.headerData[slotNumber].set(
-      encoder.encode(identifier),
-      headerStart + 12,
-    );
+    // Single-byte encode (like the reference's default codepage) so the fixed
+    // field widths can't be overflowed by multi-byte characters.
+    const toBytes = (s: string): Uint8Array =>
+      Uint8Array.from(Array.from(s), (c) => c.charCodeAt(0) & 0xff);
+    this.headerData[slotNumber].set(toBytes(region), headerStart);
+    this.headerData[slotNumber].set(toBytes(productCode), headerStart + 2);
+    this.headerData[slotNumber].set(toBytes(identifier), headerStart + 12);
 
     this.writeDataToRawCard();
     this.loadMemoryCardData();
     this.changedFlag = true;
+  }
+
+  // Set the GME comment for a save. Like the reference, this only updates the
+  // in-memory comment (materialized into the file on a GME save) and does not
+  // mark the card as changed.
+  public setComment(slotNumber: number, comment: string): void {
+    this.pushToUndoRedoBuffer([slotNumber], this.undoList, true);
+    this.saveComments[slotNumber] = comment;
+    this.loadStringData();
   }
 
   public getIconBytes(slotNumber: number): Uint8Array {
@@ -811,6 +968,11 @@ class PS1MemoryCard {
   }
 
   public setIconBytes(slotNumber: number, iconBytes: Uint8Array): void {
+    this.pushToUndoRedoBuffer(
+      this.findSaveLinks(slotNumber),
+      this.undoList,
+      true,
+    );
     this.saveData[slotNumber].set(iconBytes.slice(0, 416), 96);
     this.writeDataToRawCard();
     this.loadMemoryCardData();
@@ -865,6 +1027,7 @@ class PS1MemoryCard {
 
       this.cardName = fileName;
       this.changedFlag = false;
+      this.savedState = this.rawData.slice();
       return true;
     } catch (error) {
       console.error("Failed to save memory card:", error);
@@ -891,7 +1054,10 @@ class PS1MemoryCard {
       header[22 + i] = this.headerData[i][0];
       header[38 + i] = this.headerData[i][8];
       if (this.saveComments[i]) {
-        const commentBytes = new TextEncoder().encode(this.saveComments[i]);
+        const commentBytes = Uint8Array.from(
+          this.saveComments[i],
+          (c) => c.charCodeAt(0) & 0xff,
+        );
         header.set(commentBytes, 64 + 256 * i);
       }
     }
@@ -960,16 +1126,13 @@ class PS1MemoryCard {
       default: {
         // Action Replay
         const arHeader = new Uint8Array(54);
-        const encoder = new TextEncoder();
-        const productCodeBytes = encoder.encode(
-          this.saves[slotNumber].productCode,
-        );
-        const identifierBytes = encoder.encode(
-          this.saves[slotNumber].identifier,
-        );
-        const nameBytes = encoder.encode(this.saves[slotNumber].name);
-        arHeader.set(productCodeBytes, 0);
-        arHeader.set(identifierBytes, 10);
+        // Copy region + product code + identifier (header bytes 10..31) into
+        // the AR header, matching the reference layout.
+        arHeader.set(this.headerData[slotNumber].slice(10, 32), 0);
+        const nameBytes = Uint8Array.from(
+          this.saves[slotNumber].name,
+          (c) => c.charCodeAt(0) & 0xff,
+        ).slice(0, 33);
         arHeader.set(nameBytes, 21);
         outputData = this.concatUint8Arrays(
           arHeader,

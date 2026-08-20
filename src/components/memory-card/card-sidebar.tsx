@@ -1,6 +1,7 @@
 import {
   CpuIcon,
   FileIcon,
+  FilePlusIcon,
   FolderOpenIcon,
   MemoryStickIcon,
   UsbIcon,
@@ -28,6 +29,8 @@ interface CardSidebarProps {
   cards: MemoryCard[];
   selectedCard: number | null;
   onSelectCard: (id: number) => void;
+  onNewCard: () => void;
+  onCloseCard: (id: number) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenFile: () => void;
@@ -46,6 +49,8 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   cards,
   selectedCard,
   onSelectCard,
+  onNewCard,
+  onCloseCard,
   fileInputRef,
   onFileChange,
   onOpenFile,
@@ -70,6 +75,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
             changed={card.card.changed}
             isSelected={selectedCard === card.id}
             onClick={() => onSelectCard(card.id)}
+            onClose={() => onCloseCard(card.id)}
           />
         ))}
       </div>
@@ -94,6 +100,11 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right" className="w-56">
+          <DropdownMenuItem onSelect={onNewCard}>
+            <FilePlusIcon />
+            New card
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={(event) => {
               // Keep the menu open so the native file picker can

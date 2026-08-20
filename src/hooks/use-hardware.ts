@@ -90,6 +90,8 @@ export function useHardwareConnection() {
           onProgress((i + 1) / 1024);
         }
       }
+      // A device read is of unknown origin, so treat the card as edited.
+      card.markChanged();
       return card;
     } catch (err) {
       setError((err as Error).message);

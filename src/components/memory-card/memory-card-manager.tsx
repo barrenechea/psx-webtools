@@ -3,14 +3,26 @@ import { useRef, useState } from "react";
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import SaveMemoryCardDialog from "@/components/save-dialog";
 import SaveSingleSaveDialog from "@/components/save-single-save-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { UniromConnectDialog } from "@/components/unirom-connect-dialog";
 import { useDeviceManager } from "@/hooks/use-device-manager";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import { findLinkedSlots, findParentSlot } from "@/lib/memory-card-slots";
 import PS1MemoryCard, {
   CardTypes,
+  type IconPalette,
   type SaveInfo,
   SingleSaveTypes,
+  type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 
@@ -18,8 +30,12 @@ import AlphaNoticeDialog from "../alpha-notice-dialog";
 import { DragDropWrapper } from "../drag-drop-wrapper";
 import { CardContentHeader } from "./card-content-header";
 import { CardSidebar } from "./card-sidebar";
+import { EditCommentDialog } from "./edit-comment-dialog";
+import { EditHeaderDialog } from "./edit-header-dialog";
 import { GameDetailsSidebar } from "./game-details-sidebar";
+import type { SlotAction } from "./memory-card-slot";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
+import { SaveInfoDialog } from "./save-info-dialog";
 import { SlotList } from "./slot-list";
 import type { MemoryCard } from "./types";
 
@@ -42,8 +58,22 @@ export const MemoryCardManager: React.FC = () => {
   const [copiedSaveBytes, setCopiedSaveBytes] = useState<Uint8Array | null>(
     null,
   );
+  // Snapshot of the copied save's icon, captured at copy time so the buffer
+  // preview survives a Move (which formats the source slot in place).
+  const [copiedIcon, setCopiedIcon] = useState<{
+    data: SlotIconData;
+    palette: IconPalette;
+    frameCount: number;
+  } | null>(null);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [isSingleSaveDialogOpen, setIsSingleSaveDialogOpen] = useState(false);
+  const [isHeaderDialogOpen, setIsHeaderDialogOpen] = useState(false);
+  const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
+  const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+  const [dialogSlot, setDialogSlot] = useState<number | null>(null);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [pendingClose, setPendingClose] = useState<number | null>(null);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const [fixCorrupted, setFixCorrupted] = usePersistentState(
     "psx-webtools.fixCorruptedCards",
     false,
@@ -185,6 +215,127 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
+  const handleNewCard = () => {
+    const card = new PS1MemoryCard();
+    card.formatCard();
+    const newMemoryCard: MemoryCard = {
+      id: nextCardId(),
+      name: "New Card",
+      type: "new",
+      source: "",
+      card,
+    };
+    setMemoryCards((prev) => [...prev, newMemoryCard]);
+    setSelectedCard(newMemoryCard.id);
+    setSelectedSlot(null);
+  };
+
+  const removeCard = (id: number) => {
+    setMemoryCards((prev) => prev.filter((c) => c.id !== id));
+    if (selectedCard === id) {
+      setSelectedCard(null);
+      setSelectedSlot(null);
+    }
+  };
+
+  const handleCloseCard = (id: number) => {
+    const card = memoryCards.find((c) => c.id === id);
+    if (!card) return;
+    if (card.card.changed) {
+      setPendingClose(id);
+      setCloseConfirmOpen(true);
+    } else {
+      removeCard(id);
+    }
+  };
+
+  const handleConfirmClose = () => {
+    if (pendingClose !== null) {
+      removeCard(pendingClose);
+    }
+    setPendingClose(null);
+    setCloseConfirmOpen(false);
+  };
+
+  const handleUndo = () => {
+    if (selectedCard === null) return;
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    if (card) {
+      card.undo();
+      setMemoryCards([...memoryCards]);
+    }
+  };
+
+  const handleRedo = () => {
+    if (selectedCard === null) return;
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    if (card) {
+      card.redo();
+      setMemoryCards([...memoryCards]);
+    }
+  };
+
+  const handleEditHeaderConfirm = (
+    productCode: string,
+    identifier: string,
+    region: string,
+  ) => {
+    if (dialogSlot !== null && selectedCard !== null) {
+      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      if (card) {
+        card.setHeaderData(dialogSlot, productCode, identifier, region);
+        setMemoryCards([...memoryCards]);
+      }
+    }
+    setIsHeaderDialogOpen(false);
+  };
+
+  const handleEditCommentConfirm = (comment: string) => {
+    if (dialogSlot !== null && selectedCard !== null) {
+      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      if (card) {
+        card.setComment(dialogSlot, comment);
+        setMemoryCards([...memoryCards]);
+      }
+    }
+    setIsCommentDialogOpen(false);
+  };
+
+  const handleRemoveSaveConfirm = () => {
+    if (dialogSlot !== null && selectedCard !== null) {
+      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      if (card) {
+        const parentSlot = findParentSlot(card, dialogSlot);
+        card.formatSave(parentSlot);
+        setSelectedSlot(null);
+        setMemoryCards([...memoryCards]);
+      }
+    }
+    setRemoveConfirmOpen(false);
+  };
+
+  const handleSlotAction = (action: SlotAction, index: number) => {
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    // Resolve to the save's first (master) slot so header/comment/info edits
+    // target the real save, not a linked continuation slot.
+    const master = card ? findParentSlot(card, index) : index;
+    setDialogSlot(master);
+    switch (action) {
+      case "editHeader":
+        setIsHeaderDialogOpen(true);
+        break;
+      case "editComment":
+        setIsCommentDialogOpen(true);
+        break;
+      case "info":
+        setIsInfoDialogOpen(true);
+        break;
+      case "remove":
+        setRemoveConfirmOpen(true);
+        break;
+    }
+  };
+
   const handleSaveMemoryCard = () => {
     if (selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard);
@@ -205,6 +356,9 @@ export const MemoryCardManager: React.FC = () => {
         );
         if (success) {
           setError(null);
+          // The save cleared the card's dirty flag; re-render so the
+          // unsaved-changes dot updates.
+          setMemoryCards([...memoryCards]);
         } else {
           setError("Failed to save memory card");
         }
@@ -220,6 +374,24 @@ export const MemoryCardManager: React.FC = () => {
         ]
       : undefined;
   const isSlotEmpty = selectedSaveInfo?.slotType === SlotTypes.Formatted;
+  // The Delete button toggles delete/restore, so it applies to any real save
+  // (regular or deleted) but not to empty or corrupted slots.
+  const isDeletable =
+    selectedSaveInfo?.slotType === SlotTypes.Initial ||
+    selectedSaveInfo?.slotType === SlotTypes.DeletedInitial;
+
+  const dialogCard =
+    dialogSlot !== null
+      ? memoryCards.find((c) => c.id === selectedCard)?.card
+      : undefined;
+  const dialogSaveInfo =
+    dialogSlot !== null && dialogCard
+      ? dialogCard.getSaves()[dialogSlot]
+      : undefined;
+  const dialogLinkedSlots =
+    dialogSlot !== null && dialogCard
+      ? findLinkedSlots(dialogCard, findParentSlot(dialogCard, dialogSlot))
+      : [];
 
   const handleExportSingleSave = () => {
     if (selectedCard === null || selectedSlot === null || isSlotEmpty) return;
@@ -252,21 +424,35 @@ export const MemoryCardManager: React.FC = () => {
     input.click();
   };
 
+  const importSingleSaveIntoSlot = async (
+    file: File,
+    slot: number,
+  ): Promise<boolean> => {
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    if (!card) return false;
+    const success = await card.openSingleSave(file, slot);
+    if (success) setMemoryCards([...memoryCards]);
+    return success;
+  };
+
   const handleImportSingleSaveChange = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || selectedCard === null || selectedSlot === null) return;
-    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
-    if (!card) return;
-    const success = await card.openSingleSave(file, selectedSlot);
-    if (success) {
-      setError(null);
-      setMemoryCards([...memoryCards]);
-    } else {
-      setError("Failed to import save");
+    const success = await importSingleSaveIntoSlot(file, selectedSlot);
+    setError(success ? null : "Failed to import save");
+  };
+
+  const handleFileDrop = async (files: File[]) => {
+    // With a card and slot selected, a dropped single-save file imports into
+    // that slot (auto-detecting its format); anything else opens as a card.
+    if (files.length === 1 && selectedCard !== null && selectedSlot !== null) {
+      const imported = await importSingleSaveIntoSlot(files[0], selectedSlot);
+      if (imported) return;
     }
+    void handleFilesOpen(files);
   };
 
   const handleCopyMove = (action: "copy" | "move") => {
@@ -280,6 +466,11 @@ export const MemoryCardManager: React.FC = () => {
         );
         setCopiedSlots(copiedSaves);
         setCopiedSaveBytes(cardEntry.card.getSaveBytes(parentSlot));
+        setCopiedIcon({
+          data: cardEntry.card.getIconData(parentSlot),
+          palette: cardEntry.card.getIconPalette(parentSlot),
+          frameCount: copiedSaves[0].iconFrameCount,
+        });
         if (action === "move") {
           cardEntry.card.formatSave(parentSlot);
           setSelectedSlot(null);
@@ -302,8 +493,8 @@ export const MemoryCardManager: React.FC = () => {
           copiedSaveBytes,
         );
         if (success) {
-          setCopiedSlots([]);
-          setCopiedSaveBytes(null);
+          // Keep the buffer so the same save can be pasted into other free
+          // slots (mirrors the reference's persistent temp buffer).
           setMemoryCards([...memoryCards]);
         } else {
           setError("Not enough free space to paste save");
@@ -330,9 +521,20 @@ export const MemoryCardManager: React.FC = () => {
 
   const selectedCardEntry = memoryCards.find((c) => c.id === selectedCard);
 
+  const eraseChain =
+    dialogSlot !== null && selectedCardEntry
+      ? selectedCardEntry.card.getSaveLinks(dialogSlot)
+      : [];
+  const eraseMessage =
+    eraseChain.length > 1
+      ? `This will erase ${eraseChain.length} slots (${eraseChain
+          .map((s) => s + 1)
+          .join(", ")}), the entire multi-slot save.`
+      : `This will erase the data in slot ${(dialogSlot ?? 0) + 1}.`;
+
   return (
     <>
-      <DragDropWrapper onFileDrop={(files) => void handleFilesOpen(files)}>
+      <DragDropWrapper onFileDrop={handleFileDrop}>
         <div className="flex h-full w-full items-center justify-center bg-transparent p-4">
           <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
             <MemoryCardToolbar
@@ -340,6 +542,11 @@ export const MemoryCardManager: React.FC = () => {
               selectedCard={selectedCard}
               hasCopiedSave={copiedSaveBytes !== null}
               isSlotEmpty={isSlotEmpty}
+              isDeletable={isDeletable}
+              canUndo={(selectedCardEntry?.card.undoCount ?? 0) > 0}
+              canRedo={(selectedCardEntry?.card.redoCount ?? 0) > 0}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
               onCopy={() => handleCopyMove("copy")}
               onMove={() => handleCopyMove("move")}
               onPaste={handlePaste}
@@ -353,6 +560,8 @@ export const MemoryCardManager: React.FC = () => {
                 cards={memoryCards}
                 selectedCard={selectedCard}
                 onSelectCard={handleSelectCard}
+                onNewCard={handleNewCard}
+                onCloseCard={handleCloseCard}
                 fileInputRef={fileInputRef}
                 onFileChange={handleFileInputChange}
                 onOpenFile={handleOpenFromFileClick}
@@ -371,16 +580,17 @@ export const MemoryCardManager: React.FC = () => {
                   <>
                     <div className="bg-card/60 flex min-h-0 grow flex-col">
                       <CardContentHeader
-                        card={selectedCardEntry.card}
                         name={selectedCardEntry.name}
                         type={selectedCardEntry.type}
                         source={selectedCardEntry.source}
                         copiedSlots={copiedSlots}
+                        copiedIcon={copiedIcon}
                       />
                       <SlotList
                         card={selectedCardEntry.card}
                         selectedSlot={selectedSlot}
                         onSlotClick={handleSlotClick}
+                        onSlotAction={handleSlotAction}
                       />
                     </div>
                     {sidebarOpen && (
@@ -451,6 +661,65 @@ export const MemoryCardManager: React.FC = () => {
         defaultFileName={`${selectedSaveInfo?.regionRaw ?? ""}${selectedSaveInfo?.productCode ?? ""}${selectedSaveInfo?.identifier ?? ""}`}
         onSave={handleExportSingleSaveConfirm}
       />
+      <EditHeaderDialog
+        key={`header-${dialogSlot ?? "none"}`}
+        isOpen={isHeaderDialogOpen}
+        onOpenChange={setIsHeaderDialogOpen}
+        initialProductCode={dialogSaveInfo?.productCode ?? ""}
+        initialIdentifier={dialogSaveInfo?.identifier ?? ""}
+        initialRegion={dialogSaveInfo?.region ?? ""}
+        onSave={handleEditHeaderConfirm}
+      />
+      <EditCommentDialog
+        key={`comment-${dialogSlot ?? "none"}`}
+        isOpen={isCommentDialogOpen}
+        onOpenChange={setIsCommentDialogOpen}
+        initialComment={dialogSaveInfo?.comment ?? ""}
+        onSave={handleEditCommentConfirm}
+      />
+      {dialogSaveInfo && dialogCard && dialogSlot !== null && (
+        <SaveInfoDialog
+          isOpen={isInfoDialogOpen}
+          onOpenChange={setIsInfoDialogOpen}
+          save={dialogSaveInfo}
+          linkedSlots={dialogLinkedSlots}
+          iconData={dialogCard.getIconData(dialogSlot)}
+          iconPalette={dialogCard.getIconPalette(dialogSlot)}
+        />
+      )}
+      <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              This card has unsaved changes. Closing it will discard those
+              changes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmClose}>
+              Close anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={removeConfirmOpen} onOpenChange={setRemoveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Erase slot data</AlertDialogTitle>
+            <AlertDialogDescription>
+              {eraseMessage} You can undo this action from the toolbar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveSaveConfirm}>
+              Erase
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
