@@ -33,6 +33,12 @@ export default defineConfig([
       "simple-import-sort/exports": "error",
     },
   },
+  {
+    files: ["**/*.{test,spec}.{ts,tsx}"],
+    languageOptions: {
+      globals: globals.vitest,
+    },
+  },
   // Prettier config MUST be last to override formatting rules
   eslintConfigPrettier,
 ]);
