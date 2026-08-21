@@ -23,29 +23,33 @@ export function useHardwareConnection() {
     startConfig: HardwareStartConfig,
     onStatusUpdate: (status: string) => void,
   ) => {
+    let result: string | null;
+
     try {
       onStatusUpdate(
         `Attempting connection at ${startConfig.baudRate} baud...`,
       );
-      const result = await hardware.start(
+      result = await hardware.start(
         startConfig.deviceType,
         startConfig.baudRate,
         startConfig.signalsConfig,
         onStatusUpdate,
       );
-      if (result === null) {
-        setDevice(hardware);
-        setIsConnected(true);
-        setError(null);
-        setFirmwareVersion(hardware.firmware());
-        onStatusUpdate("Connected successfully.");
-      } else {
-        throw new Error(result);
-      }
     } catch (err) {
       setError((err as Error).message);
       throw err;
     }
+
+    if (result !== null) {
+      setError(result);
+      throw new Error(result);
+    }
+
+    setDevice(hardware);
+    setIsConnected(true);
+    setError(null);
+    setFirmwareVersion(hardware.firmware());
+    onStatusUpdate("Connected successfully.");
   };
 
   const disconnect = async (onStatusUpdate: (status: string) => void) => {
@@ -82,7 +86,8 @@ export function useHardwareConnection() {
       for (let i = 0; i < 1024; i++) {
         const frame = await device.readMemoryCardFrame(i);
         if (frame === null) {
-          throw new Error(`Failed to read frame ${i}`);
+          setError(`Failed to read frame ${i}`);
+          return null;
         }
         card.setRawData(i * 128, frame, fixData);
 
@@ -116,7 +121,8 @@ export function useHardwareConnection() {
         const frame = card.getRawData(i * 128, 128);
         const success = await device.writeMemoryCardFrame(i, frame);
         if (!success) {
-          throw new Error(`Failed to write frame ${i}`);
+          setError(`Failed to write frame ${i}`);
+          return false;
         }
 
         if (onProgress) {

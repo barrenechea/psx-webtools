@@ -96,45 +96,55 @@ export function useDeviceManager() {
 
   const readCard = async (fixData: boolean) => {
     showDialog("Reading Memory Card", "Reading memory card data...");
+    let card: PS1MemoryCard | null;
+
     try {
-      const card = await readMemoryCard((progress) => {
+      card = await readMemoryCard((progress) => {
         updateDialog(
           `Reading memory card... ${Math.round(progress * 100)}%`,
           undefined,
           progress,
         );
       }, fixData);
-      if (!card) {
-        throw new Error("Failed to read memory card");
-      }
-      updateDialog("Memory card read successfully!");
-      setTimeout(hideDialog, 1000);
-      return card;
     } catch (err) {
       hideDialog();
       throw err;
     }
+
+    if (!card) {
+      hideDialog();
+      throw new Error("Failed to read memory card");
+    }
+
+    updateDialog("Memory card read successfully!");
+    setTimeout(hideDialog, 1000);
+    return card;
   };
 
   const writeCard = async (card: PS1MemoryCard) => {
     showDialog("Writing to Memory Card", "Preparing to write data...");
+    let success: boolean;
+
     try {
-      const success = await writeMemoryCard(card, (progress) => {
+      success = await writeMemoryCard(card, (progress) => {
         updateDialog(
           `Writing to memory card... ${Math.round(progress * 100)}%`,
           undefined,
           progress,
         );
       });
-      if (!success) {
-        throw new Error("Failed to write memory card to device");
-      }
-      updateDialog("Memory card write successful!");
-      setTimeout(hideDialog, 1000);
     } catch (err) {
       hideDialog();
       throw err;
     }
+
+    if (!success) {
+      hideDialog();
+      throw new Error("Failed to write memory card to device");
+    }
+
+    updateDialog("Memory card write successful!");
+    setTimeout(hideDialog, 1000);
   };
 
   return {
