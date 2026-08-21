@@ -74,6 +74,39 @@ export const MemoryCardManager: React.FC = () => {
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<number | null>(null);
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [historyLabels, setHistoryLabels] = useState<Record<number, string[]>>(
+    {},
+  );
+
+  // Append a labeled history step for a card mutation. `rowBefore` is the
+  // card's undoCount captured before the mutation; labels past that point (the
+  // redo branch) are dropped, since a new edit abandons it.
+  const appendHistoryLabel = (
+    cardId: number,
+    rowBefore: number,
+    label: string,
+  ) => {
+    setHistoryLabels((prev) => {
+      const name = memoryCards.find((c) => c.id === cardId)?.name ?? "Card";
+      const current = prev[cardId] ?? [name];
+      return { ...prev, [cardId]: [...current.slice(0, rowBefore + 1), label] };
+    });
+  };
+
+  // Time-travel to a history position by replaying undo/redo steps, mirroring
+  // the reference (which loops Undo/Redo until UndoCount matches the row).
+  const handleJumpToHistory = (index: number) => {
+    if (selectedCard === null) return;
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    if (!card) return;
+    const current = card.undoCount;
+    if (index < current) {
+      for (let i = 0; i < current - index; i++) card.undo();
+    } else {
+      for (let i = 0; i < index - current; i++) card.redo();
+    }
+    setMemoryCards([...memoryCards]);
+  };
   const [fixCorrupted, setFixCorrupted] = usePersistentState(
     "psx-webtools.fixCorruptedCards",
     false,
@@ -209,7 +242,15 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard !== null && selectedSlot !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
+        const isRestore =
+          card.getSaves()[selectedSlot].slotType === SlotTypes.DeletedInitial;
+        const rowBefore = card.undoCount;
         card.toggleDeleteSave(selectedSlot);
+        appendHistoryLabel(
+          selectedCard,
+          rowBefore,
+          isRestore ? "Save restored" : "Save deleted",
+        );
         setMemoryCards([...memoryCards]);
       }
     }
@@ -232,6 +273,12 @@ export const MemoryCardManager: React.FC = () => {
 
   const removeCard = (id: number) => {
     setMemoryCards((prev) => prev.filter((c) => c.id !== id));
+    setHistoryLabels((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     if (selectedCard === id) {
       setSelectedCard(null);
       setSelectedSlot(null);
@@ -283,7 +330,9 @@ export const MemoryCardManager: React.FC = () => {
     if (dialogSlot !== null && selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
+        const rowBefore = card.undoCount;
         card.setHeaderData(dialogSlot, productCode, identifier, region);
+        appendHistoryLabel(selectedCard, rowBefore, "Header edited");
         setMemoryCards([...memoryCards]);
       }
     }
@@ -294,7 +343,9 @@ export const MemoryCardManager: React.FC = () => {
     if (dialogSlot !== null && selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
+        const rowBefore = card.undoCount;
         card.setComment(dialogSlot, comment);
+        appendHistoryLabel(selectedCard, rowBefore, "Comment edited");
         setMemoryCards([...memoryCards]);
       }
     }
@@ -306,7 +357,9 @@ export const MemoryCardManager: React.FC = () => {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
         const parentSlot = findParentSlot(card, dialogSlot);
+        const rowBefore = card.undoCount;
         card.formatSave(parentSlot);
+        appendHistoryLabel(selectedCard, rowBefore, "Save removed");
         setSelectedSlot(null);
         setMemoryCards([...memoryCards]);
       }
@@ -428,10 +481,18 @@ export const MemoryCardManager: React.FC = () => {
     file: File,
     slot: number,
   ): Promise<boolean> => {
+    if (selectedCard === null) return false;
     const card = memoryCards.find((c) => c.id === selectedCard)?.card;
     if (!card) return false;
+    const cardId = selectedCard;
     const success = await card.openSingleSave(file, slot);
-    if (success) setMemoryCards([...memoryCards]);
+    if (success) {
+      // Anchor on the position the commit actually landed on (undoCount after
+      // the await), not a value captured before it, so a concurrent jump can't
+      // attach the label to the wrong step.
+      appendHistoryLabel(cardId, card.undoCount - 1, "Save imported");
+      setMemoryCards([...memoryCards]);
+    }
     return success;
   };
 
@@ -449,6 +510,16 @@ export const MemoryCardManager: React.FC = () => {
     // With a card and slot selected, a dropped single-save file imports into
     // that slot (auto-detecting its format); anything else opens as a card.
     if (files.length === 1 && selectedCard !== null && selectedSlot !== null) {
+      const droppedCard = memoryCards.find((c) => c.id === selectedCard)?.card;
+      if (
+        droppedCard &&
+        droppedCard.getSaves()[selectedSlot].slotType !== SlotTypes.Formatted
+      ) {
+        // A specific slot was targeted but it isn't empty: reject rather than
+        // silently importing into another free slot.
+        setError("The selected slot is not empty");
+        return;
+      }
       const imported = await importSingleSaveIntoSlot(files[0], selectedSlot);
       if (imported) return;
     }
@@ -472,7 +543,9 @@ export const MemoryCardManager: React.FC = () => {
           frameCount: copiedSaves[0].iconFrameCount,
         });
         if (action === "move") {
+          const rowBefore = cardEntry.card.undoCount;
           cardEntry.card.formatSave(parentSlot);
+          appendHistoryLabel(cardEntry.id, rowBefore, "Save moved");
           setSelectedSlot(null);
           setMemoryCards([...memoryCards]);
         }
@@ -488,6 +561,7 @@ export const MemoryCardManager: React.FC = () => {
     ) {
       const cardEntry = memoryCards.find((c) => c.id === selectedCard);
       if (cardEntry) {
+        const rowBefore = cardEntry.card.undoCount;
         const success = cardEntry.card.setSaveBytes(
           selectedSlot,
           copiedSaveBytes,
@@ -495,6 +569,7 @@ export const MemoryCardManager: React.FC = () => {
         if (success) {
           // Keep the buffer so the same save can be pasted into other free
           // slots (mirrors the reference's persistent temp buffer).
+          appendHistoryLabel(cardEntry.id, rowBefore, "Save pasted");
           setMemoryCards([...memoryCards]);
         } else {
           setError("Not enough free space to paste save");
@@ -520,6 +595,10 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const selectedCardEntry = memoryCards.find((c) => c.id === selectedCard);
+  const cardHistory = selectedCardEntry
+    ? (historyLabels[selectedCardEntry.id] ?? [selectedCardEntry.name])
+    : [];
+  const historyIndex = selectedCardEntry?.card.undoCount ?? 0;
 
   const eraseChain =
     dialogSlot !== null && selectedCardEntry
@@ -547,6 +626,9 @@ export const MemoryCardManager: React.FC = () => {
               canRedo={(selectedCardEntry?.card.redoCount ?? 0) > 0}
               onUndo={handleUndo}
               onRedo={handleRedo}
+              history={cardHistory}
+              historyIndex={historyIndex}
+              onJumpToHistory={handleJumpToHistory}
               onCopy={() => handleCopyMove("copy")}
               onMove={() => handleCopyMove("move")}
               onPaste={handlePaste}

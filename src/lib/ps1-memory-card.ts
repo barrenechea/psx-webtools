@@ -1252,8 +1252,8 @@ class PS1MemoryCard {
 
   public getIconPalette(slotNumber: number): IconPalette {
     if (this.iconPalette[slotNumber]) {
-      return this.iconPalette[slotNumber].map(([r, g, b]) =>
-        (r | g | b) === 0 ? [0, 0, 0, 0] : [r, g, b, 255],
+      return this.iconPalette[slotNumber].map(([r, g, b, a]) =>
+        (r | g | b | a) === 0 ? [0, 0, 0, 0] : [r, g, b, 255],
       );
     }
     return new Array<RGBAColor>(16).fill([0, 0, 0, 0]); // Return a blank palette if no data is available

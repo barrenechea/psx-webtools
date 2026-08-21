@@ -1,8 +1,10 @@
 import {
   ArrowRightIcon,
+  CheckIcon,
   ClipboardPasteIcon,
   CopyIcon,
   DownloadIcon,
+  HistoryIcon,
   Redo2Icon,
   SaveIcon,
   TrashIcon,
@@ -12,10 +14,19 @@ import {
 
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 // enable copy/move/delete functionality for testing
 const alphaDisabled = false;
@@ -30,6 +41,9 @@ interface MemoryCardToolbarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  history: string[];
+  historyIndex: number;
+  onJumpToHistory: (index: number) => void;
   onCopy: () => void;
   onMove: () => void;
   onPaste: () => void;
@@ -49,6 +63,9 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
   canRedo,
   onUndo,
   onRedo,
+  history,
+  historyIndex,
+  onJumpToHistory,
   onCopy,
   onMove,
   onPaste,
@@ -91,6 +108,35 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
         </TooltipTrigger>
         <TooltipContent side="bottom">Redo</TooltipContent>
       </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={selectedCard === null}
+            aria-label="History"
+          >
+            <HistoryIcon className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-64" align="start" side="bottom">
+          <DropdownMenuLabel>History</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {history.map((label, i) => (
+            <DropdownMenuItem
+              key={i}
+              onSelect={() => onJumpToHistory(i)}
+              className={cn(
+                "justify-between",
+                i === historyIndex && "bg-accent font-medium",
+              )}
+            >
+              <span className="truncate">{label}</span>
+              {i === historyIndex && <CheckIcon className="size-4" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
