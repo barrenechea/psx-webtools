@@ -86,6 +86,15 @@ describe("H. card file formats", () => {
     expect(inner[0x80]).toBe(0x4d); // 'M'
     expect(inner[0x81]).toBe(0x43); // 'C'
   });
+
+  it("H11 GME comment for slot 1 sits at header offset 320; slot 0 stays NUL", () => {
+    const card = newCard();
+    card.setComment(1, "x");
+    const h = gmeHeader(card);
+    expect(h[320]).toBe(0x78); // 'x'
+    expect(h[321]).toBe(0);
+    expect(h[64]).toBe(0);
+  });
 });
 
 describe("H. format sniffing (loadFromFile)", () => {
@@ -118,5 +127,30 @@ describe("H. format sniffing (loadFromFile)", () => {
     await expect(
       reopened.loadFromFile(toFile(junk, "card.mcr")),
     ).rejects.toThrow(/not a supported Memory Card format/);
+  });
+
+  it("H7 a VMP file round-trips and is detected as Vmp", async () => {
+    const card = newCard();
+    const raw = card.getRawData(0, TOTAL_CARD_SIZE);
+    const vmp = await builders(card).makeVmpCard();
+    const reopened = new PS1MemoryCard();
+    await reopened.loadFromFile(toFile(vmp, "card.vmp"));
+    expect(reopened.getCardType()).toBe(CardTypes.Vmp);
+    expect(equalBytes(reopened.getRawData(0, TOTAL_CARD_SIZE), raw)).toBe(true);
+  });
+
+  it("H3 a corrupted GME signature still opens as Gme (comments not loaded)", async () => {
+    const card = newCard();
+    card.setComment(0, "hi");
+    const header = gmeHeader(card);
+    const raw = card.getRawData(0, TOTAL_CARD_SIZE);
+    const gme = new Uint8Array(3904 + TOTAL_CARD_SIZE);
+    gme.set(header);
+    gme.set(raw, 3904);
+    for (let i = 0; i < 11; i++) gme[i] = 0; // clobber the "123-456-STD" signature
+    const reopened = new PS1MemoryCard();
+    await reopened.loadFromFile(toFile(gme, "card.gme"));
+    expect(reopened.getCardType()).toBe(CardTypes.Gme);
+    expect(reopened.getSaves()[0].comment).toBe(""); // fallback path skips comments
   });
 });
