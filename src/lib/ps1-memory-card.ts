@@ -41,6 +41,19 @@ export enum SingleSaveTypes {
   Psx,
 }
 
+// The kind of data a card slot holds: a regular save or a PocketStation
+// application (called "software" in the PS2 browser).
+export enum DataTypes {
+  Save = 0,
+  Software = 1,
+}
+
+// The two monochromatic icon formats a PocketStation save can carry.
+export enum IconTypes {
+  MCIcon = 0,
+  APIcon = 1,
+}
+
 export const CardExtensions = {
   [CardTypes.Raw]: ".mcr",
   [CardTypes.Gme]: ".gme",
@@ -161,6 +174,9 @@ type RGBAColor = [number, number, number, number];
 export type IconPalette = RGBAColor[];
 type IconData = number[]; // Single icon data is a 1D array of numbers
 export type SlotIconData = IconData[]; // Icons for a single slot (up to 3 icons)
+// A slot's palette-resolved icon colors (up to 3 frames, each 256 pixels).
+export type SlotIconColors = RGBAColor[][];
+const BLANK_COLOR: RGBAColor = [0, 0, 0, 0];
 
 class PS1MemoryCard {
   private rawData: Uint8Array;
@@ -176,6 +192,9 @@ class PS1MemoryCard {
   );
   private iconPalette: IconPalette[] = [];
   private iconData: SlotIconData[] = [];
+  // Palette-resolved icon colors (per pixel), so the UI can draw a slot directly.
+  // Filled from the master slot and shared across its linked slots.
+  private iconColorData: RGBAColor[][][] = [];
   private cardName: string | null = null;
   //private cardLocation: string | null = null;
   private changedFlag = false;
@@ -225,6 +244,9 @@ class PS1MemoryCard {
   );
 
   private saveComments: string[] = new Array<string>(SLOT_COUNT).fill("");
+  private saveDataTypes: DataTypes[] = new Array<DataTypes>(SLOT_COUNT).fill(
+    DataTypes.Save,
+  );
   //private masterSlot: number[] = new Array<number>(SLOT_COUNT).fill(0);
 
   constructor() {
@@ -240,6 +262,12 @@ class PS1MemoryCard {
     this.iconData = Array.from({ length: SLOT_COUNT }, () =>
       Array.from({ length: 3 }, () =>
         Array.from({ length: ICON_SIZE * ICON_SIZE }, () => 0),
+      ),
+    );
+
+    this.iconColorData = Array.from({ length: SLOT_COUNT }, () =>
+      Array.from({ length: 3 }, () =>
+        Array.from({ length: ICON_SIZE * ICON_SIZE }, () => BLANK_COLOR),
       ),
     );
   }
@@ -381,9 +409,32 @@ class PS1MemoryCard {
     return String.fromCharCode.apply(null, Array.from(array));
   }
 
+  // Detect whether a slot holds a PocketStation "software" save: an
+  // initial/deleted slot whose header marks "P" and whose data carries the
+  // MCX0/MCX1 signature (CRD0 does not trigger the software display).
+  private loadSlotDataTypes(): void {
+    for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
+      this.saveDataTypes[slotNumber] = DataTypes.Save;
+      const isInitial =
+        this.slotTypes[slotNumber] === SlotTypes.Initial ||
+        this.slotTypes[slotNumber] === SlotTypes.DeletedInitial;
+      if (!isInitial || this.headerData[slotNumber][0x10] !== 0x50) continue;
+      const data = this.saveData[slotNumber];
+      if (
+        data[0x52] === 0x4d &&
+        data[0x53] === 0x43 &&
+        data[0x54] === 0x58 &&
+        (data[0x55] === 0x30 || data[0x55] === 0x31)
+      ) {
+        this.saveDataTypes[slotNumber] = DataTypes.Software;
+      }
+    }
+  }
+
   private loadMemoryCardData(fixXor: boolean = true): void {
     this.loadDataFromRawCard();
     this.loadSlotTypes();
+    this.loadSlotDataTypes();
     this.findBrokenLinks();
     this.loadStringData();
     this.loadSaveSize();
@@ -692,11 +743,23 @@ class PS1MemoryCard {
   }
 
   private loadIcons(): void {
+    // Reset the resolved colors; each master re-fills its own slot plus every
+    // linked slot below, so a formatted/empty slot ends up blank.
+    for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
+      for (let iconNumber = 0; iconNumber < 3; iconNumber++) {
+        const frame = this.iconColorData[slotNumber][iconNumber];
+        for (let pixel = 0; pixel < ICON_SIZE * ICON_SIZE; pixel++) {
+          frame[pixel] = BLANK_COLOR;
+        }
+      }
+    }
+
     for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
       if (
         this.slotTypes[slotNumber] === SlotTypes.Initial ||
         this.slotTypes[slotNumber] === SlotTypes.DeletedInitial
       ) {
+        const saveLinks = this.findSaveLinks(slotNumber);
         const iconDataStart = 128;
         for (let iconNumber = 0; iconNumber < 3; iconNumber++) {
           const iconStart = iconDataStart + iconNumber * 128;
@@ -704,10 +767,21 @@ class PS1MemoryCard {
             for (let x = 0; x < ICON_SIZE / 2; x++) {
               const pixelData =
                 this.saveData[slotNumber][iconStart + y * 8 + x];
+              const low = pixelData & 0xf;
+              const high = pixelData >> 4;
               this.iconData[slotNumber][iconNumber][y * ICON_SIZE + x * 2] =
-                pixelData & 0xf;
+                low;
               this.iconData[slotNumber][iconNumber][y * ICON_SIZE + x * 2 + 1] =
-                pixelData >> 4;
+                high;
+              // The master's palette-resolved colors are shared by the whole
+              // link chain, so a linked slot draws the master's icon.
+              for (const selectedSlot of saveLinks) {
+                const frame = this.iconColorData[selectedSlot][iconNumber];
+                frame[y * ICON_SIZE + x * 2] =
+                  this.iconPalette[slotNumber][low];
+                frame[y * ICON_SIZE + x * 2 + 1] =
+                  this.iconPalette[slotNumber][high];
+              }
             }
           }
         }
@@ -1309,6 +1383,12 @@ class PS1MemoryCard {
     );
   }
 
+  // Palette-resolved icon colors for direct drawing (frame -> pixel -> RGBA).
+  // A linked slot returns the master's resolved colors.
+  public getIconColorData(slotNumber: number): SlotIconColors {
+    return this.iconColorData[slotNumber] ?? [];
+  }
+
   public getIconPalette(slotNumber: number): IconPalette {
     if (this.iconPalette[slotNumber]) {
       return this.iconPalette[slotNumber].map(([r, g, b, a]) =>
@@ -1316,6 +1396,67 @@ class PS1MemoryCard {
       );
     }
     return new Array<RGBAColor>(16).fill([0, 0, 0, 0]); // Return a blank palette if no data is available
+  }
+
+  // The kind of data a slot holds (regular save vs. PocketStation software).
+  public getSaveDataType(slotNumber: number): DataTypes {
+    return this.saveDataTypes[slotNumber];
+  }
+
+  // Extract a slot's monochromatic PocketStation icon. Returns the frames plus
+  // the APIcon refresh delay, or null when the slot isn't an
+  // initial/deleted PocketStation slot or the requested type has no frames.
+  public getPocketStationIcon(
+    slotNumber: number,
+    iconType: IconTypes,
+  ): { data: Uint8Array; delay: number } | null {
+    const isInitial =
+      this.slotTypes[slotNumber] === SlotTypes.Initial ||
+      this.slotTypes[slotNumber] === SlotTypes.DeletedInitial;
+    if (!isInitial) return null;
+
+    const data = this.saveData[slotNumber];
+    const mcIconFrames = data[0x50];
+    const apIconEntries = data[0x56];
+    const savedSnapOffset = data[0x55] === 0x31 ? 0x800 : 0;
+    const funcTableOffset = (data[0x57] * 8 + 0x7f) & ~0x7f;
+    const iconFrames = this.getIconFrameCount(slotNumber);
+
+    if (iconType === IconTypes.MCIcon) {
+      if (mcIconFrames < 1) return null;
+      const iconData = new Uint8Array(mcIconFrames * 0x80);
+      for (let i = 0; i < 0x80 * mcIconFrames; i++) {
+        iconData[i] =
+          data[
+            0x80 + 0x80 * iconFrames + i + funcTableOffset + savedSnapOffset
+          ];
+      }
+      return { data: iconData, delay: 0 };
+    }
+
+    if (iconType === IconTypes.APIcon) {
+      if (apIconEntries < 1) return null;
+      const entryOffset =
+        0x80 +
+        0x80 * iconFrames +
+        mcIconFrames * 0x80 +
+        funcTableOffset +
+        savedSnapOffset;
+      const apIconFrames = data[entryOffset];
+      const delay = data[entryOffset + 2];
+      const iconOffset =
+        data[entryOffset + 4] |
+        (data[entryOffset + 5] << 8) |
+        (data[entryOffset + 6] << 16);
+      const iconData = new Uint8Array(apIconFrames * 0x80);
+      const apData = this.getSaveBytes(slotNumber);
+      for (let i = 0; i < iconData.length; i++) {
+        iconData[i] = apData[iconOffset + HEADER_SIZE + i];
+      }
+      return { data: iconData, delay };
+    }
+
+    return null;
   }
 }
 
