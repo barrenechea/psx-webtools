@@ -1125,19 +1125,7 @@ class PS1MemoryCard {
         break;
       default: {
         // Action Replay
-        const arHeader = new Uint8Array(54);
-        // Copy region + product code + identifier (header bytes 10..31) into
-        // the AR header, matching the reference layout.
-        arHeader.set(this.headerData[slotNumber].slice(10, 32), 0);
-        const nameBytes = Uint8Array.from(
-          this.saves[slotNumber].name,
-          (c) => c.charCodeAt(0) & 0xff,
-        ).slice(0, 33);
-        arHeader.set(nameBytes, 21);
-        outputData = this.concatUint8Arrays(
-          arHeader,
-          saveData.slice(HEADER_SIZE),
-        );
+        outputData = this.makeArSave(saveData, slotNumber);
         break;
       }
     }
@@ -1183,6 +1171,23 @@ class PS1MemoryCard {
     psvSave.set(saltSeed.subarray(0, 0x14), 0x08);
     psvSave.set(await getHmac(psvSave, saltSeed, saveKey, saveIv), 0x1c);
     return psvSave;
+  }
+
+  private makeArSave(saveData: Uint8Array, slotNumber: number): Uint8Array {
+    // Action Replay single save: a 54-byte header (region / product code /
+    // identifier in the first 22 bytes, then the save name) followed by the raw
+    // data block(s).
+    const arHeader = new Uint8Array(54);
+    // Region + product code + identifier (header bytes 10..31) lead the header.
+    arHeader.set(this.headerData[slotNumber].slice(10, 32), 0);
+    // The name follows, truncated to the 33 free bytes (21..53) so an
+    // over-long name cannot overrun the header.
+    const nameBytes = Uint8Array.from(
+      this.saves[slotNumber].name,
+      (c) => c.charCodeAt(0) & 0xff,
+    ).slice(0, 33);
+    arHeader.set(nameBytes, 21);
+    return this.concatUint8Arrays(arHeader, saveData.slice(HEADER_SIZE));
   }
 
   public async openSingleSave(

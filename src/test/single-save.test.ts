@@ -120,6 +120,17 @@ describe("I. single-save import (openSingleSave)", () => {
     const ok = await target.openSingleSave(toFile(data, "bad.xyz"), 0);
     expect(ok).toBe(false);
   });
+
+  it("I14 rejects an over-short file gracefully (false, not a crash)", async () => {
+    // "QQ" is none of Q/SC/sc/V, so it hits the AR branch, whose "SC" marker at
+    // [0x36..0x37] is out of bounds for a 2-byte file. The reference raises
+    // IndexOutOfRange here; the port degrades to a false return instead.
+    const file = new Uint8Array([0x51, 0x51]);
+    const target = newCard();
+    expect(await target.openSingleSave(toFile(file, "p10b.bin"), 0)).toBe(
+      false,
+    );
+  });
 });
 
 describe("I. single-save export (makePsvSave)", () => {
@@ -148,5 +159,94 @@ describe("I. single-save export (makePsvSave)", () => {
     expect(
       equalBytes(psv.slice(0x84, 0x84 + 8192), save.slice(0x80, 0x80 + 8192)),
     ).toBe(true);
+  });
+
+  it("I11 round-trips a 2-block PSV save (LE32 size fields, chain + data intact)", async () => {
+    type MakePsvSave = { makePsvSave(save: Uint8Array): Promise<Uint8Array> };
+    const save = makeSavePayload(2); // 128 header + 2*8192 data
+    save[128 + 8192 + 5] = 0x42; // second block data[5] marker
+    const card = newCard();
+    const psv = await (card as unknown as MakePsvSave).makePsvSave(save);
+
+    expect(psv.length).toBe(2 * 8192 + 128 + 4);
+    expect(psv[0x3c]).toBe(1);
+    expect(new DataView(psv.buffer).getUint32(0x40, true)).toBe(16384);
+    expect(new DataView(psv.buffer).getUint32(0x5c, true)).toBe(16384);
+
+    const target = newCard();
+    expect(await target.openSingleSave(toFile(psv, "i11.psv"), 0)).toBe(true);
+    const s = target.getSaves()[0];
+    expect(s.productCode).toBe("SCES-00001");
+    expect(target.getSaveLinks(s.slotNumber).length).toBe(2); // spans 2 slots
+    const imported = target.getSaveBytes(s.slotNumber);
+    expect(imported[128 + 5]).toBe(0x69); // block 0 data[5] preserved
+    expect(imported[128 + 8192 + 5]).toBe(0x42); // block 1 data[5] preserved
+  });
+});
+
+describe("I. single-save export (makeArSave)", () => {
+  type MakeArSave = { makeArSave(save: Uint8Array, slot: number): Uint8Array };
+
+  it("I3/I5 exports an AR save: 54-byte header + data, 'SC' magic at [54]", () => {
+    const card = newCard();
+    card.setSaveBytes(0, makeSavePayload(1));
+    const ar = (card as unknown as MakeArSave).makeArSave(
+      card.getSaveBytes(0),
+      0,
+    );
+    expect(ar.length).toBe(54 + 8192);
+    expect(bytesAt(ar, 0, 2)).toEqual(toBytes("BA"));
+    expect(bytesAt(ar, 2, 10)).toEqual(toBytes("SCES-00001"));
+    expect(ar[54]).toBe(0x53); // data block begins here
+    expect(ar[55]).toBe(0x43);
+  });
+
+  it("I7 writes the save name at arHeader[21..] over the header copy", () => {
+    const card = newCard();
+    card.setSaveBytes(0, makeSavePayload(1));
+    const ar = (card as unknown as MakeArSave).makeArSave(
+      card.getSaveBytes(0),
+      0,
+    );
+    expect(ar[20]).toBe(0x00); // header[30] carried, not part of the name
+    expect(bytesAt(ar, 21, 4)).toEqual(toBytes("Hiro"));
+    expect(equalBytes(ar.slice(25, 54), new Uint8Array(29))).toBe(true);
+  });
+
+  it("I10 round-trips a 3-block AR save (chain + per-block data intact)", async () => {
+    const card = newCard();
+    const save = makeSavePayload(3);
+    save[128 + 8192 + 5] = 0x42; // block 1 data[5]
+    save[128 + 2 * 8192 + 5] = 0x43; // block 2 data[5]
+    card.setSaveBytes(0, save);
+    const ar = (card as unknown as MakeArSave).makeArSave(
+      card.getSaveBytes(0),
+      0,
+    );
+    expect(ar.length).toBe(54 + 3 * 8192);
+    expect(ar[54]).toBe(0x53);
+
+    const target = newCard();
+    expect(await target.openSingleSave(toFile(ar, "p09.mcb"), 0)).toBe(true);
+    const s = target.getSaves()[0];
+    expect(target.getSaveLinks(s.slotNumber).length).toBe(3);
+    const imported = target.getSaveBytes(s.slotNumber);
+    expect(imported[128 + 5]).toBe(0x69); // block 0
+    expect(imported[128 + 8192 + 5]).toBe(0x42); // block 1
+    expect(imported[128 + 2 * 8192 + 5]).toBe(0x43); // block 2
+  });
+
+  it("I15 truncates an over-long AR name to the header instead of crashing", () => {
+    const card = newCard();
+    const save = makeSavePayload(1);
+    for (let i = 0; i < 40; i++) save[128 + 4 + i] = 0x41; // 40-char name
+    save[128 + 44] = 0x00;
+    card.setSaveBytes(0, save);
+    const ar = (card as unknown as MakeArSave).makeArSave(
+      card.getSaveBytes(0),
+      0,
+    );
+    expect(ar.length).toBe(54 + 8192);
+    expect(bytesAt(ar, 21, 33)).toEqual(Array.from({ length: 33 }, () => 0x41));
   });
 });
