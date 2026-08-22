@@ -1,4 +1,4 @@
-import PS1MemoryCard, { SlotTypes } from "@/lib/ps1-memory-card";
+import PS1MemoryCard, { CardTypes, SlotTypes } from "@/lib/ps1-memory-card";
 
 import {
   equalBytes,
@@ -117,6 +117,15 @@ describe("A. card lifecycle & raw layout", () => {
   it("A10 loadFromRawData rejects an oversized buffer", () => {
     const card = new PS1MemoryCard();
     expect(() => card.loadFromRawData(new Uint8Array(131073))).toThrow();
+  });
+
+  it("A8 saveMemoryCard resets the changed flag", async () => {
+    const card = newCard();
+    card.setSaveBytes(0, makeSavePayload(1)); // a save marks the card changed
+    expect(card.changed).toBe(true);
+    const ok = await card.saveMemoryCard("a8test", CardTypes.Raw, false);
+    expect(ok).toBe(true);
+    expect(card.changed).toBe(false);
   });
 });
 
