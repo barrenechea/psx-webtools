@@ -495,10 +495,14 @@ class PS1MemoryCard {
   }
 
   private findSaveLinks(initialSlot: number): number[] {
-    const links = [initialSlot];
+    const links: number[] = [];
     let currentSlot = initialSlot;
 
+    // Add the current slot before advancing, so a link cycle (a corrupted card)
+    // terminates at exactly SLOT_COUNT entries, matching the reference.
     for (let i = 0; i < SLOT_COUNT; i++) {
+      links.push(currentSlot);
+
       if (this.slotTypes[currentSlot] === SlotTypes.Corrupted) break;
 
       const nextSlot = this.headerData[currentSlot][8];
@@ -514,7 +518,6 @@ class PS1MemoryCard {
       )
         break;
 
-      links.push(nextSlot);
       currentSlot = nextSlot;
     }
 
