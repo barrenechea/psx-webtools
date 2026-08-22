@@ -71,6 +71,53 @@ describe("A. card lifecycle & raw layout", () => {
     const card = new PS1MemoryCard();
     expect(() => card.loadFromRawData(new Uint8Array(131071))).toThrow();
   });
+
+  it("A7 fixData=false preserves a bad checksum; fixData=true recomputes it", () => {
+    const raw = new Uint8Array(newCard().getRawData(0, TOTAL_CARD_SIZE));
+    raw[128 + 127] = 0x00; // clobber slot 0's XOR byte (correct value is 0xa0)
+    const bad = new PS1MemoryCard();
+    bad.loadFromRawData(raw, false);
+    expect(bad.getRawData(0, TOTAL_CARD_SIZE)[128 + 127]).toBe(0x00);
+    const good = new PS1MemoryCard();
+    good.loadFromRawData(raw, true);
+    expect(good.getRawData(0, TOTAL_CARD_SIZE)[128 + 127]).toBe(0xa0);
+  });
+
+  it("A9 a clean card's raw image is signature + 15 headers + 20 reserved blocks", () => {
+    const raw = newCard().getRawData(0, TOTAL_CARD_SIZE);
+    expect(raw.length).toBe(TOTAL_CARD_SIZE);
+    // primary + secondary signature
+    expect(raw[0]).toBe(0x4d);
+    expect(raw[1]).toBe(0x43);
+    expect(raw[127]).toBe(0x0e);
+    expect(raw[8064]).toBe(0x4d);
+    expect(raw[8065]).toBe(0x43);
+    expect(raw[8191]).toBe(0x0e);
+    // 15 formatted slot headers
+    for (let n = 0; n < 15; n++) {
+      const h = 128 + n * 128;
+      expect(raw[h + 0]).toBe(0xa0);
+      expect(raw[h + 8]).toBe(0xff);
+      expect(raw[h + 9]).toBe(0xff);
+      expect(raw[h + 127]).toBe(0xa0);
+    }
+    // 20 reserved blocks (only present on a clean build)
+    for (let n = 0; n < 20; n++) {
+      const h = 2048 + n * 128;
+      for (let i = 0; i < 4; i++) expect(raw[h + i]).toBe(0xff);
+      expect(raw[h + 8]).toBe(0xff);
+      expect(raw[h + 9]).toBe(0xff);
+    }
+    // exactly those bytes are non-zero
+    let nonZero = 0;
+    for (let i = 0; i < raw.length; i++) if (raw[i] !== 0) nonZero++;
+    expect(nonZero).toBe(3 + 3 + 15 * 4 + 20 * 6);
+  });
+
+  it("A10 loadFromRawData rejects an oversized buffer", () => {
+    const card = new PS1MemoryCard();
+    expect(() => card.loadFromRawData(new Uint8Array(131073))).toThrow();
+  });
 });
 
 describe("B. slot type & link integrity", () => {
