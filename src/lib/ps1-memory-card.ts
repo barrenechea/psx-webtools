@@ -527,25 +527,53 @@ class PS1MemoryCard {
     return this.findSaveLinks(slotNumber);
   }
 
+  // The master (initial) slot of the linked save that `slot` belongs to. A slot
+  // that is not a middle/end link is its own master; a link slot resolves to the
+  // initial slot whose pointer chain contains it.
+  public getMasterLinkForSlot(slot: number): number {
+    const isLink = (type: SlotTypes): boolean =>
+      type === SlotTypes.MiddleLink ||
+      type === SlotTypes.EndLink ||
+      type === SlotTypes.DeletedMiddleLink ||
+      type === SlotTypes.DeletedEndLink;
+    if (!isLink(this.slotTypes[slot])) return slot;
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const type = this.slotTypes[i];
+      if (type !== SlotTypes.Initial && type !== SlotTypes.DeletedInitial)
+        continue;
+      if (this.findSaveLinks(i).includes(slot)) return i;
+    }
+    return slot;
+  }
+
   private loadStringData(): void {
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const region = this.getRegion(i);
-      const productCode = this.getProductCode(i);
-      const identifier = this.getIdentifier(i);
-      const name = this.getSaveName(i);
-      const blockCount = this.getSaveSize(i);
-      const iconFrameCount = this.getIconFrameCount(i);
+      const slotType = this.slotTypes[i];
+      // A linked slot is reported by its role and inherits the master's region;
+      // its own prod/identifier stay empty (mirrors the reference's per-slot view).
+      const isMiddleLink =
+        slotType === SlotTypes.MiddleLink ||
+        slotType === SlotTypes.DeletedMiddleLink;
+      const isEndLink =
+        slotType === SlotTypes.EndLink || slotType === SlotTypes.DeletedEndLink;
+      const isLink = isMiddleLink || isEndLink;
+      const master = isLink ? this.getMasterLinkForSlot(i) : i;
+      const name = isLink
+        ? isMiddleLink
+          ? "Linked slot (middle link)"
+          : "Linked slot (end link)"
+        : this.getSaveName(i);
 
       this.saves[i] = {
         slotNumber: i,
         name,
-        productCode,
-        identifier,
-        region,
+        productCode: this.getProductCode(i),
+        identifier: this.getIdentifier(i),
+        region: this.getRegion(master),
         regionRaw: this.getRegionRaw(i),
-        blockCount,
-        iconFrameCount,
-        slotType: this.slotTypes[i],
+        blockCount: this.getSaveSize(i),
+        iconFrameCount: this.getIconFrameCount(i),
+        slotType,
         comment: this.saveComments[i],
       };
     }
@@ -899,6 +927,29 @@ class PS1MemoryCard {
     this.loadMemoryCardData();
     this.changedFlag = true;
     return true;
+  }
+
+  public replaceSaveBytes(slotNumber: number, saveBytes: Uint8Array): void {
+    // Rewrite an existing save in place: reuse its current slot chain and copy
+    // the new bytes over it. The payload is trusted (a plugin edit writes back
+    // a same-size save), so — like the reference — the size is not validated.
+    const saveSlots = this.findSaveLinks(slotNumber);
+    this.pushToUndoRedoBuffer(saveSlots, this.undoList, true);
+
+    // Header goes to the master slot; each linked slot gets its data block.
+    this.headerData[saveSlots[0]].set(saveBytes.slice(0, HEADER_SIZE));
+    for (let i = 0; i < saveSlots.length; i++) {
+      this.saveData[saveSlots[i]].set(
+        saveBytes.slice(
+          HEADER_SIZE + i * BYTES_PER_SLOT,
+          HEADER_SIZE + (i + 1) * BYTES_PER_SLOT,
+        ),
+      );
+    }
+
+    this.writeDataToRawCard();
+    this.loadMemoryCardData();
+    this.changedFlag = true;
   }
 
   private findFreeSlots(startSlot: number, count: number): number[] {

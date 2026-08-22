@@ -8,7 +8,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { findLinkedSlots, findParentSlot } from "@/lib/memory-card-slots";
 import type PS1MemoryCard from "@/lib/ps1-memory-card";
 import { SlotTypes } from "@/lib/ps1-memory-card";
 
@@ -52,8 +51,8 @@ export const SlotList: React.FC<SlotListProps> = ({
             }}
           >
             {saves.map((save, index) => {
-              const parentSlot = findParentSlot(card, index);
-              const linkedSlots = findLinkedSlots(card, parentSlot);
+              const parentSlot = card.getMasterLinkForSlot(index);
+              const linkedSlots = card.getSaveLinks(parentSlot);
               const isSelected = linkedSlots.includes(selectedSlot ?? -1);
               return (
                 <MemoryCardSlot

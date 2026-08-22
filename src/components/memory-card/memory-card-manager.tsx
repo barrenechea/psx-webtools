@@ -16,7 +16,6 @@ import {
 import { UniromConnectDialog } from "@/components/unirom-connect-dialog";
 import { useDeviceManager } from "@/hooks/use-device-manager";
 import { usePersistentState } from "@/hooks/use-persistent-state";
-import { findLinkedSlots, findParentSlot } from "@/lib/memory-card-slots";
 import PS1MemoryCard, {
   CardTypes,
   type IconPalette,
@@ -356,7 +355,7 @@ export const MemoryCardManager: React.FC = () => {
     if (dialogSlot !== null && selectedCard !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
-        const parentSlot = findParentSlot(card, dialogSlot);
+        const parentSlot = card.getMasterLinkForSlot(dialogSlot);
         const rowBefore = card.undoCount;
         card.formatSave(parentSlot);
         appendHistoryLabel(selectedCard, rowBefore, "Save removed");
@@ -371,7 +370,7 @@ export const MemoryCardManager: React.FC = () => {
     const card = memoryCards.find((c) => c.id === selectedCard)?.card;
     // Resolve to the save's first (master) slot so header/comment/info edits
     // target the real save, not a linked continuation slot.
-    const master = card ? findParentSlot(card, index) : index;
+    const master = card ? card.getMasterLinkForSlot(index) : index;
     setDialogSlot(master);
     switch (action) {
       case "editHeader":
@@ -443,7 +442,7 @@ export const MemoryCardManager: React.FC = () => {
       : undefined;
   const dialogLinkedSlots =
     dialogSlot !== null && dialogCard
-      ? findLinkedSlots(dialogCard, findParentSlot(dialogCard, dialogSlot))
+      ? dialogCard.getSaveLinks(dialogCard.getMasterLinkForSlot(dialogSlot))
       : [];
 
   const handleExportSingleSave = () => {
@@ -458,7 +457,7 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard !== null && selectedSlot !== null) {
       const card = memoryCards.find((c) => c.id === selectedCard)?.card;
       if (card) {
-        const parentSlot = findParentSlot(card, selectedSlot);
+        const parentSlot = card.getMasterLinkForSlot(selectedSlot);
         const success = await card.saveSingleSave(
           fileName,
           parentSlot,
@@ -530,8 +529,8 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard !== null && selectedSlot !== null) {
       const cardEntry = memoryCards.find((c) => c.id === selectedCard);
       if (cardEntry) {
-        const parentSlot = findParentSlot(cardEntry.card, selectedSlot);
-        const linkedSlots = findLinkedSlots(cardEntry.card, parentSlot);
+        const parentSlot = cardEntry.card.getMasterLinkForSlot(selectedSlot);
+        const linkedSlots = cardEntry.card.getSaveLinks(parentSlot);
         const copiedSaves = linkedSlots.map(
           (slotIndex) => cardEntry.card.getSaves()[slotIndex],
         );
@@ -583,8 +582,8 @@ export const MemoryCardManager: React.FC = () => {
     if (!card) return;
 
     const saves = card.getSaves();
-    const parentSlot = findParentSlot(card, index);
-    const linkedSlots = findLinkedSlots(card, parentSlot);
+    const parentSlot = card.getMasterLinkForSlot(index);
+    const linkedSlots = card.getSaveLinks(parentSlot);
 
     setSelectedSlot((prev) =>
       linkedSlots.includes(prev ?? -1) ? null : parentSlot,
