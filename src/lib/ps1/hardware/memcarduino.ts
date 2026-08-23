@@ -24,6 +24,10 @@ export class MemCARDuino extends HardwareInterface {
   private interfaceName = "MemCARDuino";
   private firmwareVersion = 0;
   private currentBaudRate = 0;
+  private rxQueue: number[] = [];
+  private pendingRead: Promise<void> | null = null;
+  private rxClosed = false;
+  private rxNeedsDrain = true;
 
   private static readonly PocketCommandsMin: number = 0x08;
   private static readonly PocketUnsupported: string =
@@ -32,6 +36,7 @@ export class MemCARDuino extends HardwareInterface {
     "PocketStation not detected on MemCARDuino";
   private static readonly PocketNoAck: string =
     "PocketStation did not acknowledge the time update";
+  private static readonly RxQuietMs: number = 5;
 
   constructor() {
     super();
@@ -71,6 +76,10 @@ export class MemCARDuino extends HardwareInterface {
 
       this.reader = this.port.readable?.getReader() ?? null;
       this.writer = this.port.writable?.getWriter() ?? null;
+      this.rxQueue = [];
+      this.pendingRead = null;
+      this.rxClosed = false;
+      this.rxNeedsDrain = true;
 
       // Set device-specific signals
       onStatusUpdate(`Setting device-specific signals for ${deviceType}...`);
@@ -83,6 +92,7 @@ export class MemCARDuino extends HardwareInterface {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
 
       onStatusUpdate("Checking for MemCARDuino...");
+      await this.discard();
       await this.sendDataToPort(MCinoCommands.GETID);
       const readData = await this.readDataFromPort(6);
 
@@ -91,6 +101,7 @@ export class MemCARDuino extends HardwareInterface {
       }
 
       onStatusUpdate("Getting firmware version...");
+      await this.discard();
       await this.sendDataToPort(MCinoCommands.GETVER);
       const versionData = await this.readDataFromPort(1);
       this.firmwareVersion = versionData[0];
@@ -123,6 +134,9 @@ export class MemCARDuino extends HardwareInterface {
   }
 
   override async stop(): Promise<void> {
+    this.rxClosed = true;
+    this.rxQueue = [];
+    this.pendingRead = null;
     if (this.reader) {
       await this.reader.cancel();
       this.reader.releaseLock();
@@ -138,16 +152,59 @@ export class MemCARDuino extends HardwareInterface {
 
   private async sendDataToPort(command: MCinoCommands): Promise<void> {
     if (!this.writer) throw new Error("Port not opened");
+    this.rxQueue = [];
     await this.writer.write(new Uint8Array([command]));
   }
 
-  private createTimeoutPromise(ms: number): Promise<never> {
-    return new Promise((_, reject) =>
-      setTimeout(
+  private raceWithTimeout(promise: Promise<void>, ms: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
         () => reject(new Error(`Operation timed out after ${ms}ms`)),
         ms,
-      ),
-    );
+      );
+      promise.then(
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  }
+
+  private startPendingRead(): void {
+    if (this.pendingRead || !this.reader) return;
+    this.pendingRead = this.reader
+      .read()
+      .then((result) => {
+        const value = result.value;
+        if (!this.rxClosed && !result.done && value?.length) {
+          for (let i = 0; i < value.length; i++) {
+            this.rxQueue.push(value[i]);
+          }
+        }
+        this.pendingRead = null;
+      })
+      .catch(() => {
+        this.pendingRead = null;
+      });
+  }
+
+  private async waitForData(timeout: number): Promise<boolean> {
+    if (!this.reader) return false;
+    const before = this.rxQueue.length;
+    this.startPendingRead();
+    if (this.pendingRead) {
+      try {
+        await this.raceWithTimeout(this.pendingRead, timeout);
+      } catch {
+        return this.rxQueue.length > before;
+      }
+    }
+    return this.rxQueue.length > before;
   }
 
   private async readDataFromPort(
@@ -155,26 +212,31 @@ export class MemCARDuino extends HardwareInterface {
     timeout = 5000,
   ): Promise<Uint8Array> {
     if (!this.reader) throw new Error("Port not opened");
-    const result = new Uint8Array(count);
-    let offset = 0;
-    while (offset < count) {
-      try {
-        const { value, done } = await Promise.race([
-          this.reader.read(),
-          this.createTimeoutPromise(timeout),
-        ]);
-        if (done) break;
-        result.set(value, offset);
-        offset += value.length;
-      } catch (error) {
-        console.error(
-          `Error reading data from port: ${(error as Error).message}`,
-        );
-        this.reader.releaseLock();
-        return new Uint8Array(0);
-      }
+    const deadline = Date.now() + timeout;
+    while (this.rxQueue.length < count) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      if (!(await this.waitForData(remaining))) break;
     }
-    return result.slice(0, offset);
+    const available = Math.min(count, this.rxQueue.length);
+    const result = new Uint8Array(available);
+    for (let i = 0; i < available; i++) {
+      result[i] = this.rxQueue[i];
+    }
+    this.rxQueue.splice(0, available);
+    this.rxNeedsDrain = available < count || this.rxQueue.length > 0;
+    return result;
+  }
+
+  private async discard(): Promise<void> {
+    if (!this.reader) return;
+    // Drop leftover JS bytes. Leave any in-flight reader.read() alone: that
+    // hanging read is how the next reply arrives.
+    this.rxQueue = [];
+    if (!this.rxNeedsDrain) return;
+    while (await this.waitForData(MemCARDuino.RxQuietMs)) {
+      this.rxQueue = [];
+    }
   }
 
   override async readMemoryCardFrame(
@@ -184,6 +246,7 @@ export class MemCARDuino extends HardwareInterface {
     const frameLsb = frameNumber & 0xff;
     let xorData = frameMsb ^ frameLsb;
 
+    await this.discard();
     await this.sendDataToPort(MCinoCommands.MCR);
     await this.writer?.write(new Uint8Array([frameMsb, frameLsb]));
 
@@ -218,6 +281,7 @@ export class MemCARDuino extends HardwareInterface {
       xorData ^= byte;
     }
 
+    await this.discard();
     await this.sendDataToPort(MCinoCommands.MCW);
     await this.writer?.write(
       new Uint8Array([frameMsb, frameLsb, ...frameData, xorData]),
@@ -235,6 +299,7 @@ export class MemCARDuino extends HardwareInterface {
       return { serial: 0, errorMsg: MemCARDuino.PocketUnsupported };
     }
 
+    await this.discard();
     await this.sendDataToPort(MCinoCommands.PSINFO);
     const readData = await this.readDataFromPort(0x13);
 
@@ -258,6 +323,7 @@ export class MemCARDuino extends HardwareInterface {
       return null;
     }
 
+    await this.discard();
     await this.sendDataToPort(MCinoCommands.PSBIOS);
     await this.writer?.write(new Uint8Array([part]));
 
@@ -298,6 +364,7 @@ export class MemCARDuino extends HardwareInterface {
       return { success: false, errorMsg: MemCARDuino.PocketUnsupported };
     }
 
+    await this.discard();
     await this.sendDataToPort(MCinoCommands.PSTIME);
     const initialResponse = await this.readDataFromPort(2);
 
