@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type PS1MemoryCard from "@/lib/ps1-memory-card";
-import { SlotTypes } from "@/lib/ps1-memory-card";
+import { DataTypes, SlotTypes } from "@/lib/ps1-memory-card";
 
 import { MemoryCardSlot, type SlotAction } from "./memory-card-slot";
 
@@ -54,6 +54,8 @@ export const SlotList: React.FC<SlotListProps> = ({
               const parentSlot = card.getMasterLinkForSlot(index);
               const linkedSlots = card.getSaveLinks(parentSlot);
               const isSelected = linkedSlots.includes(selectedSlot ?? -1);
+              const isSoftware =
+                card.getSaveDataType(index) === DataTypes.Software;
               return (
                 <MemoryCardSlot
                   key={index}
@@ -63,6 +65,7 @@ export const SlotList: React.FC<SlotListProps> = ({
                   onClick={onSlotClick}
                   iconData={card.getIconData(index)}
                   iconPalette={card.getIconPalette(index)}
+                  isSoftware={isSoftware}
                 />
               );
             })}

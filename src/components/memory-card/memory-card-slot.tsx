@@ -23,6 +23,7 @@ interface MemoryCardSlotProps {
   onClick: (index: number) => void;
   iconData: SlotIconData;
   iconPalette: IconPalette;
+  isSoftware: boolean;
 }
 
 const getSlotTypeBadge = (slotType: SlotTypes) => {
@@ -63,6 +64,7 @@ export const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
   onClick,
   iconData,
   iconPalette,
+  isSoftware,
 }) => {
   const isFormatted = slot.slotType === SlotTypes.Formatted;
   const isLink =
@@ -121,6 +123,16 @@ export const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
                       <p>Game region</p>
                     </TooltipContent>
                   </Tooltip>
+                  {isSoftware && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Badge variant="outline">Software</Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>PocketStation software save</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </>
               )}
               {getSlotTypeBadge(slot.slotType)}

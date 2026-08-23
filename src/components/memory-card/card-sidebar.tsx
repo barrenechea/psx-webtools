@@ -36,6 +36,7 @@ interface CardSidebarProps {
   onOpenFile: () => void;
   onConnectMemcarduino: () => void;
   onConnectUnirom: () => void;
+  onPocketStation: () => void;
   fixCorrupted: boolean;
   onFixCorruptedChange: (value: boolean) => void;
   isConnected: boolean;
@@ -56,6 +57,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onOpenFile,
   onConnectMemcarduino,
   onConnectUnirom,
+  onPocketStation,
   fixCorrupted,
   onFixCorruptedChange,
   isConnected,
@@ -184,6 +186,15 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
           >
             Write to {connectedDevice ?? "device"}
           </Button>
+          {connectedDevice === "MemCARDuino" && (
+            <Button
+              variant="ghost"
+              className="hover:bg-card/80 w-full justify-start"
+              onClick={onPocketStation}
+            >
+              PocketStation
+            </Button>
+          )}
         </>
       )}
     </div>

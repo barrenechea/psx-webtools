@@ -22,6 +22,7 @@ interface SaveInfoDialogProps {
   linkedSlots: number[];
   iconData: SlotIconData;
   iconPalette: IconPalette;
+  isSoftware: boolean;
 }
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
@@ -40,6 +41,7 @@ export const SaveInfoDialog: React.FC<SaveInfoDialogProps> = ({
   linkedSlots,
   iconData,
   iconPalette,
+  isSoftware,
 }) => (
   <Dialog open={isOpen} onOpenChange={onOpenChange}>
     <DialogContent>
@@ -71,7 +73,10 @@ export const SaveInfoDialog: React.FC<SaveInfoDialogProps> = ({
           <Row label="Product code" value={save.productCode || "—"} />
           <Row label="Identifier" value={save.identifier || "—"} />
           <Row label="Region" value={save.region || "—"} />
-          <Row label="File type" value="Save data" />
+          <Row
+            label="File type"
+            value={isSoftware ? "Software (PocketStation)" : "Save data"}
+          />
           <Row label="Size" value={`${save.blockCount} KB`} />
           <Row
             label="Slot(s)"

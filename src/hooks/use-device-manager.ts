@@ -16,6 +16,7 @@ export function useDeviceManager() {
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const {
     isConnected,
+    device,
     error: connectionError,
     connect,
     disconnect,
@@ -147,6 +148,42 @@ export function useDeviceManager() {
     setTimeout(hideDialog, 1000);
   };
 
+  const readPocketStationSerial = async (): Promise<number> => {
+    const mcdino = device instanceof MemCARDuino ? device : null;
+    if (!mcdino)
+      throw new Error("PocketStation is only available on a MemCARDuino");
+    const { serial, errorMsg } = await mcdino.readPocketStationSerial();
+    if (errorMsg) throw new Error(errorMsg);
+    return serial;
+  };
+
+  const dumpPocketStationBIOS = async (): Promise<{
+    bios: Uint8Array;
+    serial: number;
+  }> => {
+    const mcdino = device instanceof MemCARDuino ? device : null;
+    if (!mcdino)
+      throw new Error("PocketStation is only available on a MemCARDuino");
+    const { serial, errorMsg } = await mcdino.readPocketStationSerial();
+    if (errorMsg) throw new Error(errorMsg);
+    const bios = new Uint8Array(0x4000);
+    for (let part = 0; part < 128; part++) {
+      const chunk = await mcdino.dumpPocketStationBIOS(part);
+      if (chunk === null) throw new Error(`Failed to read BIOS chunk ${part}`);
+      bios.set(chunk, part * 128);
+    }
+    return { bios, serial };
+  };
+
+  const setPocketStationTime = async (): Promise<void> => {
+    const mcdino = device instanceof MemCARDuino ? device : null;
+    if (!mcdino)
+      throw new Error("PocketStation is only available on a MemCARDuino");
+    const { success, errorMsg } = await mcdino.setPocketStationTime();
+    if (!success)
+      throw new Error(errorMsg ?? "Failed to set PocketStation time");
+  };
+
   return {
     isConnected,
     connectionError,
@@ -157,5 +194,8 @@ export function useDeviceManager() {
     disconnectDevice,
     readCard,
     writeCard,
+    readPocketStationSerial,
+    dumpPocketStationBIOS,
+    setPocketStationTime,
   };
 }

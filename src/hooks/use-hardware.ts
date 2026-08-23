@@ -138,6 +138,7 @@ export function useHardwareConnection() {
 
   return {
     isConnected,
+    device,
     error,
     connect,
     disconnect,

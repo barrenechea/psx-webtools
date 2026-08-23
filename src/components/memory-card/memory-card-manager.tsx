@@ -18,6 +18,7 @@ import { useDeviceManager } from "@/hooks/use-device-manager";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import PS1MemoryCard, {
   CardTypes,
+  DataTypes,
   type IconPalette,
   type SaveInfo,
   SingleSaveTypes,
@@ -34,6 +35,7 @@ import { EditHeaderDialog } from "./edit-header-dialog";
 import { GameDetailsSidebar } from "./game-details-sidebar";
 import type { SlotAction } from "./memory-card-slot";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
+import { PocketStationDialog } from "./pocketstation-dialog";
 import { SaveInfoDialog } from "./save-info-dialog";
 import { SlotList } from "./slot-list";
 import type { MemoryCard } from "./types";
@@ -69,6 +71,8 @@ export const MemoryCardManager: React.FC = () => {
   const [isHeaderDialogOpen, setIsHeaderDialogOpen] = useState(false);
   const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
   const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+  const [isPocketStationDialogOpen, setIsPocketStationDialogOpen] =
+    useState(false);
   const [dialogSlot, setDialogSlot] = useState<number | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<number | null>(null);
@@ -123,6 +127,9 @@ export const MemoryCardManager: React.FC = () => {
     disconnectDevice,
     readCard,
     writeCard,
+    readPocketStationSerial,
+    dumpPocketStationBIOS,
+    setPocketStationTime,
   } = useDeviceManager();
 
   const handleMemcarduinoConnect = async (
@@ -648,6 +655,7 @@ export const MemoryCardManager: React.FC = () => {
                 onOpenFile={handleOpenFromFileClick}
                 onConnectMemcarduino={() => setIsConnectDialogOpen(true)}
                 onConnectUnirom={() => setIsUniromDialogOpen(true)}
+                onPocketStation={() => setIsPocketStationDialogOpen(true)}
                 fixCorrupted={fixCorrupted}
                 onFixCorruptedChange={setFixCorrupted}
                 isConnected={isConnected}
@@ -720,6 +728,13 @@ export const MemoryCardManager: React.FC = () => {
         onOpenChange={setIsUniromDialogOpen}
         onConnect={handleUniromConnect}
       />
+      <PocketStationDialog
+        isOpen={isPocketStationDialogOpen}
+        onOpenChange={setIsPocketStationDialogOpen}
+        onReadSerial={readPocketStationSerial}
+        onDumpBios={dumpPocketStationBIOS}
+        onSetTime={setPocketStationTime}
+      />
       <input
         ref={singleSaveFileInputRef}
         type="file"
@@ -766,6 +781,9 @@ export const MemoryCardManager: React.FC = () => {
           linkedSlots={dialogLinkedSlots}
           iconData={dialogCard.getIconData(dialogSlot)}
           iconPalette={dialogCard.getIconPalette(dialogSlot)}
+          isSoftware={
+            dialogCard.getSaveDataType(dialogSlot) === DataTypes.Software
+          }
         />
       )}
       <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
