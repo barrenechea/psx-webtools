@@ -30,6 +30,8 @@ export class MemCARDuino extends HardwareInterface {
     "Please update MemCARDuino to use PocketStation commands";
   private static readonly PocketNotFound: string =
     "PocketStation not detected on MemCARDuino";
+  private static readonly PocketNoAck: string =
+    "PocketStation did not acknowledge the time update";
 
   constructor() {
     super();
@@ -234,17 +236,18 @@ export class MemCARDuino extends HardwareInterface {
     }
 
     await this.sendDataToPort(MCinoCommands.PSINFO);
-    const readData = await this.readDataFromPort(0x12);
+    const readData = await this.readDataFromPort(0x13);
 
-    if (readData[0] !== 0x12) {
+    if (readData.length < 0x13 || readData[0] !== 0x12) {
       return { serial: 0, errorMsg: MemCARDuino.PocketNotFound };
     }
 
     const serial =
-      readData[7] |
-      (readData[8] << 8) |
-      (readData[9] << 16) |
-      (readData[10] << 24);
+      (readData[7] |
+        (readData[8] << 8) |
+        (readData[9] << 16) |
+        (readData[10] << 24)) >>>
+      0;
     return { serial, errorMsg: null };
   }
 
@@ -259,14 +262,22 @@ export class MemCARDuino extends HardwareInterface {
     await this.writer?.write(new Uint8Array([part]));
 
     const initialResponse = await this.readDataFromPort(2);
-    if (initialResponse[0] !== 0x5 || initialResponse[1] !== 0x80) {
+    if (
+      initialResponse.length < 2 ||
+      initialResponse[0] !== 0x5 ||
+      initialResponse[1] !== 0x80
+    ) {
       return null;
     }
 
     const biosData = await this.readDataFromPort(128);
     const statusResponse = await this.readDataFromPort(1);
 
-    if (statusResponse[0] !== MCinoResponses.GOOD.valueOf()) {
+    if (
+      biosData.length < 128 ||
+      statusResponse.length < 1 ||
+      statusResponse[0] !== MCinoResponses.GOOD.valueOf()
+    ) {
       return null;
     }
 
@@ -290,7 +301,11 @@ export class MemCARDuino extends HardwareInterface {
     await this.sendDataToPort(MCinoCommands.PSTIME);
     const initialResponse = await this.readDataFromPort(2);
 
-    if (initialResponse[0] !== 0x0 || initialResponse[1] !== 0x08) {
+    if (
+      initialResponse.length < 2 ||
+      initialResponse[0] !== 0x0 ||
+      initialResponse[1] !== 0x08
+    ) {
       return { success: false, errorMsg: MemCARDuino.PocketNotFound };
     }
 
@@ -308,6 +323,13 @@ export class MemCARDuino extends HardwareInterface {
 
     await this.writer?.write(timeData);
 
+    const statusResponse = await this.readDataFromPort(1);
+    if (
+      statusResponse.length < 1 ||
+      statusResponse[0] !== MCinoResponses.GOOD.valueOf()
+    ) {
+      return { success: false, errorMsg: MemCARDuino.PocketNoAck };
+    }
     return { success: true, errorMsg: null };
   }
 }
