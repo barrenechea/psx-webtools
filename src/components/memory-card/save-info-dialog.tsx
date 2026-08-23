@@ -15,6 +15,13 @@ import type {
   SlotIconData,
 } from "@/lib/ps1-memory-card";
 
+import PocketStationMonoIcon from "./pocketstation-mono-icon";
+
+interface PocketStationIcon {
+  data: Uint8Array;
+  delay: number;
+}
+
 interface SaveInfoDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -23,6 +30,8 @@ interface SaveInfoDialogProps {
   iconData: SlotIconData;
   iconPalette: IconPalette;
   isSoftware: boolean;
+  mcIcon: PocketStationIcon | null;
+  apIcon: PocketStationIcon | null;
 }
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
@@ -42,6 +51,8 @@ export const SaveInfoDialog: React.FC<SaveInfoDialogProps> = ({
   iconData,
   iconPalette,
   isSoftware,
+  mcIcon,
+  apIcon,
 }) => (
   <Dialog open={isOpen} onOpenChange={onOpenChange}>
     <DialogContent>
@@ -82,6 +93,33 @@ export const SaveInfoDialog: React.FC<SaveInfoDialogProps> = ({
             label="Slot(s)"
             value={linkedSlots.map((s) => s + 1).join(", ")}
           />
+          {isSoftware && (mcIcon || apIcon) && (
+            <>
+              <Separator />
+              <div className="flex items-center gap-4">
+                {mcIcon && (
+                  <div className="text-foreground">
+                    <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                      MC icon
+                    </p>
+                    <div className="bg-muted rounded-md p-1">
+                      <PocketStationMonoIcon frames={mcIcon.data} />
+                    </div>
+                  </div>
+                )}
+                {apIcon && (
+                  <div className="text-foreground">
+                    <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                      AP icon
+                    </p>
+                    <div className="bg-muted rounded-md p-1">
+                      <PocketStationMonoIcon frames={apIcon.data} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
       <DialogFooter>

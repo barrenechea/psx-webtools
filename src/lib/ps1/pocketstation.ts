@@ -62,3 +62,18 @@ export function getBiosRemark(checksum: number): string {
       ?.comment ?? "Unknown / bad dump"
   );
 }
+
+// Decode a monochromatic PocketStation icon frame (128 raw bytes) into a 32x32
+// pixel grid, top-to-bottom. Each pixel is the bit-reversed, inverted source
+// bit, mirroring the reference's monochrome BMP build (L-test vectors).
+export function decodePocketStationMonoIcon(frame: Uint8Array): boolean[] {
+  const pixels = new Array<boolean>(32 * 32);
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const byte = frame[y * 4 + Math.floor(x / 8)];
+      const bit = (byte >> (7 - (x % 8))) & 1;
+      pixels[y * 32 + x] = bit === 0;
+    }
+  }
+  return pixels;
+}

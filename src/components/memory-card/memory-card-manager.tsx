@@ -20,6 +20,7 @@ import PS1MemoryCard, {
   CardTypes,
   DataTypes,
   type IconPalette,
+  IconTypes,
   type SaveInfo,
   SingleSaveTypes,
   type SlotIconData,
@@ -784,6 +785,8 @@ export const MemoryCardManager: React.FC = () => {
           isSoftware={
             dialogCard.getSaveDataType(dialogSlot) === DataTypes.Software
           }
+          mcIcon={dialogCard.getPocketStationIcon(dialogSlot, IconTypes.MCIcon)}
+          apIcon={dialogCard.getPocketStationIcon(dialogSlot, IconTypes.APIcon)}
         />
       )}
       <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>

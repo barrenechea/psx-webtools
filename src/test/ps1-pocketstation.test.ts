@@ -1,5 +1,6 @@
 import {
   calcBiosChecksum,
+  decodePocketStationMonoIcon,
   formatPocketStationSerial,
   getBiosDate,
   getBiosRemark,
@@ -84,5 +85,29 @@ describe("getBiosRemark", () => {
 
   it("reports unknown checksums as a bad dump", () => {
     expect(getBiosRemark(0)).toBe("Unknown / bad dump");
+  });
+});
+
+describe("decodePocketStationMonoIcon", () => {
+  it("maps an all-zero frame to every pixel on (L1)", () => {
+    const pixels = decodePocketStationMonoIcon(new Uint8Array(128));
+    expect(pixels).toHaveLength(1024);
+    expect(pixels.every((on) => on)).toBe(true);
+  });
+
+  it("maps an all-set frame to every pixel off", () => {
+    const pixels = decodePocketStationMonoIcon(new Uint8Array(128).fill(0xff));
+    expect(pixels.every((on) => !on)).toBe(true);
+  });
+
+  it("bit-reverses and inverts per byte, MSB-first within each row (L1b)", () => {
+    const frame = new Uint8Array(128);
+    frame[0] = 0x80;
+    const pixels = decodePocketStationMonoIcon(frame);
+    expect(pixels[0]).toBe(false); // x=0: MSB of 0x80 set, inverted off
+    expect(pixels[1]).toBe(true);
+    expect(pixels[7]).toBe(true);
+    expect(pixels[8]).toBe(true); // next byte is 0 -> on
+    expect(pixels.filter((on) => !on)).toHaveLength(1);
   });
 });
