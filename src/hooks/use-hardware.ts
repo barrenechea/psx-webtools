@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { crc32, formatCrc32 } from "@/lib/crc32";
 import type { HardwareInterface } from "@/lib/ps1/hardware/core";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 
@@ -107,33 +108,71 @@ export function useHardwareConnection() {
   const writeMemoryCard = async (
     card: PS1MemoryCard,
     onProgress?: (progress: number) => void,
+    verify = false,
   ): Promise<boolean> => {
     if (!device) {
       setError("Device not connected");
       return false;
     }
 
+    let failure: string | null = null;
+
     try {
       // Delay to play nice with WebSerial - damn you Virtual DOM!
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      for (let i = 0; i < 1024; i++) {
-        const frame = card.getRawData(i * 128, 128);
+      const frameCount = 1024;
+      const frameSize = 128;
+      const expectedChecksum = crc32(
+        card.getRawData(0, frameCount * frameSize),
+      );
+      const writeShare = verify ? 0.5 : 1;
+
+      for (let i = 0; i < frameCount; i++) {
+        const frame = card.getRawData(i * frameSize, frameSize);
         const success = await device.writeMemoryCardFrame(i, frame);
         if (!success) {
-          setError(`Failed to write frame ${i}`);
-          return false;
+          failure = `Failed to write frame ${i}`;
+          break;
         }
 
         if (onProgress) {
-          onProgress((i + 1) / 1024);
+          onProgress(((i + 1) / frameCount) * writeShare);
         }
       }
-      return true;
+
+      if (!failure && verify) {
+        const readback = new Uint8Array(frameCount * frameSize);
+        for (let i = 0; i < frameCount; i++) {
+          const frame = await device.readMemoryCardFrame(i);
+          if (frame === null) {
+            failure = `Failed to verify frame ${i}`;
+            break;
+          }
+          readback.set(frame, i * frameSize);
+          if (onProgress) {
+            onProgress(writeShare + ((i + 1) / frameCount) * (1 - writeShare));
+          }
+        }
+
+        if (!failure) {
+          const actualChecksum = crc32(readback);
+          if (actualChecksum !== expectedChecksum) {
+            failure = `Verify failed: expected CRC-32 ${formatCrc32(expectedChecksum)}, got ${formatCrc32(actualChecksum)}`;
+          }
+        }
+      }
     } catch (err) {
       setError((err as Error).message);
       return false;
     }
+
+    if (failure) {
+      setError(failure);
+      throw new Error(failure);
+    }
+
+    return true;
   };
 
   return {

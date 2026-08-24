@@ -14,6 +14,7 @@ interface CardContentHeaderProps {
   name: string;
   type: string;
   source: string;
+  checksum: string;
   copiedSlots: SaveInfo[];
   copiedIcon: {
     data: SlotIconData;
@@ -26,6 +27,7 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
   name,
   type,
   source,
+  checksum,
   copiedSlots,
   copiedIcon,
 }) => (
@@ -35,6 +37,14 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
       <p className="text-muted-foreground text-sm">
         {type === "new" ? "New card" : `Opened via ${type} "${source}"`}
       </p>
+      <Tooltip>
+        <TooltipTrigger className="text-muted-foreground mt-1 font-mono text-xs tracking-wider">
+          CRC-32 {checksum}
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>GME comments are not included.</p>
+        </TooltipContent>
+      </Tooltip>
     </div>
     <Tooltip>
       <TooltipTrigger>

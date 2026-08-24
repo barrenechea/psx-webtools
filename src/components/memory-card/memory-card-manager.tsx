@@ -40,6 +40,7 @@ import { PocketStationDialog } from "./pocketstation-dialog";
 import { SaveInfoDialog } from "./save-info-dialog";
 import { SlotList } from "./slot-list";
 import type { MemoryCard } from "./types";
+import { WriteCardDialog } from "./write-card-dialog";
 
 let lastCardId = 0;
 const nextCardId = (): number => ++lastCardId;
@@ -115,6 +116,11 @@ export const MemoryCardManager: React.FC = () => {
     "psx-webtools.fixCorruptedCards",
     false,
   );
+  const [verifyAfterWrite, setVerifyAfterWrite] = usePersistentState(
+    "psx-webtools.verifyAfterWrite",
+    true,
+  );
+  const [isWriteDialogOpen, setIsWriteDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const singleSaveFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -180,13 +186,19 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const handleWriteToDevice = async () => {
+  const handleWriteToDevice = () => {
+    if (selectedCard === null) return;
+    setIsWriteDialogOpen(true);
+  };
+
+  const handleWriteConfirm = async () => {
     if (selectedCard === null) return;
     const card = memoryCards.find((c) => c.id === selectedCard)?.card;
     if (!card) return;
+    setIsWriteDialogOpen(false);
     setError(null);
     try {
-      await writeCard(card);
+      await writeCard(card, verifyAfterWrite);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -663,7 +675,7 @@ export const MemoryCardManager: React.FC = () => {
                 connectedDevice={connectedDevice}
                 onDisconnect={() => void handleDisconnect()}
                 onRead={() => void handleReadFromDevice()}
-                onWrite={() => void handleWriteToDevice()}
+                onWrite={handleWriteToDevice}
               />
               <div className="flex grow flex-row bg-transparent">
                 {selectedCardEntry ? (
@@ -673,6 +685,7 @@ export const MemoryCardManager: React.FC = () => {
                         name={selectedCardEntry.name}
                         type={selectedCardEntry.type}
                         source={selectedCardEntry.source}
+                        checksum={selectedCardEntry.card.getRawChecksum()}
                         copiedSlots={copiedSlots}
                         copiedIcon={copiedIcon}
                       />
@@ -735,6 +748,16 @@ export const MemoryCardManager: React.FC = () => {
         onReadSerial={readPocketStationSerial}
         onDumpBios={dumpPocketStationBIOS}
         onSetTime={setPocketStationTime}
+      />
+      <WriteCardDialog
+        isOpen={isWriteDialogOpen}
+        onOpenChange={setIsWriteDialogOpen}
+        cardName={selectedCardEntry?.name ?? "memory card"}
+        checksum={selectedCardEntry?.card.getRawChecksum() ?? ""}
+        deviceName={connectedDevice ?? "device"}
+        verify={verifyAfterWrite}
+        onVerifyChange={setVerifyAfterWrite}
+        onConfirm={() => void handleWriteConfirm()}
       />
       <input
         ref={singleSaveFileInputRef}

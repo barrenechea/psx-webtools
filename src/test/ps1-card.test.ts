@@ -1,3 +1,4 @@
+import { crc32, formatCrc32 } from "@/lib/crc32";
 import PS1MemoryCard, { CardTypes, SlotTypes } from "@/lib/ps1-memory-card";
 
 import {
@@ -18,6 +19,12 @@ const internals = (card: PS1MemoryCard): SlotInternals =>
   card as unknown as SlotInternals;
 
 describe("A. card lifecycle & raw layout", () => {
+  it("CRC-32 of '123456789' is the ISO 3309 check value", () => {
+    expect(formatCrc32(crc32(new TextEncoder().encode("123456789")))).toBe(
+      "CBF43926",
+    );
+  });
+
   it("A1 formatCard leaves all 15 slots formatted and blank", () => {
     const card = newCard();
     const saves = card.getSaves();
@@ -65,6 +72,21 @@ describe("A. card lifecycle & raw layout", () => {
     expect(equalBytes(reopened.getRawData(0, TOTAL_CARD_SIZE), raw)).toBe(true);
     // the loaded card reflects the formatted state
     expect(reopened.getSaves()[0].slotType).toBe(SlotTypes.Formatted);
+  });
+
+  it("A4c raw checksum is stable, ignores GME comments, and changes with data", () => {
+    const a = newCard();
+    const b = newCard();
+    expect(a.getRawChecksum()).toBe(b.getRawChecksum());
+    expect(a.getRawChecksum()).toMatch(/^[0-9A-F]{8}$/);
+
+    a.setComment(0, "gme comment must not affect the raw checksum");
+    expect(a.getRawChecksum()).toBe(b.getRawChecksum());
+
+    const mutated = new Uint8Array(a.getRawData(0, TOTAL_CARD_SIZE));
+    mutated[8192] ^= 0xff;
+    b.loadFromRawData(mutated, false);
+    expect(b.getRawChecksum()).not.toBe(a.getRawChecksum());
   });
 
   it("A4b loadFromRawData rejects a wrongly-sized buffer", () => {

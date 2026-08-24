@@ -122,18 +122,30 @@ export function useDeviceManager() {
     return card;
   };
 
-  const writeCard = async (card: PS1MemoryCard) => {
+  const writeCard = async (card: PS1MemoryCard, verify = false) => {
     showDialog("Writing to Memory Card", "Preparing to write data...");
     let success: boolean;
 
     try {
-      success = await writeMemoryCard(card, (progress) => {
-        updateDialog(
-          `Writing to memory card... ${Math.round(progress * 100)}%`,
-          undefined,
-          progress,
-        );
-      });
+      success = await writeMemoryCard(
+        card,
+        (progress) => {
+          const verifying = verify && progress >= 0.5;
+          const phaseProgress = verifying
+            ? (progress - 0.5) * 2
+            : verify
+              ? progress * 2
+              : progress;
+          updateDialog(
+            verifying
+              ? `Verifying memory card... ${Math.round(phaseProgress * 100)}%`
+              : `Writing to memory card... ${Math.round(phaseProgress * 100)}%`,
+            undefined,
+            progress,
+          );
+        },
+        verify,
+      );
     } catch (err) {
       hideDialog();
       throw err;
@@ -144,7 +156,9 @@ export function useDeviceManager() {
       throw new Error("Failed to write memory card to device");
     }
 
-    updateDialog("Memory card write successful!");
+    updateDialog(
+      verify ? "Memory card write verified." : "Memory card write successful!",
+    );
     setTimeout(hideDialog, 1000);
   };
 

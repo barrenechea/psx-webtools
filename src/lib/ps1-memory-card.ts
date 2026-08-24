@@ -1,3 +1,4 @@
+import { crc32, formatCrc32 } from "@/lib/crc32";
 import { aesCbcDecrypt, aesCbcEncrypt, getHmac } from "@/lib/crypto-utils";
 import {
   generateSaltSeed,
@@ -274,6 +275,12 @@ class PS1MemoryCard {
 
   public getRawData(offset: number, length: number): Uint8Array {
     return this.rawData.slice(offset, offset + length);
+  }
+
+  // CRC-32 of the 128 KB raw card image. GME comments live only in the
+  // container header, so they do not affect this value.
+  public getRawChecksum(): string {
+    return formatCrc32(crc32(this.rawData));
   }
 
   public setRawData(offset: number, data: Uint8Array, fixData = false): void {
