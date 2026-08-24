@@ -18,11 +18,11 @@ enum MCinoResponses {
 }
 
 export class MemCARDuino extends HardwareInterface {
-  private port: SerialPort | null = null;
-  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-  private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  protected port: SerialPort | null = null;
+  protected reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  protected writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private interfaceName = "MemCARDuino";
-  private firmwareVersion = 0;
+  protected firmwareVersion = 0;
   private currentBaudRate = 0;
   private rxQueue: number[] = [];
   private pendingRead: Promise<void> | null = null;
@@ -150,7 +150,7 @@ export class MemCARDuino extends HardwareInterface {
     }
   }
 
-  private async sendDataToPort(command: MCinoCommands): Promise<void> {
+  protected async sendDataToPort(command: number): Promise<void> {
     if (!this.writer) throw new Error("Port not opened");
     this.rxQueue = [];
     await this.writer.write(new Uint8Array([command]));
@@ -207,7 +207,7 @@ export class MemCARDuino extends HardwareInterface {
     return this.rxQueue.length > before;
   }
 
-  private async readDataFromPort(
+  protected async readDataFromPort(
     count: number,
     timeout = 5000,
   ): Promise<Uint8Array> {
@@ -228,7 +228,7 @@ export class MemCARDuino extends HardwareInterface {
     return result;
   }
 
-  private async discard(): Promise<void> {
+  protected async discard(): Promise<void> {
     if (!this.reader) return;
     // Drop leftover JS bytes. Leave any in-flight reader.read() alone: that
     // hanging read is how the next reply arrives.

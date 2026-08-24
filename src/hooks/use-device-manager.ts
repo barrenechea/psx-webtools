@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useHardwareConnection } from "@/hooks/use-hardware";
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
+import { PS1CardLink } from "@/lib/ps1/hardware/ps1cardlink";
 import { Unirom } from "@/lib/ps1/hardware/unirom";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 
@@ -57,6 +58,24 @@ export function useDeviceManager() {
         updateDialog,
       );
       setConnectedDevice("MemCARDuino");
+      setTimeout(hideDialog, 1000);
+    } catch (err) {
+      hideDialog();
+      throw err;
+    }
+  };
+
+  const connectPS1CardLink = async (cardSlot: number) => {
+    showDialog("Connecting to PS1CardLink", "Initializing connection...");
+    try {
+      const device = new PS1CardLink();
+      device.cardSlot = cardSlot;
+      await connect(
+        device,
+        { deviceType: "ps1cardlink", baudRate: 115200, signalsConfig: [] },
+        updateDialog,
+      );
+      setConnectedDevice("PS1CardLink");
       setTimeout(hideDialog, 1000);
     } catch (err) {
       hideDialog();
@@ -204,6 +223,7 @@ export function useDeviceManager() {
     connectedDevice,
     firmwareVersion,
     connectMemcarduino,
+    connectPS1CardLink,
     connectUnirom,
     disconnectDevice,
     readCard,

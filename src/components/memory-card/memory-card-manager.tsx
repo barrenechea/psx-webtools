@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
+import { PS1CardLinkConnectDialog } from "@/components/ps1cardlink-connect-dialog";
 import SaveMemoryCardDialog from "@/components/save-dialog";
 import SaveSingleSaveDialog from "@/components/save-single-save-dialog";
 import {
@@ -56,6 +57,7 @@ export const MemoryCardManager: React.FC = () => {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
+  const [isPS1CardLinkDialogOpen, setIsPS1CardLinkDialogOpen] = useState(false);
   const [isUniromDialogOpen, setIsUniromDialogOpen] = useState(false);
   const [copiedSlots, setCopiedSlots] = useState<SaveInfo[]>([]);
   const [copiedSaveBytes, setCopiedSaveBytes] = useState<Uint8Array | null>(
@@ -130,6 +132,7 @@ export const MemoryCardManager: React.FC = () => {
     connectedDevice,
     firmwareVersion,
     connectMemcarduino,
+    connectPS1CardLink,
     connectUnirom,
     disconnectDevice,
     readCard,
@@ -146,6 +149,15 @@ export const MemoryCardManager: React.FC = () => {
     try {
       await connectMemcarduino(deviceType, connectionMode);
       setIsConnectDialogOpen(false);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handlePS1CardLinkConnect = async (cardSlot: number) => {
+    try {
+      await connectPS1CardLink(cardSlot);
+      setIsPS1CardLinkDialogOpen(false);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -667,6 +679,7 @@ export const MemoryCardManager: React.FC = () => {
                 onFileChange={handleFileInputChange}
                 onOpenFile={handleOpenFromFileClick}
                 onConnectMemcarduino={() => setIsConnectDialogOpen(true)}
+                onConnectPS1CardLink={() => setIsPS1CardLinkDialogOpen(true)}
                 onConnectUnirom={() => setIsUniromDialogOpen(true)}
                 onPocketStation={() => setIsPocketStationDialogOpen(true)}
                 fixCorrupted={fixCorrupted}
@@ -736,6 +749,11 @@ export const MemoryCardManager: React.FC = () => {
         isOpen={isConnectDialogOpen}
         onOpenChange={setIsConnectDialogOpen}
         onConnect={handleMemcarduinoConnect}
+      />
+      <PS1CardLinkConnectDialog
+        isOpen={isPS1CardLinkDialogOpen}
+        onOpenChange={setIsPS1CardLinkDialogOpen}
+        onConnect={handlePS1CardLinkConnect}
       />
       <UniromConnectDialog
         isOpen={isUniromDialogOpen}

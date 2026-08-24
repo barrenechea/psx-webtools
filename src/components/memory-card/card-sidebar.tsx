@@ -35,6 +35,7 @@ interface CardSidebarProps {
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenFile: () => void;
   onConnectMemcarduino: () => void;
+  onConnectPS1CardLink: () => void;
   onConnectUnirom: () => void;
   onPocketStation: () => void;
   fixCorrupted: boolean;
@@ -56,6 +57,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onFileChange,
   onOpenFile,
   onConnectMemcarduino,
+  onConnectPS1CardLink,
   onConnectUnirom,
   onPocketStation,
   fixCorrupted,
@@ -142,6 +144,9 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
               </DropdownMenuLabel>
               <DropdownMenuItem onSelect={onConnectMemcarduino}>
                 MemCARDuino
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onConnectPS1CardLink}>
+                PS1CardLink
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onConnectUnirom}>
                 Unirom
