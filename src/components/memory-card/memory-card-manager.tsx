@@ -32,6 +32,7 @@ import AlphaNoticeDialog from "../alpha-notice-dialog";
 import { DragDropWrapper } from "../drag-drop-wrapper";
 import { CardContentHeader } from "./card-content-header";
 import { CardSidebar } from "./card-sidebar";
+import { CompareSaveDialog } from "./compare-save-dialog";
 import { EditCommentDialog } from "./edit-comment-dialog";
 import { EditHeaderDialog } from "./edit-header-dialog";
 import { FormatCardDialog } from "./format-card-dialog";
@@ -82,6 +83,13 @@ export const MemoryCardManager: React.FC = () => {
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<number | null>(null);
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [isCompareDialogOpen, setIsCompareDialogOpen] = useState(false);
+  const [compareData, setCompareData] = useState<{
+    save1Name: string;
+    save1Bytes: Uint8Array;
+    save2Name: string;
+    save2Bytes: Uint8Array;
+  } | null>(null);
   const [historyLabels, setHistoryLabels] = useState<Record<number, string[]>>(
     {},
   );
@@ -451,6 +459,20 @@ export const MemoryCardManager: React.FC = () => {
       case "remove":
         setRemoveConfirmOpen(true);
         break;
+      case "compare": {
+        const cardEntry = memoryCards.find((c) => c.id === selectedCard);
+        if (cardEntry && copiedSaveBytes !== null) {
+          const fetched = cardEntry.card.getSaveBytes(master);
+          setCompareData({
+            save1Name: cardEntry.card.getSaves()[master].name,
+            save1Bytes: fetched,
+            save2Name: copiedSlots[0]?.name ?? "temp buffer",
+            save2Bytes: copiedSaveBytes,
+          });
+          setIsCompareDialogOpen(true);
+        }
+        break;
+      }
     }
   };
 
@@ -742,6 +764,7 @@ export const MemoryCardManager: React.FC = () => {
                       <SlotList
                         card={selectedCardEntry.card}
                         selectedSlot={selectedSlot}
+                        hasTempBuffer={copiedSaveBytes !== null}
                         onSlotClick={handleSlotClick}
                         onSlotAction={handleSlotAction}
                       />
@@ -820,6 +843,16 @@ export const MemoryCardManager: React.FC = () => {
         deviceName={connectedDevice ?? "device"}
         onFormat={(quick) => void handleFormatConfirm(quick)}
       />
+      {compareData && (
+        <CompareSaveDialog
+          isOpen={isCompareDialogOpen}
+          onOpenChange={setIsCompareDialogOpen}
+          save1Name={compareData.save1Name}
+          save2Name={compareData.save2Name}
+          save1Bytes={compareData.save1Bytes}
+          save2Bytes={compareData.save2Bytes}
+        />
+      )}
       <input
         ref={singleSaveFileInputRef}
         type="file"

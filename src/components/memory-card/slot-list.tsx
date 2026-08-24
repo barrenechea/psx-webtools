@@ -16,6 +16,7 @@ import { MemoryCardSlot, type SlotAction } from "./memory-card-slot";
 interface SlotListProps {
   card: PS1MemoryCard;
   selectedSlot: number | null;
+  hasTempBuffer: boolean;
   onSlotClick: (index: number) => void;
   onSlotAction: (action: SlotAction, index: number) => void;
 }
@@ -23,6 +24,7 @@ interface SlotListProps {
 export const SlotList: React.FC<SlotListProps> = ({
   card,
   selectedSlot,
+  hasTempBuffer,
   onSlotClick,
   onSlotAction,
 }) => {
@@ -91,6 +93,12 @@ export const SlotList: React.FC<SlotListProps> = ({
                 onSelect={() => onSlotAction("info", contextSlot)}
               >
                 Information
+              </ContextMenuItem>
+              <ContextMenuItem
+                disabled={!canEdit || !hasTempBuffer}
+                onSelect={() => onSlotAction("compare", contextSlot)}
+              >
+                Compare with temp buffer
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem

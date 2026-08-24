@@ -14,7 +14,8 @@ import {
 } from "@/lib/ps1-memory-card";
 import { cn } from "@/lib/utils";
 
-export type SlotAction = "editHeader" | "editComment" | "info" | "remove";
+export type SlotAction =
+  "editHeader" | "editComment" | "info" | "remove" | "compare";
 
 interface MemoryCardSlotProps {
   slot: SaveInfo;
