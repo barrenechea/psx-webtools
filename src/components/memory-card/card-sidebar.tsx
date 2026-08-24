@@ -34,6 +34,7 @@ interface CardSidebarProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenFile: () => void;
+  onConnectDexDrive: () => void;
   onConnectMemcarduino: () => void;
   onConnectPS1CardLink: () => void;
   onConnectUnirom: () => void;
@@ -56,6 +57,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   fileInputRef,
   onFileChange,
   onOpenFile,
+  onConnectDexDrive,
   onConnectMemcarduino,
   onConnectPS1CardLink,
   onConnectUnirom,
@@ -142,6 +144,9 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
                   Serial Devices
                 </div>
               </DropdownMenuLabel>
+              <DropdownMenuItem onSelect={onConnectDexDrive}>
+                DexDrive
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={onConnectMemcarduino}>
                 MemCARDuino
               </DropdownMenuItem>

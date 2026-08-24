@@ -131,6 +131,7 @@ export const MemoryCardManager: React.FC = () => {
     connectionError,
     connectedDevice,
     firmwareVersion,
+    connectDexDrive,
     connectMemcarduino,
     connectPS1CardLink,
     connectUnirom,
@@ -141,6 +142,14 @@ export const MemoryCardManager: React.FC = () => {
     dumpPocketStationBIOS,
     setPocketStationTime,
   } = useDeviceManager();
+
+  const handleDexDriveConnect = async () => {
+    try {
+      await connectDexDrive();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
 
   const handleMemcarduinoConnect = async (
     deviceType: string,
@@ -678,6 +687,7 @@ export const MemoryCardManager: React.FC = () => {
                 fileInputRef={fileInputRef}
                 onFileChange={handleFileInputChange}
                 onOpenFile={handleOpenFromFileClick}
+                onConnectDexDrive={() => void handleDexDriveConnect()}
                 onConnectMemcarduino={() => setIsConnectDialogOpen(true)}
                 onConnectPS1CardLink={() => setIsPS1CardLinkDialogOpen(true)}
                 onConnectUnirom={() => setIsUniromDialogOpen(true)}

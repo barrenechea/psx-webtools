@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useHardwareConnection } from "@/hooks/use-hardware";
+import { DexDrive } from "@/lib/ps1/hardware/dexdrive";
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
 import { PS1CardLink } from "@/lib/ps1/hardware/ps1cardlink";
 import { Unirom } from "@/lib/ps1/hardware/unirom";
@@ -41,6 +42,22 @@ export function useDeviceManager() {
         return [];
       default:
         return [];
+    }
+  };
+
+  const connectDexDrive = async () => {
+    showDialog("Connecting to DexDrive", "Initializing connection...");
+    try {
+      await connect(
+        new DexDrive(),
+        { deviceType: "dexdrive", baudRate: 38400, signalsConfig: [] },
+        updateDialog,
+      );
+      setConnectedDevice("DexDrive");
+      setTimeout(hideDialog, 1000);
+    } catch (err) {
+      hideDialog();
+      throw err;
     }
   };
 
@@ -222,6 +239,7 @@ export function useDeviceManager() {
     connectionError,
     connectedDevice,
     firmwareVersion,
+    connectDexDrive,
     connectMemcarduino,
     connectPS1CardLink,
     connectUnirom,
