@@ -28,10 +28,20 @@ export enum SupportedFeatures {
   PocketStation = 1 << 2,
 }
 
+// Result of checking the memory-card slot. `present` means a usable
+// (PS1/PocketStation) card is ready; otherwise `message` explains what was
+// found (empty slot, PS2 card, ...).
+export type CardCheck = { present: true } | { present: false; message: string };
+
 const pocketstationError =
   "PocketStation commands are not supported by this interface";
 
 export abstract class HardwareInterface {
+  // Called when the OS reports the device was removed (e.g. unplugged). The
+  // app registers it before start(); only transports that can detect removal
+  // (WebUSB) call it.
+  onDisconnected: (() => void) | null = null;
+
   private _type: Types;
   private _mode: Modes;
   private _commMode: CommModes;
@@ -141,6 +151,13 @@ export abstract class HardwareInterface {
 
   features(): SupportedFeatures {
     return SupportedFeatures.None;
+  }
+
+  // Check whether a usable (PS1/PocketStation) memory card is in the slot.
+  // Most interfaces only surface a missing card as a failed frame read, so
+  // the default assumes present; the PS3 MC Adaptor overrides this to probe.
+  async checkCard(): Promise<CardCheck> {
+    return { present: true };
   }
 
   readMemoryCardFrame(frameNumber: number): Promise<Uint8Array | null> {

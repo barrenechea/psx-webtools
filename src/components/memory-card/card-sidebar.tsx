@@ -37,6 +37,7 @@ interface CardSidebarProps {
   onConnectDexDrive: () => void;
   onConnectMemcarduino: () => void;
   onConnectPS1CardLink: () => void;
+  onConnectPS3MCA: () => void;
   onConnectUnirom: () => void;
   onPocketStation: () => void;
   fixCorrupted: boolean;
@@ -61,6 +62,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onConnectDexDrive,
   onConnectMemcarduino,
   onConnectPS1CardLink,
+  onConnectPS3MCA,
   onConnectUnirom,
   onPocketStation,
   fixCorrupted,
@@ -136,8 +138,8 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
                   USB Devices
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuItem disabled>
-                None yet, check back later
+              <DropdownMenuItem onSelect={onConnectPS3MCA}>
+                PS3 MC Adaptor
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>
@@ -205,7 +207,8 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
           >
             Format {connectedDevice ?? "device"}
           </Button>
-          {connectedDevice === "MemCARDuino" && (
+          {(connectedDevice === "MemCARDuino" ||
+            connectedDevice === "PS3 MC Adaptor") && (
             <Button
               variant="ghost"
               className="hover:bg-card/80 w-full justify-start"

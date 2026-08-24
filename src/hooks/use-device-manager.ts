@@ -5,6 +5,7 @@ import { useHardwareConnection } from "@/hooks/use-hardware";
 import { DexDrive } from "@/lib/ps1/hardware/dexdrive";
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
 import { PS1CardLink } from "@/lib/ps1/hardware/ps1cardlink";
+import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
 import { Unirom } from "@/lib/ps1/hardware/unirom";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 
@@ -16,6 +17,7 @@ import PS1MemoryCard from "@/lib/ps1-memory-card";
  */
 export function useDeviceManager() {
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
+  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
   const {
     isConnected,
     device,
@@ -25,8 +27,7 @@ export function useDeviceManager() {
     readMemoryCard,
     writeMemoryCard,
     firmwareVersion,
-  } = useHardwareConnection();
-  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
+  } = useHardwareConnection(() => setConnectedDevice(null));
 
   const getMemcarduinoSignalsConfig = (
     deviceType: string,
@@ -93,6 +94,22 @@ export function useDeviceManager() {
         updateDialog,
       );
       setConnectedDevice("PS1CardLink");
+      setTimeout(hideDialog, 1000);
+    } catch (err) {
+      hideDialog();
+      throw err;
+    }
+  };
+
+  const connectPS3MCA = async () => {
+    showDialog("Connecting to PS3 MC Adaptor", "Initializing connection...");
+    try {
+      await connect(
+        new PS3MemCardAdaptor(),
+        { deviceType: "ps3mca", baudRate: 0, signalsConfig: [] },
+        updateDialog,
+      );
+      setConnectedDevice("PS3 MC Adaptor");
       setTimeout(hideDialog, 1000);
     } catch (err) {
       hideDialog();
@@ -222,10 +239,17 @@ export function useDeviceManager() {
     setTimeout(hideDialog, 1000);
   };
 
+  const getPsDevice = (): MemCARDuino | PS3MemCardAdaptor | null =>
+    device instanceof MemCARDuino || device instanceof PS3MemCardAdaptor
+      ? device
+      : null;
+
   const readPocketStationSerial = async (): Promise<number> => {
-    const mcdino = device instanceof MemCARDuino ? device : null;
+    const mcdino = getPsDevice();
     if (!mcdino)
-      throw new Error("PocketStation is only available on a MemCARDuino");
+      throw new Error(
+        "PocketStation is only available on a MemCARDuino or PS3 MC Adaptor",
+      );
     const { serial, errorMsg } = await mcdino.readPocketStationSerial();
     if (errorMsg) throw new Error(errorMsg);
     return serial;
@@ -235,9 +259,11 @@ export function useDeviceManager() {
     bios: Uint8Array;
     serial: number;
   }> => {
-    const mcdino = device instanceof MemCARDuino ? device : null;
+    const mcdino = getPsDevice();
     if (!mcdino)
-      throw new Error("PocketStation is only available on a MemCARDuino");
+      throw new Error(
+        "PocketStation is only available on a MemCARDuino or PS3 MC Adaptor",
+      );
     const { serial, errorMsg } = await mcdino.readPocketStationSerial();
     if (errorMsg) throw new Error(errorMsg);
     const bios = new Uint8Array(0x4000);
@@ -250,9 +276,11 @@ export function useDeviceManager() {
   };
 
   const setPocketStationTime = async (): Promise<void> => {
-    const mcdino = device instanceof MemCARDuino ? device : null;
+    const mcdino = getPsDevice();
     if (!mcdino)
-      throw new Error("PocketStation is only available on a MemCARDuino");
+      throw new Error(
+        "PocketStation is only available on a MemCARDuino or PS3 MC Adaptor",
+      );
     const { success, errorMsg } = await mcdino.setPocketStationTime();
     if (!success)
       throw new Error(errorMsg ?? "Failed to set PocketStation time");
@@ -266,6 +294,7 @@ export function useDeviceManager() {
     connectDexDrive,
     connectMemcarduino,
     connectPS1CardLink,
+    connectPS3MCA,
     connectUnirom,
     disconnectDevice,
     readCard,

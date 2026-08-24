@@ -24,7 +24,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["node", "w3c-web-serial"]
+    "types": ["node", "w3c-web-serial", "w3c-web-usb"]
   },
   "include": ["src"],
   "exclude": [

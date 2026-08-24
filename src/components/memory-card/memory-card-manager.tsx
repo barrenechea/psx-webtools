@@ -136,6 +136,7 @@ export const MemoryCardManager: React.FC = () => {
     connectDexDrive,
     connectMemcarduino,
     connectPS1CardLink,
+    connectPS3MCA,
     connectUnirom,
     disconnectDevice,
     readCard,
@@ -149,6 +150,14 @@ export const MemoryCardManager: React.FC = () => {
   const handleDexDriveConnect = async () => {
     try {
       await connectDexDrive();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handlePS3MCAConnect = async () => {
+    try {
+      await connectPS3MCA();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -196,11 +205,14 @@ export const MemoryCardManager: React.FC = () => {
     setError(null);
     try {
       const card = await readCard(fixCorrupted);
+      const deviceLabel = connectedDevice ?? "Device";
       const newMemoryCard: MemoryCard = {
         id: nextCardId(),
-        name: `${connectedDevice ?? "Device"} Read`,
+        name: `${deviceLabel} Read`,
         type: "device",
-        source: `${connectedDevice ?? "Device"} v${firmwareVersion}`,
+        source: firmwareVersion
+          ? `${deviceLabel} v${firmwareVersion}`
+          : deviceLabel,
         card,
       };
       setMemoryCards((prev) => [...prev, newMemoryCard]);
@@ -703,6 +715,7 @@ export const MemoryCardManager: React.FC = () => {
                 onConnectDexDrive={() => void handleDexDriveConnect()}
                 onConnectMemcarduino={() => setIsConnectDialogOpen(true)}
                 onConnectPS1CardLink={() => setIsPS1CardLinkDialogOpen(true)}
+                onConnectPS3MCA={() => void handlePS3MCAConnect()}
                 onConnectUnirom={() => setIsUniromDialogOpen(true)}
                 onPocketStation={() => setIsPocketStationDialogOpen(true)}
                 fixCorrupted={fixCorrupted}

@@ -6,6 +6,7 @@
     "types": [
       "node",
       "w3c-web-serial",
+      "w3c-web-usb",
       "vitest/globals",
       "@testing-library/jest-dom"
     ]

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { crc32, formatCrc32 } from "@/lib/crc32";
 import type { HardwareInterface } from "@/lib/ps1/hardware/core";
@@ -13,17 +13,34 @@ export interface HardwareStartConfig {
 // Manages a single hardware connection (MemCARDuino, Unirom, ...). The
 // concrete device is created by the caller and passed in, so this hook stays
 // device-agnostic and the connect dialogs can each own their own hardware.
-export function useHardwareConnection() {
+export function useHardwareConnection(onDeviceDisconnected?: () => void) {
   const [device, setDevice] = useState<HardwareInterface | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
+
+  const onDeviceDisconnectedRef = useRef(onDeviceDisconnected);
+  useEffect(() => {
+    onDeviceDisconnectedRef.current = onDeviceDisconnected;
+  });
+
+  // OS-reported unplug: drop the connection without calling stop() (the
+  // device is already gone) and let the caller clear its own UI state.
+  const handleDeviceDisconnected = () => {
+    setDevice(null);
+    setIsConnected(false);
+    setFirmwareVersion(null);
+    setError("Device disconnected.");
+    onDeviceDisconnectedRef.current?.();
+  };
 
   const connect = async (
     hardware: HardwareInterface,
     startConfig: HardwareStartConfig,
     onStatusUpdate: (status: string) => void,
   ) => {
+    hardware.onDisconnected = handleDeviceDisconnected;
+
     let result: string | null;
 
     try {
@@ -77,6 +94,10 @@ export function useHardwareConnection() {
       setError("Device not connected");
       return null;
     }
+    const cardCheck = await device.checkCard();
+    if (!cardCheck.present) {
+      throw new Error(cardCheck.message);
+    }
 
     try {
       const card = new PS1MemoryCard();
@@ -114,6 +135,10 @@ export function useHardwareConnection() {
     if (!device) {
       setError("Device not connected");
       return false;
+    }
+    const cardCheck = await device.checkCard();
+    if (!cardCheck.present) {
+      throw new Error(cardCheck.message);
     }
 
     let failure: string | null = null;
