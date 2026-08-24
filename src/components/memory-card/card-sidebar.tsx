@@ -46,6 +46,7 @@ interface CardSidebarProps {
   onDisconnect: () => void;
   onRead: () => void;
   onWrite: () => void;
+  onFormat: () => void;
 }
 
 export const CardSidebar: React.FC<CardSidebarProps> = ({
@@ -69,6 +70,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onDisconnect,
   onRead,
   onWrite,
+  onFormat,
 }) => (
   <div className="border-border bg-muted/80 flex w-64 flex-col border-r">
     <ScrollArea className="grow overflow-hidden" type="auto">
@@ -195,6 +197,13 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
             disabled={selectedCard === null}
           >
             Write to {connectedDevice ?? "device"}
+          </Button>
+          <Button
+            variant="ghost"
+            className="hover:bg-card/80 w-full justify-start"
+            onClick={onFormat}
+          >
+            Format {connectedDevice ?? "device"}
           </Button>
           {connectedDevice === "MemCARDuino" && (
             <Button

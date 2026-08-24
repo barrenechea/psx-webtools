@@ -109,6 +109,7 @@ export function useHardwareConnection() {
     card: PS1MemoryCard,
     onProgress?: (progress: number) => void,
     verify = false,
+    frameCount = 1024,
   ): Promise<boolean> => {
     if (!device) {
       setError("Device not connected");
@@ -121,7 +122,6 @@ export function useHardwareConnection() {
       // Delay to play nice with WebSerial - damn you Virtual DOM!
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const frameCount = 1024;
       const frameSize = 128;
       const expectedChecksum = crc32(
         card.getRawData(0, frameCount * frameSize),

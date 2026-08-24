@@ -198,6 +198,30 @@ export function useDeviceManager() {
     setTimeout(hideDialog, 1000);
   };
 
+  const formatCard = async (quick: boolean) => {
+    showDialog("Formatting Memory Card", "Preparing to format...");
+    try {
+      const blankCard = new PS1MemoryCard();
+      blankCard.formatCard();
+      await writeMemoryCard(
+        blankCard,
+        (progress) =>
+          updateDialog(
+            `Formatting memory card... ${Math.round(progress * 100)}%`,
+            undefined,
+            progress,
+          ),
+        false,
+        quick ? 64 : 1024,
+      );
+    } catch (err) {
+      hideDialog();
+      throw err;
+    }
+    updateDialog("Memory card formatted!");
+    setTimeout(hideDialog, 1000);
+  };
+
   const readPocketStationSerial = async (): Promise<number> => {
     const mcdino = device instanceof MemCARDuino ? device : null;
     if (!mcdino)
@@ -246,6 +270,7 @@ export function useDeviceManager() {
     disconnectDevice,
     readCard,
     writeCard,
+    formatCard,
     readPocketStationSerial,
     dumpPocketStationBIOS,
     setPocketStationTime,

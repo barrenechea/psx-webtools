@@ -34,6 +34,7 @@ import { CardContentHeader } from "./card-content-header";
 import { CardSidebar } from "./card-sidebar";
 import { EditCommentDialog } from "./edit-comment-dialog";
 import { EditHeaderDialog } from "./edit-header-dialog";
+import { FormatCardDialog } from "./format-card-dialog";
 import { GameDetailsSidebar } from "./game-details-sidebar";
 import type { SlotAction } from "./memory-card-slot";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
@@ -123,6 +124,7 @@ export const MemoryCardManager: React.FC = () => {
     true,
   );
   const [isWriteDialogOpen, setIsWriteDialogOpen] = useState(false);
+  const [isFormatDialogOpen, setIsFormatDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const singleSaveFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,6 +140,7 @@ export const MemoryCardManager: React.FC = () => {
     disconnectDevice,
     readCard,
     writeCard,
+    formatCard,
     readPocketStationSerial,
     dumpPocketStationBIOS,
     setPocketStationTime,
@@ -220,6 +223,16 @@ export const MemoryCardManager: React.FC = () => {
     setError(null);
     try {
       await writeCard(card, verifyAfterWrite);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleFormatConfirm = async (quick: boolean) => {
+    setIsFormatDialogOpen(false);
+    setError(null);
+    try {
+      await formatCard(quick);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -699,6 +712,7 @@ export const MemoryCardManager: React.FC = () => {
                 onDisconnect={() => void handleDisconnect()}
                 onRead={() => void handleReadFromDevice()}
                 onWrite={handleWriteToDevice}
+                onFormat={() => setIsFormatDialogOpen(true)}
               />
               <div className="flex grow flex-row bg-transparent">
                 {selectedCardEntry ? (
@@ -786,6 +800,12 @@ export const MemoryCardManager: React.FC = () => {
         verify={verifyAfterWrite}
         onVerifyChange={setVerifyAfterWrite}
         onConfirm={() => void handleWriteConfirm()}
+      />
+      <FormatCardDialog
+        isOpen={isFormatDialogOpen}
+        onOpenChange={setIsFormatDialogOpen}
+        deviceName={connectedDevice ?? "device"}
+        onFormat={(quick) => void handleFormatConfirm(quick)}
       />
       <input
         ref={singleSaveFileInputRef}
