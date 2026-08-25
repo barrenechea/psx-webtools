@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { UniromConnectDialog } from "@/components/unirom-connect-dialog";
 import { useDeviceManager } from "@/hooks/use-device-manager";
+import { usePrefetchGameData } from "@/hooks/use-game-data";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import PS1MemoryCard, {
   CardTypes,
@@ -151,6 +152,8 @@ export const MemoryCardManager: React.FC = () => {
     dumpPocketStationBIOS,
     setPocketStationTime,
   } = useDeviceManager();
+
+  usePrefetchGameData(memoryCards.flatMap((entry) => entry.card.getSaves()));
 
   const handleDexDriveConnect = async () => {
     try {

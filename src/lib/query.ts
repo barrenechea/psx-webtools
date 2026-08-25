@@ -50,13 +50,21 @@ function mapRegionToApi(region: string): string {
   }
 }
 
+// Kick the cover into the browser HTTP cache so the details sidebar's <img>
+// can paint without a second round-trip. Failures are ignored: a missing
+// cover must not fail the JSON query.
+function warmCoverCache(url: string): void {
+  const img = new Image();
+  img.src = url;
+}
+
 export async function fetchGameData(
   region: string,
   gameId: string,
 ): Promise<GameData> {
   const apiRegion = mapRegionToApi(region);
   const response = await fetch(
-    `https://psxdata.barrenechea.cl/${apiRegion}/${gameId}.json`,
+    `https://ps1data.pages.dev/${apiRegion}/${gameId}.json`,
   );
 
   if (!response.ok) {
@@ -64,10 +72,11 @@ export async function fetchGameData(
   }
 
   const data = (await response.json()) as GameData;
-  return {
-    ...data,
-    cover: data.cover
-      ? `https://psxdata.barrenechea.cl/${apiRegion}/covers/${gameId}.${data.cover.split(".").pop()}`
-      : null,
-  };
+  const cover = data.cover
+    ? `https://ps1data.pages.dev/${apiRegion}/covers/${gameId}.${data.cover.split(".").pop()}`
+    : null;
+
+  if (cover) warmCoverCache(cover);
+
+  return { ...data, cover };
 }
