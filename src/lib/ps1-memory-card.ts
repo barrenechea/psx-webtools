@@ -461,6 +461,10 @@ class PS1MemoryCard {
         this.rawData.slice(128 + slotNumber * 128, 256 + slotNumber * 128),
       );
 
+      // Free slots stay blank in memory (their raw area is erased flash or
+      // stale data, which is not a title/palette/icon source).
+      if (this.headerData[slotNumber][0] === 0xa0) continue;
+
       // Load save data
       this.saveData[slotNumber].set(
         this.rawData.slice(8192 + slotNumber * 8192, 16384 + slotNumber * 8192),
@@ -473,6 +477,10 @@ class PS1MemoryCard {
       // Write header data
       this.rawData.set(this.headerData[slotNumber], 128 + slotNumber * 128);
 
+      // Free slots keep whatever the raw image holds (erased flash on real
+      // cards, stale data on loaded ones); only in-use slots are written.
+      if (this.headerData[slotNumber][0] === 0xa0) continue;
+
       // Write save data
       this.rawData.set(this.saveData[slotNumber], 8192 + slotNumber * 8192);
     }
@@ -481,30 +489,48 @@ class PS1MemoryCard {
   // Rebuild the raw buffer from the in-memory header/save data so a save
   // always reflects the current state (including any "fix corrupted cards" XOR
   // repair done at load time). When fixData is set the card is rebuilt as a
-  // clean card (fresh signature and reserved slots).
+  // PS1-kernel blank: buFormat writes frames 0–35; buInit copies frame 0 to
+  // frame 63; everything else stays erased EEPROM (0xFF).
   private loadDataToRawCard(fixData: boolean): void {
     if (fixData) {
       this.rawData.fill(0);
       this.rawData[0] = 0x4d; // M
       this.rawData[1] = 0x43; // C
-      this.rawData[127] = 0x0e; // XOR (precalculated)
-      this.rawData[8064] = 0x4d; // M
-      this.rawData[8065] = 0x43; // C
-      this.rawData[8191] = 0x0e; // XOR (precalculated)
+      this.rawData[127] = 0x0e; // XOR (0x4D ^ 0x43)
+      this.rawData[8064] = 0x4d; // frame 63 write-test (buInit copy of frame 0)
+      this.rawData[8065] = 0x43;
+      this.rawData[8191] = 0x0e;
+      // Frames 36–62 are not written by buFormat; factory EEPROM reads 0xFF.
+      this.rawData.fill(0xff, 36 * 128, 63 * 128);
     }
 
     this.writeDataToRawCard();
 
     if (!fixData) return;
 
-    // Create authentic data (just for completeness)
+    // Broken-sector list (frames 16–35). buFormat memcpy's 4 bytes of -1 over
+    // the leftover directory buffer, so [0–3] and [8–9] are 0xFF and the rest
+    // of the frame stays 0; XOR of those 127 bytes is 0.
     for (let i = 0; i < 20; i++) {
-      this.rawData[2048 + i * 128] = 0xff;
-      this.rawData[2048 + i * 128 + 1] = 0xff;
-      this.rawData[2048 + i * 128 + 2] = 0xff;
-      this.rawData[2048 + i * 128 + 3] = 0xff;
-      this.rawData[2048 + i * 128 + 8] = 0xff;
-      this.rawData[2048 + i * 128 + 9] = 0xff;
+      const frame = 2048 + i * 128;
+      this.rawData[frame] = 0xff;
+      this.rawData[frame + 1] = 0xff;
+      this.rawData[frame + 2] = 0xff;
+      this.rawData[frame + 3] = 0xff;
+      this.rawData[frame + 8] = 0xff;
+      this.rawData[frame + 9] = 0xff;
+      this.rawData[frame + 127] = 0;
+    }
+
+    // Save blocks are not written by buFormat; factory EEPROM reads 0xFF.
+    for (let slotNumber = 0; slotNumber < SLOT_COUNT; slotNumber++) {
+      if (this.headerData[slotNumber][0] === 0xa0) {
+        this.rawData.fill(
+          0xff,
+          8192 + slotNumber * 8192,
+          8192 + (slotNumber + 1) * 8192,
+        );
+      }
     }
   }
 

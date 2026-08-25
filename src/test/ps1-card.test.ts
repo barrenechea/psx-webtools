@@ -18,6 +18,55 @@ type SlotInternals = {
 const internals = (card: PS1MemoryCard): SlotInternals =>
   card as unknown as SlotInternals;
 
+// Independent reconstruction of Sony buFormat + buInit, from the retail kernel
+// (ps-30a buFormat @ 0xb170: bzero 128, directory memcpy 32, broken memcpy 4,
+// XOR of bytes 0–126, writes frames 0–35 only; buInit copies frame 0 → 63).
+// Factory EEPROM is 0xFF. Do not import production format helpers here.
+function xorFrame(frame: Uint8Array): void {
+  let checksum = 0;
+  for (let i = 0; i < 127; i++) checksum ^= frame[i];
+  frame[127] = checksum;
+}
+
+function ps1KernelBlankImage(): Uint8Array {
+  const card = new Uint8Array(TOTAL_CARD_SIZE).fill(0xff);
+  const buf = new Uint8Array(128);
+
+  buf.fill(0);
+  buf[0] = 0x4d;
+  buf[1] = 0x43;
+  xorFrame(buf);
+  card.set(buf, 0);
+
+  for (let i = 0; i < 15; i++) {
+    const entry = new Uint8Array(32);
+    entry[0] = 0xa0;
+    entry[8] = 0xff;
+    entry[9] = 0xff;
+    buf.set(entry);
+    xorFrame(buf);
+    card.set(buf, (i + 1) * 128);
+  }
+
+  for (let i = 0; i < 20; i++) {
+    buf[0] = 0xff;
+    buf[1] = 0xff;
+    buf[2] = 0xff;
+    buf[3] = 0xff;
+    xorFrame(buf);
+    card.set(buf, (16 + i) * 128);
+  }
+
+  card.set(card.subarray(0, 128), 63 * 128);
+  return card;
+}
+
+function firstMismatch(got: Uint8Array, want: Uint8Array): number {
+  const n = Math.min(got.length, want.length);
+  for (let i = 0; i < n; i++) if (got[i] !== want[i]) return i;
+  return got.length === want.length ? -1 : n;
+}
+
 describe("A. card lifecycle & raw layout", () => {
   it("CRC-32 of '123456789' is the ISO 3309 check value", () => {
     expect(formatCrc32(crc32(new TextEncoder().encode("123456789")))).toBe(
@@ -123,17 +172,28 @@ describe("A. card lifecycle & raw layout", () => {
       expect(raw[h + 9]).toBe(0xff);
       expect(raw[h + 127]).toBe(0xa0);
     }
-    // 20 reserved blocks (only present on a clean build)
+    // 20 broken-sector-list frames (buFormat leftover: [0–3] and [8–9] = FF)
     for (let n = 0; n < 20; n++) {
       const h = 2048 + n * 128;
       for (let i = 0; i < 4; i++) expect(raw[h + i]).toBe(0xff);
       expect(raw[h + 8]).toBe(0xff);
       expect(raw[h + 9]).toBe(0xff);
+      expect(raw[h + 127]).toBe(0x00);
     }
-    // exactly those bytes are non-zero
-    let nonZero = 0;
-    for (let i = 0; i < raw.length; i++) if (raw[i] !== 0) nonZero++;
-    expect(nonZero).toBe(3 + 3 + 15 * 4 + 20 * 6);
+    // Frames 36–62 are not written by the PS1 kernel; factory EEPROM is 0xFF.
+    // Frame 63 is the buInit write-test copy of frame 0 (already checked above).
+    let erased = 0;
+    for (let i = 36 * 128; i < 63 * 128; i++) if (raw[i] === 0xff) erased++;
+    for (let i = 64 * 128; i < raw.length; i++) if (raw[i] === 0xff) erased++;
+    expect(erased).toBe(27 * 128 + 960 * 128);
+
+    const golden = ps1KernelBlankImage();
+    const mismatch = firstMismatch(raw, golden);
+    expect(mismatch).toBe(-1);
+    expect(equalBytes(raw, golden)).toBe(true);
+    expect(
+      equalBytes(raw.subarray(0, 128), raw.subarray(63 * 128, 64 * 128)),
+    ).toBe(true);
   });
 
   it("A10 loadFromRawData rejects an oversized buffer", () => {
