@@ -28,9 +28,6 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-// enable copy/move/delete functionality for testing
-const alphaDisabled = false;
-
 interface MemoryCardToolbarProps {
   selectedSlot: number | null;
   selectedCard: number | null;
@@ -77,7 +74,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
   <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
     <h1 className="text-muted-foreground pl-2 font-light">
       Memory Card Manager{" "}
-      <span className="text-destructive text-xs dark:text-red-400">Alpha</span>
+      <span className="text-xs text-sky-500 dark:text-sky-400">Beta</span>
     </h1>
     <div className="flex space-x-2">
       <Tooltip>
@@ -143,7 +140,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
             variant="ghost"
             size="icon"
             onClick={onCopy}
-            disabled={selectedSlot === null || !isDeletable || alphaDisabled}
+            disabled={selectedSlot === null || !isDeletable}
             aria-label="Copy to buffer"
           >
             <CopyIcon className="size-4" />
@@ -157,7 +154,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
             variant="ghost"
             size="icon"
             onClick={onMove}
-            disabled={selectedSlot === null || !isDeletable || alphaDisabled}
+            disabled={selectedSlot === null || !isDeletable}
             aria-label="Move to buffer"
           >
             <ArrowRightIcon className="size-4" />
@@ -171,12 +168,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
             variant="ghost"
             size="icon"
             onClick={onPaste}
-            disabled={
-              selectedSlot === null ||
-              !hasCopiedSave ||
-              !isSlotEmpty ||
-              alphaDisabled
-            }
+            disabled={selectedSlot === null || !hasCopiedSave || !isSlotEmpty}
             aria-label="Paste from buffer"
           >
             <ClipboardPasteIcon className="size-4" />
@@ -190,7 +182,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
             variant="ghost"
             size="icon"
             onClick={onDelete}
-            disabled={selectedSlot === null || !isDeletable || alphaDisabled}
+            disabled={selectedSlot === null || !isDeletable}
             aria-label="Delete save"
           >
             <TrashIcon className="size-4" />

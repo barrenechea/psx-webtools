@@ -28,7 +28,6 @@ import PS1MemoryCard, {
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 
-import AlphaNoticeDialog from "../alpha-notice-dialog";
 import { DragDropWrapper } from "../drag-drop-wrapper";
 import { CardContentHeader } from "./card-content-header";
 import { CardSidebar } from "./card-sidebar";
@@ -49,8 +48,6 @@ let lastCardId = 0;
 const nextCardId = (): number => ++lastCardId;
 
 export const MemoryCardManager: React.FC = () => {
-  const [isAlphaNoticeOpen, setIsAlphaNoticeOpen] = useState(true);
-
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
@@ -799,10 +796,6 @@ export const MemoryCardManager: React.FC = () => {
                   : "No memory card selected")}
             </div>
           </div>
-          <AlphaNoticeDialog
-            isOpen={isAlphaNoticeOpen}
-            onClose={() => setIsAlphaNoticeOpen(false)}
-          />
         </div>
       </DragDropWrapper>
       <MemcarduinoConnectDialog
