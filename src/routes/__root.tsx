@@ -1,7 +1,12 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
-import { Sidebar } from "@/components/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const ReactQueryDevtools = import.meta.env.PROD
@@ -25,15 +30,16 @@ const TanStackRouterDevtools = import.meta.env.PROD
 export const Route = createRootRoute({
   component: () => (
     <TooltipProvider delayDuration={100}>
-      <div className="flex h-screen w-full flex-row">
-        <Sidebar />
-        <div className="relative flex-1">
+      <SidebarProvider className="h-svh overflow-hidden">
+        <AppSidebar />
+        <SidebarInset className="relative min-h-0 overflow-hidden">
+          <SidebarTrigger className="absolute top-2 left-2 z-20 md:hidden" />
           <div className="animate-background-shine bg-gradient-shine dark:bg-gradient-shine-dark absolute inset-0 bg-[length:400%]" />
           <div className="relative z-10 h-full overflow-auto">
             <Outlet />
           </div>
-        </div>
-      </div>
+        </SidebarInset>
+      </SidebarProvider>
       <Suspense>
         <ReactQueryDevtools />
         <TanStackRouterDevtools />
