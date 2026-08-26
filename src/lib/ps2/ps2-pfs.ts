@@ -288,6 +288,21 @@ export function fatSet(
   writeU32AtCluster(raw, fatLoc, relCluster & 0xff, value);
 }
 
+/**
+ * Absolute page index holding a relative cluster's FAT entry (-1 if the
+ * mapping is missing). Used to snapshot FAT state for undo/redo.
+ */
+export function fatEntryPage(
+  raw: Uint8Array,
+  sb: Ps2Superblock,
+  relCluster: number,
+): number {
+  const fatLoc = fatClusterLocation(raw, sb, relCluster >> 8);
+  if (fatLoc === 0 || fatLoc === FAT_EOF) return -1;
+  const off = (relCluster & 0xff) * 4;
+  return fatLoc * PAGES_PER_CLUSTER + (off < PAGE_DATA_SIZE ? 0 : 1);
+}
+
 /** Follow an allocated chain from a relative cluster (inclusive). */
 export function clusterChain(
   raw: Uint8Array,
@@ -314,7 +329,8 @@ export function findFreeCluster(
   sb: Ps2Superblock,
 ): number | null {
   for (let rel = 1; rel < sb.allocEnd; rel++) {
-    if (fatGet(raw, sb, rel) === FAT_FREE) return rel;
+    // MSB clear = free (real cards show 0x7FFFFFFF and 0x00000000).
+    if (!(fatGet(raw, sb, rel) & FAT_ALLOCATED_BIT)) return rel;
   }
   return null;
 }
