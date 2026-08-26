@@ -16,32 +16,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import useSaveFileForm from "@/hooks/use-save-file-form";
-import { SingleSaveExtensions, SingleSaveTypes } from "@/lib/ps1-memory-card";
+import useSaveFileForm, {
+  type SaveFormatOption,
+} from "@/hooks/use-save-file-form";
 
-interface SaveSingleSaveDialogProps {
+interface SaveSingleSaveDialogProps<T extends number> {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   defaultFileName: string;
-  onSave: (fileName: string, saveType: SingleSaveTypes) => Promise<void>;
+  formats: readonly SaveFormatOption<T>[];
+  defaultFormat: T;
+  onSave: (fileName: string, saveType: T) => Promise<void>;
 }
 
-const singleSaveExtensionsFor = (
-  format: SingleSaveTypes,
-): readonly string[] => [SingleSaveExtensions[format]];
-
-export const SaveSingleSaveDialog: React.FC<SaveSingleSaveDialogProps> = ({
+export const SaveSingleSaveDialog = <T extends number>({
   isOpen,
   onOpenChange,
   defaultFileName,
+  formats,
+  defaultFormat,
   onSave,
-}) => {
-  const { fileName, setFileName, saveType, setFormat } =
-    useSaveFileForm<SingleSaveTypes>({
-      defaultFileName,
-      defaultFormat: SingleSaveTypes.Mcs,
-      extensionsFor: singleSaveExtensionsFor,
-    });
+}: SaveSingleSaveDialogProps<T>) => {
+  const { fileName, setFileName, saveType, setFormat } = useSaveFileForm<T>({
+    defaultFileName,
+    defaultFormat,
+    extensionsFor: (format) =>
+      formats.find((option) => option.value === format)?.extensions ?? [],
+  });
 
   const handleSave = () => {
     void onSave(fileName, saveType);
@@ -70,26 +71,20 @@ export const SaveSingleSaveDialog: React.FC<SaveSingleSaveDialogProps> = ({
             <Label htmlFor="singleSaveFormat">Save format</Label>
             <Select
               value={saveType.toString()}
-              onValueChange={(value) =>
-                setFormat(parseInt(value) as SingleSaveTypes)
-              }
+              onValueChange={(value) => setFormat(parseInt(value) as T)}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select format" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={SingleSaveTypes.Mcs.toString()}>
-                  MCS single save (.mcs)
-                </SelectItem>
-                <SelectItem value={SingleSaveTypes.Psv.toString()}>
-                  PS3 single save (.psv)
-                </SelectItem>
-                <SelectItem value={SingleSaveTypes.Psx.toString()}>
-                  Action Replay (.mcb)
-                </SelectItem>
-                <SelectItem value={SingleSaveTypes.Raw.toString()}>
-                  RAW single save
-                </SelectItem>
+                {formats.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value.toString()}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

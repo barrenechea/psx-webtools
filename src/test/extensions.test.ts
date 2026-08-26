@@ -9,6 +9,12 @@ import {
   SlotTypes,
   withSingleExtension,
 } from "@/lib/ps1-memory-card";
+import {
+  PS2_RAW_EXTENSIONS,
+  PS2_SINGLE_SAVE_EXTENSIONS,
+  Ps2CardFormats,
+  Ps2SingleSaveTypes,
+} from "@/lib/ps2/ps2-types";
 
 describe("Contracts. enums & extension maps", () => {
   it("CardTypes values are stable", () => {
@@ -57,6 +63,13 @@ describe("Contracts. enums & extension maps", () => {
     expect(RAW_EXTENSIONS).toContain(".bin");
     expect(RAW_EXTENSIONS).toContain(".srm");
   });
+
+  it("PS2 format enums and extension lists are stable", () => {
+    expect(Ps2CardFormats.Raw).toBe(0);
+    expect(Ps2SingleSaveTypes.Sdt).toBe(0);
+    expect([...PS2_RAW_EXTENSIONS]).toEqual([".mcd", ".bin", ".ps2"]);
+    expect([...PS2_SINGLE_SAVE_EXTENSIONS]).toEqual([".sdt"]);
+  });
 });
 
 describe("free functions: extension handling", () => {
@@ -65,6 +78,8 @@ describe("free functions: extension handling", () => {
     expect(withSingleExtension("card", ".gme")).toBe("card.gme");
     expect(withSingleExtension("card.mcr.mcr", ".mcx")).toBe("card.mcx");
     expect(withSingleExtension("card.gme", ".gme")).toBe("card.gme");
+    expect(withSingleExtension("card.ps2", ".mcd")).toBe("card.mcd");
+    expect(withSingleExtension("card.sdt", ".sdt")).toBe("card.sdt");
   });
 
   it("hasFileExtension", () => {

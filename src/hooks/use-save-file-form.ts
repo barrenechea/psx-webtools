@@ -14,6 +14,17 @@ interface UseSaveFileFormOptions<T extends number> {
 }
 
 /**
+ * One entry of a save dialog's format list. `extensions` with a single entry
+ * means the format has one fixed extension; multiple entries make the dialog
+ * offer an extension picker for that format.
+ */
+export interface SaveFormatOption<T extends number> {
+  value: T;
+  label: string;
+  extensions: readonly string[];
+}
+
+/**
  * Shared state for the "save file" dialogs (full card + single save): a file
  * name whose extension always matches the selected format, defaulting to the
  * source file's own extension when it is a valid one for that format.

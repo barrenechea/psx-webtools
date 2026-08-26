@@ -18,17 +18,27 @@ import { UniromConnectDialog } from "@/components/unirom-connect-dialog";
 import { useDeviceManager } from "@/hooks/use-device-manager";
 import { usePrefetchGameData } from "@/hooks/use-game-data";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import type { SaveFormatOption } from "@/hooks/use-save-file-form";
 import PS1MemoryCard, {
+  CardExtensions,
   CardTypes,
   DataTypes,
   type IconPalette,
   IconTypes,
+  RAW_EXTENSIONS,
   type SaveInfo,
+  SingleSaveExtensions,
   SingleSaveTypes,
   type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+import {
+  PS2_RAW_EXTENSIONS,
+  PS2_SINGLE_SAVE_EXTENSIONS,
+  Ps2CardFormats,
+  Ps2SingleSaveTypes,
+} from "@/lib/ps2/ps2-types";
 
 import { DragDropWrapper } from "../drag-drop-wrapper";
 import { CardContentHeader } from "./card-content-header";
@@ -41,6 +51,8 @@ import { GameDetailsSidebar } from "./game-details-sidebar";
 import type { SlotAction } from "./memory-card-slot";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
 import { PocketStationDialog } from "./pocketstation-dialog";
+import { Ps2ImportSaveDialog } from "./ps2-import-save-dialog";
+import { Ps2NewCardDialog } from "./ps2-new-card-dialog";
 import { Ps2SaveInfoSidebar } from "./ps2-save-info-sidebar";
 import { Ps2SaveList } from "./ps2-save-list";
 import { SaveInfoDialog } from "./save-info-dialog";
@@ -51,11 +63,97 @@ import { WriteCardDialog } from "./write-card-dialog";
 let lastCardId = 0;
 const nextCardId = (): number => ++lastCardId;
 
+// Save-dialog format lists. PS1 entries derive from the PS1 extension maps so
+// the generalized dialogs keep their exact previous options; PS2 is a single
+// raw-image format plus the .sdt single-save format.
+const PS1_CARD_FORMATS: readonly SaveFormatOption<CardTypes>[] = [
+  {
+    value: CardTypes.Raw,
+    label: "Raw Memory Card",
+    extensions: RAW_EXTENSIONS,
+  },
+  {
+    value: CardTypes.Mcx,
+    label: "MCX Format (.mcx)",
+    extensions: [CardExtensions[CardTypes.Mcx]],
+  },
+  {
+    value: CardTypes.Vmp,
+    label: "VMP Format (.vmp)",
+    extensions: [CardExtensions[CardTypes.Vmp]],
+  },
+  {
+    value: CardTypes.Vgs,
+    label: "VGS Format (.vgs)",
+    extensions: [CardExtensions[CardTypes.Vgs]],
+  },
+  {
+    value: CardTypes.Gme,
+    label: "GME Format (.gme)",
+    extensions: [CardExtensions[CardTypes.Gme]],
+  },
+];
+
+const PS1_SINGLE_SAVE_FORMATS: readonly SaveFormatOption<SingleSaveTypes>[] = [
+  {
+    value: SingleSaveTypes.Mcs,
+    label: "MCS single save (.mcs)",
+    extensions: [SingleSaveExtensions[SingleSaveTypes.Mcs]],
+  },
+  {
+    value: SingleSaveTypes.Psv,
+    label: "PS3 single save (.psv)",
+    extensions: [SingleSaveExtensions[SingleSaveTypes.Psv]],
+  },
+  {
+    value: SingleSaveTypes.Psx,
+    label: "Action Replay (.mcb)",
+    extensions: [SingleSaveExtensions[SingleSaveTypes.Psx]],
+  },
+  {
+    value: SingleSaveTypes.Raw,
+    label: "RAW single save",
+    extensions: [SingleSaveExtensions[SingleSaveTypes.Raw]],
+  },
+];
+
+const PS2_CARD_FORMATS: readonly SaveFormatOption<Ps2CardFormats>[] = [
+  {
+    value: Ps2CardFormats.Raw,
+    label: "Raw Memory Card",
+    extensions: PS2_RAW_EXTENSIONS,
+  },
+];
+
+const PS2_SINGLE_SAVE_FORMATS: readonly SaveFormatOption<Ps2SingleSaveTypes>[] =
+  [
+    {
+      value: Ps2SingleSaveTypes.Sdt,
+      label: "Single save (.sdt)",
+      extensions: PS2_SINGLE_SAVE_EXTENSIONS,
+    },
+  ];
+
+// PS2 copy naming: keep the prefix and increment the trailing 4-digit index
+// (BASLUS-21590GTA40001 -> ...0002), like the console auto-numbers saves.
+const nextPs2SaveName = (existingNames: string[], source: string): string => {
+  const hasIndex = /^\d{4}$/.test(source.slice(-4));
+  const prefix = hasIndex ? source.slice(0, -4) : source;
+  const start = hasIndex ? parseInt(source.slice(-4), 10) : 0;
+  for (let i = start + 1; ; i++) {
+    const candidate = `${prefix}${String(i).padStart(4, "0")}`;
+    if (!existingNames.includes(candidate)) return candidate;
+  }
+};
+
 export const MemoryCardManager: React.FC = () => {
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [selectedPs2Save, setSelectedPs2Save] = useState<string | null>(null);
+  const [isPs2ImportDialogOpen, setIsPs2ImportDialogOpen] = useState(false);
+  const [isPs2NewCardDialogOpen, setIsPs2NewCardDialogOpen] = useState(false);
+  const [ps2ImportFile, setPs2ImportFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -137,6 +235,7 @@ export const MemoryCardManager: React.FC = () => {
   const [isFormatDialogOpen, setIsFormatDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const singleSaveFileInputRef = useRef<HTMLInputElement>(null);
+  const ps2ImportFileInputRef = useRef<HTMLInputElement>(null);
 
   const {
     isConnected,
@@ -168,6 +267,13 @@ export const MemoryCardManager: React.FC = () => {
     const entry =
       id === null ? undefined : memoryCards.find((c) => c.id === id);
     return entry && !isPs2Card(entry.card) ? entry.card : undefined;
+  };
+
+  // PS2-only view of a card entry; the save-dir handlers are PS2.
+  const ps2Card = (id: number | null): PS2MemoryCard | undefined => {
+    const entry =
+      id === null ? undefined : memoryCards.find((c) => c.id === id);
+    return entry && isPs2Card(entry.card) ? entry.card : undefined;
   };
 
   const handleDexDriveConnect = async () => {
@@ -343,7 +449,21 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleDelete = () => {
-    if (selectedCard !== null && selectedSlot !== null) {
+    if (selectedCard === null) return;
+    const ps2 = ps2Card(selectedCard);
+    if (ps2) {
+      if (selectedPs2Save === null) return;
+      const rowBefore = ps2.undoCount;
+      if (ps2.deleteSave(selectedPs2Save)) {
+        appendHistoryLabel(selectedCard, rowBefore, "Save deleted");
+        setSelectedPs2Save(null);
+        setMemoryCards([...memoryCards]);
+      } else {
+        setError("Failed to delete save");
+      }
+      return;
+    }
+    if (selectedSlot !== null) {
       const card = ps1Card(selectedCard);
       if (card) {
         const isRestore =
@@ -373,6 +493,21 @@ export const MemoryCardManager: React.FC = () => {
     setMemoryCards((prev) => [...prev, newMemoryCard]);
     setSelectedCard(newMemoryCard.id);
     setSelectedSlot(null);
+  };
+
+  const handlePs2NewCard = (sizeMb: number) => {
+    const card = PS2MemoryCard.format(sizeMb * 1024);
+    const newMemoryCard: MemoryCard = {
+      id: nextCardId(),
+      name: "New PS2 Card",
+      type: "new",
+      source: "",
+      card,
+    };
+    setMemoryCards((prev) => [...prev, newMemoryCard]);
+    setSelectedCard(newMemoryCard.id);
+    setSelectedSlot(null);
+    setSelectedPs2Save(null);
   };
 
   const removeCard = (id: number) => {
@@ -539,6 +674,21 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
+  const handlePs2SaveConfirm = async (fileName: string) => {
+    if (selectedCard === null) return;
+    const card = ps2Card(selectedCard);
+    if (card) {
+      const success = await card.saveMemoryCard(fileName);
+      if (success) {
+        setError(null);
+        setMemoryCards([...memoryCards]);
+      } else {
+        setError("Failed to save memory card");
+      }
+      setIsSaveDialogOpen(false);
+    }
+  };
+
   const selectedSaveInfo =
     selectedSlot !== null
       ? ps1Card(selectedCard)?.getSaves()[selectedSlot]
@@ -561,7 +711,12 @@ export const MemoryCardManager: React.FC = () => {
       : [];
 
   const handleExportSingleSave = () => {
-    if (selectedCard === null || selectedSlot === null || isSlotEmpty) return;
+    if (selectedCard === null) return;
+    if (ps2Card(selectedCard)) {
+      if (selectedPs2Save !== null) setIsSingleSaveDialogOpen(true);
+      return;
+    }
+    if (selectedSlot === null || isSlotEmpty) return;
     setIsSingleSaveDialogOpen(true);
   };
 
@@ -584,11 +739,71 @@ export const MemoryCardManager: React.FC = () => {
     setIsSingleSaveDialogOpen(false);
   };
 
+  const handlePs2ExportConfirm = async (fileName: string) => {
+    if (selectedCard !== null && selectedPs2Save !== null) {
+      const card = ps2Card(selectedCard);
+      if (card) {
+        const success = await card.saveSingleSave(fileName, selectedPs2Save);
+        setError(success ? null : "Failed to export save");
+      }
+    }
+    setIsSingleSaveDialogOpen(false);
+  };
+
   const handleImportSingleSave = () => {
     const input = singleSaveFileInputRef.current;
     if (!input) return;
     input.value = "";
     input.click();
+  };
+
+  // PS2 import: pick a data file first, then name the new save dir.
+  const handleImportPs2Save = () => {
+    const input = ps2ImportFileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
+
+  const handlePs2ImportFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setPs2ImportFile(file);
+    setIsPs2ImportDialogOpen(true);
+  };
+
+  const handlePs2ImportConfirm = async (
+    name: string,
+    title: string,
+  ): Promise<boolean> => {
+    if (selectedCard === null || ps2ImportFile === null) return false;
+    const card = ps2Card(selectedCard);
+    if (!card) return false;
+    const bytes = new Uint8Array(await ps2ImportFile.arrayBuffer());
+    const rowBefore = card.undoCount;
+    const success = card.importSingleSave(name, bytes, {
+      title: title.length > 0 ? title : undefined,
+    });
+    if (success) {
+      appendHistoryLabel(selectedCard, rowBefore, "Save imported");
+      setSelectedPs2Save(name);
+      setMemoryCards([...memoryCards]);
+      setPs2ImportFile(null);
+      return true;
+    }
+    setError("Failed to import save");
+    return false;
+  };
+
+  const handleImportSave = () => {
+    if (selectedCard !== null && ps2Card(selectedCard)) {
+      handleImportPs2Save();
+    } else {
+      handleImportSingleSave();
+    }
   };
 
   const importSingleSaveIntoSlot = async (
@@ -641,6 +856,30 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleCopyMove = (action: "copy" | "move") => {
+    if (selectedCard !== null) {
+      const ps2 = ps2Card(selectedCard);
+      // PS2 copy clones the save dir under the next free auto-numbered name;
+      // PS2 has no temp buffer, so Move is disabled in the toolbar.
+      if (ps2 && action === "copy" && selectedPs2Save !== null) {
+        const newName = nextPs2SaveName(
+          ps2.getSaves().map((s) => s.name),
+          selectedPs2Save,
+        );
+        const rowBefore = ps2.undoCount;
+        if (ps2.copySave(selectedPs2Save, newName)) {
+          appendHistoryLabel(
+            selectedCard,
+            rowBefore,
+            `Save copied to ${newName}`,
+          );
+          setSelectedPs2Save(newName);
+          setMemoryCards([...memoryCards]);
+        } else {
+          setError("Failed to copy save");
+        }
+        return;
+      }
+    }
     if (selectedCard !== null && selectedSlot !== null) {
       const cardEntry = memoryCards.find((c) => c.id === selectedCard);
       const card = ps1Card(selectedCard);
@@ -712,6 +951,8 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const selectedCardEntry = memoryCards.find((c) => c.id === selectedCard);
+  const selectedPs1Card = ps1Card(selectedCard);
+  const selectedPs2Card = ps2Card(selectedCard);
   const cardHistory = selectedCardEntry
     ? (historyLabels[selectedCardEntry.id] ?? [selectedCardEntry.name])
     : [];
@@ -737,6 +978,7 @@ export const MemoryCardManager: React.FC = () => {
           <div className="flex size-full max-w-7xl flex-col overflow-hidden rounded-xl shadow-xl">
             <MemoryCardToolbar
               selectedSlot={selectedSlot}
+              selectedPs2Save={selectedPs2Save}
               selectedCard={selectedCard}
               cardKind={selectedCardEntry?.card.kind ?? "ps1"}
               hasCopiedSave={copiedSaveBytes !== null}
@@ -755,7 +997,7 @@ export const MemoryCardManager: React.FC = () => {
               onDelete={handleDelete}
               onSave={() => void handleSaveMemoryCard()}
               onExport={handleExportSingleSave}
-              onImport={handleImportSingleSave}
+              onImport={handleImportSave}
             />
             <div className="flex grow overflow-hidden">
               <CardSidebar
@@ -763,6 +1005,7 @@ export const MemoryCardManager: React.FC = () => {
                 selectedCard={selectedCard}
                 onSelectCard={handleSelectCard}
                 onNewCard={handleNewCard}
+                onNewPs2Card={() => setIsPs2NewCardDialogOpen(true)}
                 onCloseCard={handleCloseCard}
                 fileInputRef={fileInputRef}
                 onFileChange={handleFileInputChange}
@@ -914,24 +1157,67 @@ export const MemoryCardManager: React.FC = () => {
         className="sr-only"
         onChange={(e) => void handleImportSingleSaveChange(e)}
       />
-      <SaveMemoryCardDialog
-        key={selectedCard ?? "no-card"}
-        isOpen={isSaveDialogOpen}
-        onOpenChange={setIsSaveDialogOpen}
-        defaultFileName={selectedCardEntry?.name ?? "memory_card"}
-        defaultFormat={
-          selectedCardEntry && !isPs2Card(selectedCardEntry.card)
-            ? selectedCardEntry.card.getCardType()
-            : CardTypes.Raw
-        }
-        onSave={handleSaveConfirm}
+      <input
+        ref={ps2ImportFileInputRef}
+        type="file"
+        accept=".sdt,.dat"
+        className="sr-only"
+        onChange={(e) => void handlePs2ImportFileChange(e)}
       />
-      <SaveSingleSaveDialog
-        key={`${selectedCard ?? "no-card"}-${selectedSlot ?? "no-slot"}`}
-        isOpen={isSingleSaveDialogOpen}
-        onOpenChange={setIsSingleSaveDialogOpen}
-        defaultFileName={`${selectedSaveInfo?.regionRaw ?? ""}${selectedSaveInfo?.productCode ?? ""}${selectedSaveInfo?.identifier ?? ""}`}
-        onSave={handleExportSingleSaveConfirm}
+      {selectedPs2Card ? (
+        <SaveMemoryCardDialog
+          key={`ps2-${selectedCard ?? "no-card"}`}
+          isOpen={isSaveDialogOpen}
+          onOpenChange={setIsSaveDialogOpen}
+          defaultFileName={selectedCardEntry?.name ?? "memory_card"}
+          formats={PS2_CARD_FORMATS}
+          defaultFormat={Ps2CardFormats.Raw}
+          onSave={handlePs2SaveConfirm}
+        />
+      ) : (
+        <SaveMemoryCardDialog
+          key={selectedCard ?? "no-card"}
+          isOpen={isSaveDialogOpen}
+          onOpenChange={setIsSaveDialogOpen}
+          defaultFileName={selectedCardEntry?.name ?? "memory_card"}
+          formats={PS1_CARD_FORMATS}
+          defaultFormat={selectedPs1Card?.getCardType() ?? CardTypes.Raw}
+          onSave={handleSaveConfirm}
+        />
+      )}
+      {selectedPs2Card ? (
+        <SaveSingleSaveDialog
+          key={`ps2-${selectedCard ?? "no-card"}-${selectedPs2Save ?? "no-save"}`}
+          isOpen={isSingleSaveDialogOpen}
+          onOpenChange={setIsSingleSaveDialogOpen}
+          defaultFileName={selectedPs2Save ?? "save"}
+          formats={PS2_SINGLE_SAVE_FORMATS}
+          defaultFormat={Ps2SingleSaveTypes.Sdt}
+          onSave={handlePs2ExportConfirm}
+        />
+      ) : (
+        <SaveSingleSaveDialog
+          key={`${selectedCard ?? "no-card"}-${selectedSlot ?? "no-slot"}`}
+          isOpen={isSingleSaveDialogOpen}
+          onOpenChange={setIsSingleSaveDialogOpen}
+          defaultFileName={`${selectedSaveInfo?.regionRaw ?? ""}${selectedSaveInfo?.productCode ?? ""}${selectedSaveInfo?.identifier ?? ""}`}
+          formats={PS1_SINGLE_SAVE_FORMATS}
+          defaultFormat={SingleSaveTypes.Mcs}
+          onSave={handleExportSingleSaveConfirm}
+        />
+      )}
+      <Ps2NewCardDialog
+        isOpen={isPs2NewCardDialogOpen}
+        onOpenChange={setIsPs2NewCardDialogOpen}
+        onConfirm={handlePs2NewCard}
+      />
+      <Ps2ImportSaveDialog
+        key={ps2ImportFile?.name ?? "no-file"}
+        isOpen={isPs2ImportDialogOpen}
+        onOpenChange={setIsPs2ImportDialogOpen}
+        defaultName={ps2ImportFile?.name.replace(/\.[^.]+$/, "") ?? ""}
+        takenNames={selectedPs2Card?.getSaves().map((s) => s.name) ?? []}
+        onImport={(name, title) => handlePs2ImportConfirm(name, title)}
       />
       <EditHeaderDialog
         key={`header-${dialogSlot ?? "none"}`}

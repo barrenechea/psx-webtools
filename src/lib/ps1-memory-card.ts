@@ -104,6 +104,9 @@ const KNOWN_FILE_EXTENSIONS = Array.from(
     ".mc2",
     ".pda",
     ".psx",
+    // PS2 image / single-save extensions (shared save-file plumbing).
+    ".ps2",
+    ".sdt",
   ]),
 );
 

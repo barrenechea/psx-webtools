@@ -43,3 +43,20 @@ export const PS2_RAW_EXTENSIONS: readonly string[] = [".mcd", ".bin", ".ps2"];
 
 /** Single-save export: the user-data file bytes (open item: scene extension). */
 export const PS2_SINGLE_SAVE_EXTENSIONS: readonly string[] = [".sdt"];
+
+/**
+ * Card-image save formats. There is a single raw image format; the numeric
+ * value exists so the format fits `SaveFormatOption<T>` typing like PS1's
+ * `CardTypes`.
+ */
+export enum Ps2CardFormats {
+  Raw = 0,
+}
+
+/**
+ * Single-save export formats. `Sdt` carries the save's user-data file bytes
+ * under the scene `.sdt` extension.
+ */
+export enum Ps2SingleSaveTypes {
+  Sdt = 0,
+}

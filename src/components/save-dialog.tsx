@@ -16,31 +16,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import useSaveFileForm from "@/hooks/use-save-file-form";
-import {
-  CardExtensions,
-  CardTypes,
-  RAW_EXTENSIONS,
-} from "@/lib/ps1-memory-card";
+import useSaveFileForm, {
+  type SaveFormatOption,
+} from "@/hooks/use-save-file-form";
 
-interface SaveDialogProps {
+interface SaveDialogProps<T extends number> {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   defaultFileName: string;
-  defaultFormat: CardTypes;
-  onSave: (fileName: string, saveType: CardTypes) => Promise<void>;
+  formats: readonly SaveFormatOption<T>[];
+  defaultFormat: T;
+  onSave: (fileName: string, saveType: T) => Promise<void>;
 }
 
-const cardExtensionsFor = (format: CardTypes): readonly string[] =>
-  format === CardTypes.Raw ? RAW_EXTENSIONS : [CardExtensions[format]];
-
-export const SaveDialog: React.FC<SaveDialogProps> = ({
+export const SaveDialog = <T extends number>({
   isOpen,
   onOpenChange,
   defaultFileName,
+  formats,
   defaultFormat,
   onSave,
-}) => {
+}: SaveDialogProps<T>) => {
   const {
     fileName,
     setFileName,
@@ -50,10 +46,11 @@ export const SaveDialog: React.FC<SaveDialogProps> = ({
     setExtension,
     currentExtensions,
     hasExtensionPicker,
-  } = useSaveFileForm<CardTypes>({
+  } = useSaveFileForm<T>({
     defaultFileName,
     defaultFormat,
-    extensionsFor: cardExtensionsFor,
+    extensionsFor: (format) =>
+      formats.find((option) => option.value === format)?.extensions ?? [],
   });
 
   const handleSave = () => {
@@ -83,27 +80,20 @@ export const SaveDialog: React.FC<SaveDialogProps> = ({
             <Label htmlFor="format">Save format</Label>
             <Select
               value={saveType.toString()}
-              onValueChange={(value) => setFormat(parseInt(value) as CardTypes)}
+              onValueChange={(value) => setFormat(parseInt(value) as T)}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select format" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={CardTypes.Raw.toString()}>
-                  Raw Memory Card
-                </SelectItem>
-                <SelectItem value={CardTypes.Mcx.toString()}>
-                  MCX Format (.mcx)
-                </SelectItem>
-                <SelectItem value={CardTypes.Vmp.toString()}>
-                  VMP Format (.vmp)
-                </SelectItem>
-                <SelectItem value={CardTypes.Vgs.toString()}>
-                  VGS Format (.vgs)
-                </SelectItem>
-                <SelectItem value={CardTypes.Gme.toString()}>
-                  GME Format (.gme)
-                </SelectItem>
+                {formats.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value.toString()}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

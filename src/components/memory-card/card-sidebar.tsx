@@ -30,6 +30,7 @@ interface CardSidebarProps {
   selectedCard: number | null;
   onSelectCard: (id: number) => void;
   onNewCard: () => void;
+  onNewPs2Card: () => void;
   onCloseCard: (id: number) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -55,6 +56,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   selectedCard,
   onSelectCard,
   onNewCard,
+  onNewPs2Card,
   onCloseCard,
   fileInputRef,
   onFileChange,
@@ -113,7 +115,11 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
         <DropdownMenuContent side="right" className="w-56">
           <DropdownMenuItem onSelect={onNewCard}>
             <FilePlusIcon />
-            New card
+            New PS1 card
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onNewPs2Card}>
+            <FilePlusIcon />
+            New PS2 card
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
