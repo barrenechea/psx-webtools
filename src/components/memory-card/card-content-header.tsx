@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import PS1BlockIcon from "@/components/ui/ps1-icon";
 import {
   Tooltip,
@@ -13,6 +14,7 @@ import type {
 interface CardContentHeaderProps {
   name: string;
   type: string;
+  kind: "ps1" | "ps2";
   source: string;
   checksum: string;
   copiedSlots: SaveInfo[];
@@ -26,6 +28,7 @@ interface CardContentHeaderProps {
 export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
   name,
   type,
+  kind,
   source,
   checksum,
   copiedSlots,
@@ -33,7 +36,12 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
 }) => (
   <div className="border-border bg-muted/80 flex items-center justify-between border-b p-4 px-6">
     <div>
-      <h2 className="mb-1 text-lg font-semibold">{name}</h2>
+      <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
+        {name}
+        <Badge variant="outline" className="text-muted-foreground text-[10px]">
+          {kind === "ps2" ? "PS2" : "PS1"}
+        </Badge>
+      </h2>
       <p className="text-muted-foreground text-sm">
         {type === "new" ? "New card" : `Opened via ${type} "${source}"`}
       </p>

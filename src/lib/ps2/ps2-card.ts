@@ -96,6 +96,16 @@ export class PS2MemoryCard {
     return new PS2MemoryCard(raw, sb);
   }
 
+  // Probe helper for open flows: returns null instead of throwing so callers
+  // can fall back to other card formats.
+  static tryFromBytes(raw: Uint8Array): PS2MemoryCard | null {
+    try {
+      return PS2MemoryCard.fromRaw(raw);
+    } catch {
+      return null;
+    }
+  }
+
   static format(clustersPerCard = 8192): PS2MemoryCard {
     const raw = format2(clustersPerCard);
     return PS2MemoryCard.fromRaw(raw);
@@ -104,6 +114,24 @@ export class PS2MemoryCard {
   static async loadFromFile(file: File): Promise<PS2MemoryCard> {
     const arrayBuffer = await file.arrayBuffer();
     return PS2MemoryCard.fromRaw(new Uint8Array(arrayBuffer));
+  }
+
+  // Replace the card's contents in place, mirroring the PS1
+  // loadFromRawData surface (validates, then resets state to clean).
+  loadFromRawData(data: Uint8Array): void {
+    if (data.length === 0 || data.length % PAGE_SIZE !== 0) {
+      throw new Error("Invalid PS2 card image size");
+    }
+    const sb = parseSuperblock(data);
+    if (data.length < sb.clustersPerCard * PAGES_PER_CLUSTER * PAGE_SIZE) {
+      throw new Error("PS2 card image is truncated");
+    }
+    this.raw = data.slice();
+    this.sb = sb;
+    this.savedState = this.raw.slice();
+    this.changedFlag = false;
+    this.undoList = [];
+    this.redoList = [];
   }
 
   getSuperblock(): Ps2Superblock {

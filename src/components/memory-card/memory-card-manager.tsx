@@ -28,6 +28,7 @@ import PS1MemoryCard, {
   type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
+import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 
 import { DragDropWrapper } from "../drag-drop-wrapper";
 import { CardContentHeader } from "./card-content-header";
@@ -40,9 +41,11 @@ import { GameDetailsSidebar } from "./game-details-sidebar";
 import type { SlotAction } from "./memory-card-slot";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
 import { PocketStationDialog } from "./pocketstation-dialog";
+import { Ps2SaveInfoSidebar } from "./ps2-save-info-sidebar";
+import { Ps2SaveList } from "./ps2-save-list";
 import { SaveInfoDialog } from "./save-info-dialog";
 import { SlotList } from "./slot-list";
-import type { MemoryCard } from "./types";
+import { isPs2Card, type MemoryCard } from "./types";
 import { WriteCardDialog } from "./write-card-dialog";
 
 let lastCardId = 0;
@@ -52,6 +55,7 @@ export const MemoryCardManager: React.FC = () => {
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [selectedPs2Save, setSelectedPs2Save] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -153,7 +157,18 @@ export const MemoryCardManager: React.FC = () => {
     setPocketStationTime,
   } = useDeviceManager();
 
-  usePrefetchGameData(memoryCards.flatMap((entry) => entry.card.getSaves()));
+  usePrefetchGameData(
+    memoryCards.flatMap((entry) =>
+      isPs2Card(entry.card) ? [] : entry.card.getSaves(),
+    ),
+  );
+
+  // PS1-only view of a card entry; the slot-based handlers below are PS1.
+  const ps1Card = (id: number | null): PS1MemoryCard | undefined => {
+    const entry =
+      id === null ? undefined : memoryCards.find((c) => c.id === id);
+    return entry && !isPs2Card(entry.card) ? entry.card : undefined;
+  };
 
   const handleDexDriveConnect = async () => {
     try {
@@ -232,12 +247,17 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleWriteToDevice = () => {
     if (selectedCard === null) return;
+    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    if (card && isPs2Card(card)) {
+      setError("Writing PS2 cards over hardware is not supported yet");
+      return;
+    }
     setIsWriteDialogOpen(true);
   };
 
   const handleWriteConfirm = async () => {
     if (selectedCard === null) return;
-    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    const card = ps1Card(selectedCard);
     if (!card) return;
     setIsWriteDialogOpen(false);
     setError(null);
@@ -260,6 +280,7 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleSelectCard = (id: number) => {
     setSelectedSlot(null);
+    setSelectedPs2Save(null);
     setSelectedCard(id);
     setSidebarOpen(false);
   };
@@ -272,8 +293,18 @@ export const MemoryCardManager: React.FC = () => {
 
     for (const file of files) {
       try {
-        const card = new PS1MemoryCard();
-        await card.loadFromFile(file, fixCorrupted);
+        // Probe by content: PS2 first (size % 528 + superblock magic),
+        // otherwise PS1.
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const ps2Card = PS2MemoryCard.tryFromBytes(bytes);
+        let card: PS1MemoryCard | PS2MemoryCard;
+        if (ps2Card) {
+          card = ps2Card;
+        } else {
+          const ps1 = new PS1MemoryCard();
+          await ps1.loadFromFile(file, fixCorrupted);
+          card = ps1;
+        }
         openedCards.push({
           id: nextCardId(),
           name: file.name,
@@ -313,7 +344,7 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleDelete = () => {
     if (selectedCard !== null && selectedSlot !== null) {
-      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      const card = ps1Card(selectedCard);
       if (card) {
         const isRestore =
           card.getSaves()[selectedSlot].slotType === SlotTypes.DeletedInitial;
@@ -355,6 +386,7 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard === id) {
       setSelectedCard(null);
       setSelectedSlot(null);
+      setSelectedPs2Save(null);
     }
   };
 
@@ -401,7 +433,7 @@ export const MemoryCardManager: React.FC = () => {
     region: string,
   ) => {
     if (dialogSlot !== null && selectedCard !== null) {
-      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      const card = ps1Card(selectedCard);
       if (card) {
         const rowBefore = card.undoCount;
         card.setHeaderData(dialogSlot, productCode, identifier, region);
@@ -414,7 +446,7 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleEditCommentConfirm = (comment: string) => {
     if (dialogSlot !== null && selectedCard !== null) {
-      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      const card = ps1Card(selectedCard);
       if (card) {
         const rowBefore = card.undoCount;
         card.setComment(dialogSlot, comment);
@@ -427,7 +459,7 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleRemoveSaveConfirm = () => {
     if (dialogSlot !== null && selectedCard !== null) {
-      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      const card = ps1Card(selectedCard);
       if (card) {
         const parentSlot = card.getMasterLinkForSlot(dialogSlot);
         const rowBefore = card.undoCount;
@@ -441,7 +473,7 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleSlotAction = (action: SlotAction, index: number) => {
-    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    const card = ps1Card(selectedCard);
     // Resolve to the save's first (master) slot so header/comment/info edits
     // target the real save, not a linked continuation slot.
     const master = card ? card.getMasterLinkForSlot(index) : index;
@@ -460,11 +492,11 @@ export const MemoryCardManager: React.FC = () => {
         setRemoveConfirmOpen(true);
         break;
       case "compare": {
-        const cardEntry = memoryCards.find((c) => c.id === selectedCard);
-        if (cardEntry && copiedSaveBytes !== null) {
-          const fetched = cardEntry.card.getSaveBytes(master);
+        const compareCard = ps1Card(selectedCard);
+        if (compareCard && copiedSaveBytes !== null) {
+          const fetched = compareCard.getSaveBytes(master);
           setCompareData({
-            save1Name: cardEntry.card.getSaves()[master].name,
+            save1Name: compareCard.getSaves()[master].name,
             save1Bytes: fetched,
             save2Name: copiedSlots[0]?.name ?? "temp buffer",
             save2Bytes: copiedSaveBytes,
@@ -487,7 +519,7 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleSaveConfirm = async (fileName: string, format: CardTypes) => {
     if (selectedCard !== null) {
-      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      const card = ps1Card(selectedCard);
       if (card) {
         const success = await card.saveMemoryCard(
           fileName,
@@ -509,9 +541,7 @@ export const MemoryCardManager: React.FC = () => {
 
   const selectedSaveInfo =
     selectedSlot !== null
-      ? memoryCards.find((c) => c.id === selectedCard)?.card.getSaves()[
-          selectedSlot
-        ]
+      ? ps1Card(selectedCard)?.getSaves()[selectedSlot]
       : undefined;
   const isSlotEmpty = selectedSaveInfo?.slotType === SlotTypes.Formatted;
   // The Delete button toggles delete/restore, so it applies to any real save
@@ -520,10 +550,7 @@ export const MemoryCardManager: React.FC = () => {
     selectedSaveInfo?.slotType === SlotTypes.Initial ||
     selectedSaveInfo?.slotType === SlotTypes.DeletedInitial;
 
-  const dialogCard =
-    dialogSlot !== null
-      ? memoryCards.find((c) => c.id === selectedCard)?.card
-      : undefined;
+  const dialogCard = dialogSlot !== null ? ps1Card(selectedCard) : undefined;
   const dialogSaveInfo =
     dialogSlot !== null && dialogCard
       ? dialogCard.getSaves()[dialogSlot]
@@ -543,7 +570,7 @@ export const MemoryCardManager: React.FC = () => {
     saveType: SingleSaveTypes,
   ) => {
     if (selectedCard !== null && selectedSlot !== null) {
-      const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+      const card = ps1Card(selectedCard);
       if (card) {
         const parentSlot = card.getMasterLinkForSlot(selectedSlot);
         const success = await card.saveSingleSave(
@@ -569,7 +596,7 @@ export const MemoryCardManager: React.FC = () => {
     slot: number,
   ): Promise<boolean> => {
     if (selectedCard === null) return false;
-    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    const card = ps1Card(selectedCard);
     if (!card) return false;
     const cardId = selectedCard;
     const success = await card.openSingleSave(file, slot);
@@ -597,7 +624,7 @@ export const MemoryCardManager: React.FC = () => {
     // With a card and slot selected, a dropped single-save file imports into
     // that slot (auto-detecting its format); anything else opens as a card.
     if (files.length === 1 && selectedCard !== null && selectedSlot !== null) {
-      const droppedCard = memoryCards.find((c) => c.id === selectedCard)?.card;
+      const droppedCard = ps1Card(selectedCard);
       if (
         droppedCard &&
         droppedCard.getSaves()[selectedSlot].slotType !== SlotTypes.Formatted
@@ -616,22 +643,23 @@ export const MemoryCardManager: React.FC = () => {
   const handleCopyMove = (action: "copy" | "move") => {
     if (selectedCard !== null && selectedSlot !== null) {
       const cardEntry = memoryCards.find((c) => c.id === selectedCard);
-      if (cardEntry) {
-        const parentSlot = cardEntry.card.getMasterLinkForSlot(selectedSlot);
-        const linkedSlots = cardEntry.card.getSaveLinks(parentSlot);
+      const card = ps1Card(selectedCard);
+      if (cardEntry && card) {
+        const parentSlot = card.getMasterLinkForSlot(selectedSlot);
+        const linkedSlots = card.getSaveLinks(parentSlot);
         const copiedSaves = linkedSlots.map(
-          (slotIndex) => cardEntry.card.getSaves()[slotIndex],
+          (slotIndex) => card.getSaves()[slotIndex],
         );
         setCopiedSlots(copiedSaves);
-        setCopiedSaveBytes(cardEntry.card.getSaveBytes(parentSlot));
+        setCopiedSaveBytes(card.getSaveBytes(parentSlot));
         setCopiedIcon({
-          data: cardEntry.card.getIconData(parentSlot),
-          palette: cardEntry.card.getIconPalette(parentSlot),
+          data: card.getIconData(parentSlot),
+          palette: card.getIconPalette(parentSlot),
           frameCount: copiedSaves[0].iconFrameCount,
         });
         if (action === "move") {
-          const rowBefore = cardEntry.card.undoCount;
-          cardEntry.card.formatSave(parentSlot);
+          const rowBefore = card.undoCount;
+          card.formatSave(parentSlot);
           appendHistoryLabel(cardEntry.id, rowBefore, "Save moved");
           setSelectedSlot(null);
           setMemoryCards([...memoryCards]);
@@ -647,12 +675,10 @@ export const MemoryCardManager: React.FC = () => {
       copiedSaveBytes !== null
     ) {
       const cardEntry = memoryCards.find((c) => c.id === selectedCard);
-      if (cardEntry) {
-        const rowBefore = cardEntry.card.undoCount;
-        const success = cardEntry.card.setSaveBytes(
-          selectedSlot,
-          copiedSaveBytes,
-        );
+      const card = ps1Card(selectedCard);
+      if (cardEntry && card) {
+        const rowBefore = card.undoCount;
+        const success = card.setSaveBytes(selectedSlot, copiedSaveBytes);
         if (success) {
           // Keep the buffer so the same save can be pasted into other free
           // slots (mirrors the reference's persistent temp buffer).
@@ -666,7 +692,7 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleSlotClick = (index: number) => {
-    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
+    const card = ps1Card(selectedCard);
     if (!card) return;
 
     const saves = card.getSaves();
@@ -681,6 +707,10 @@ export const MemoryCardManager: React.FC = () => {
     setSelectedRegion(saves[parentSlot].region);
   };
 
+  const handlePs2SaveClick = (name: string) => {
+    setSelectedPs2Save((prev) => (prev === name ? null : name));
+  };
+
   const selectedCardEntry = memoryCards.find((c) => c.id === selectedCard);
   const cardHistory = selectedCardEntry
     ? (historyLabels[selectedCardEntry.id] ?? [selectedCardEntry.name])
@@ -688,7 +718,9 @@ export const MemoryCardManager: React.FC = () => {
   const historyIndex = selectedCardEntry?.card.undoCount ?? 0;
 
   const eraseChain =
-    dialogSlot !== null && selectedCardEntry
+    dialogSlot !== null &&
+    selectedCardEntry &&
+    !isPs2Card(selectedCardEntry.card)
       ? selectedCardEntry.card.getSaveLinks(dialogSlot)
       : [];
   const eraseMessage =
@@ -706,6 +738,7 @@ export const MemoryCardManager: React.FC = () => {
             <MemoryCardToolbar
               selectedSlot={selectedSlot}
               selectedCard={selectedCard}
+              cardKind={selectedCardEntry?.card.kind ?? "ps1"}
               hasCopiedSave={copiedSaveBytes !== null}
               isSlotEmpty={isSlotEmpty}
               isDeletable={isDeletable}
@@ -756,26 +789,51 @@ export const MemoryCardManager: React.FC = () => {
                       <CardContentHeader
                         name={selectedCardEntry.name}
                         type={selectedCardEntry.type}
+                        kind={selectedCardEntry.card.kind}
                         source={selectedCardEntry.source}
                         checksum={selectedCardEntry.card.getRawChecksum()}
-                        copiedSlots={copiedSlots}
-                        copiedIcon={copiedIcon}
+                        copiedSlots={
+                          selectedCardEntry.card.kind === "ps2"
+                            ? []
+                            : copiedSlots
+                        }
+                        copiedIcon={
+                          selectedCardEntry.card.kind === "ps2"
+                            ? null
+                            : copiedIcon
+                        }
                       />
-                      <SlotList
-                        card={selectedCardEntry.card}
-                        selectedSlot={selectedSlot}
-                        hasTempBuffer={copiedSaveBytes !== null}
-                        onSlotClick={handleSlotClick}
-                        onSlotAction={handleSlotAction}
-                      />
+                      {selectedCardEntry.card.kind === "ps2" ? (
+                        <Ps2SaveList
+                          card={selectedCardEntry.card}
+                          selectedSave={selectedPs2Save}
+                          onSelectSave={handlePs2SaveClick}
+                        />
+                      ) : (
+                        <SlotList
+                          card={selectedCardEntry.card}
+                          selectedSlot={selectedSlot}
+                          hasTempBuffer={copiedSaveBytes !== null}
+                          onSlotClick={handleSlotClick}
+                          onSlotAction={handleSlotAction}
+                        />
+                      )}
                     </div>
-                    {sidebarOpen && (
+                    {sidebarOpen && selectedCardEntry.card.kind === "ps1" && (
                       <GameDetailsSidebar
                         gameId={selectedGameId ?? ""}
                         region={selectedRegion ?? ""}
                         onClose={() => setSidebarOpen(false)}
                       />
                     )}
+                    {selectedCardEntry.card.kind === "ps2" &&
+                      selectedPs2Save !== null && (
+                        <Ps2SaveInfoSidebar
+                          card={selectedCardEntry.card}
+                          saveName={selectedPs2Save}
+                          onClose={() => setSelectedPs2Save(null)}
+                        />
+                      )}
                   </>
                 ) : (
                   <div className="bg-card/80 text-muted-foreground flex grow flex-col items-center justify-center p-4">
@@ -861,7 +919,11 @@ export const MemoryCardManager: React.FC = () => {
         isOpen={isSaveDialogOpen}
         onOpenChange={setIsSaveDialogOpen}
         defaultFileName={selectedCardEntry?.name ?? "memory_card"}
-        defaultFormat={selectedCardEntry?.card.getCardType() ?? CardTypes.Raw}
+        defaultFormat={
+          selectedCardEntry && !isPs2Card(selectedCardEntry.card)
+            ? selectedCardEntry.card.getCardType()
+            : CardTypes.Raw
+        }
         onSave={handleSaveConfirm}
       />
       <SaveSingleSaveDialog

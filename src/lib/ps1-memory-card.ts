@@ -180,6 +180,8 @@ export type SlotIconColors = RGBAColor[][];
 const BLANK_COLOR: RGBAColor = [0, 0, 0, 0];
 
 class PS1MemoryCard {
+  readonly kind = "ps1" as const;
+
   private rawData: Uint8Array;
   private cardType: CardTypes = CardTypes.Raw;
 

@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 interface MemoryCardToolbarProps {
   selectedSlot: number | null;
   selectedCard: number | null;
+  cardKind: "ps1" | "ps2";
   hasCopiedSave: boolean;
   isSlotEmpty: boolean;
   isDeletable: boolean;
@@ -53,6 +54,7 @@ interface MemoryCardToolbarProps {
 export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
   selectedSlot,
   selectedCard,
+  cardKind,
   hasCopiedSave,
   isSlotEmpty,
   isDeletable,
@@ -196,7 +198,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
             variant="ghost"
             size="icon"
             onClick={onSave}
-            disabled={selectedCard === null}
+            disabled={selectedCard === null || cardKind === "ps2"}
             aria-label="Save memory card"
           >
             <SaveIcon className="size-4" />

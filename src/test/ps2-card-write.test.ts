@@ -472,3 +472,29 @@ describe("PS2MemoryCard loadFromFile", () => {
     expect(loaded.changed).toBe(false);
   });
 });
+
+describe("PS2MemoryCard loadFromRawData", () => {
+  it("replaces the contents and resets state", () => {
+    const card = PS2MemoryCard.format(8192);
+    const other = PS2MemoryCard.format(8192);
+    other.importSingleSave("SAVE-BBB0001", pattern(300, 3));
+
+    card.loadFromRawData(other.getRawData());
+    expect(card.getRawChecksum()).toBe(other.getRawChecksum());
+    expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0001"]);
+    expect(card.changed).toBe(false);
+    expect(card.undoCount).toBe(0);
+    expect(card.redoCount).toBe(0);
+    everyPageClean(card.getRawData());
+  });
+
+  it("rejects invalid images without modifying the card", () => {
+    const card = PS2MemoryCard.format(8192);
+    const before = card.getRawChecksum();
+    expect(() => card.loadFromRawData(new Uint8Array(3 * PAGE_SIZE))).toThrow();
+    expect(() => card.loadFromRawData(pattern(8192 * 2 * PAGE_SIZE))).toThrow();
+    expect(card.getRawChecksum()).toBe(before);
+    expect(card.getSaves()).toEqual([]);
+    expect(card.undoCount).toBe(0);
+  });
+});
