@@ -1,3 +1,4 @@
+import { Ps2IconView } from "@/components/memory-card/ps2-icon-view";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -44,14 +45,10 @@ const Ps2SaveRow: React.FC<{
       <div className="text-muted-foreground mr-2 w-6 text-xs">
         {pad(index + 1)}
       </div>
-      {/* icon.sys 2D placeholder: the first background corner color. */}
-      <div
-        className="border-border mr-2 size-10 shrink-0 rounded-sm border"
-        style={{
-          backgroundColor: `rgb(${save.background[0]?.[0] ?? 0}, ${
-            save.background[0]?.[1] ?? 0
-          }, ${save.background[0]?.[2] ?? 0})`,
-        }}
+      <Ps2IconView
+        animate={isSelected}
+        save={save}
+        className="mr-2 size-10 shrink-0 rounded-sm"
       />
       <div className="min-w-0 grow">
         <h3 className="text-foreground truncate text-sm font-medium">

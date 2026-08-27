@@ -1,5 +1,6 @@
 import { XIcon } from "lucide-react";
 
+import { Ps2IconView } from "@/components/memory-card/ps2-icon-view";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -55,13 +56,10 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
         <ScrollArea className="grow overflow-hidden">
           <div className="space-y-4 p-4">
             <div className="flex items-center gap-3">
-              <div
-                className="border-border size-12 shrink-0 rounded-md border"
-                style={{
-                  backgroundColor: `rgb(${save.background[0]?.[0] ?? 0}, ${
-                    save.background[0]?.[1] ?? 0
-                  }, ${save.background[0]?.[2] ?? 0})`,
-                }}
+              <Ps2IconView
+                animate
+                save={save}
+                className="size-12 shrink-0 rounded-md"
               />
               <div className="min-w-0">
                 <h4 className="truncate text-sm font-semibold">{save.title}</h4>

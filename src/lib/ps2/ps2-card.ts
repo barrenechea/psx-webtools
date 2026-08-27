@@ -3,6 +3,8 @@
 // page-granular undo/redo.
 
 import { crc32, formatCrc32 } from "../crc32";
+import type { Ps2IconModel } from "./ps2-icon";
+import { parsePs2Icon } from "./ps2-icon";
 import type { Ps2IconCorner, Ps2IconSys } from "./ps2-iconsys";
 import { buildIconSys, parseIconSys } from "./ps2-iconsys";
 import {
@@ -81,6 +83,7 @@ export class PS2MemoryCard {
   private savedState: Uint8Array | null;
   private undoList: PageSnapshot[] = [];
   private redoList: PageSnapshot[] = [];
+  private savesCache: Ps2SaveInfo[] | null = null;
   // A single large save can occupy most of the card; cap history so an
   // 8 MB card in undo steps stays a small fraction of the image size.
   private readonly undoLimit = 50;
@@ -132,6 +135,7 @@ export class PS2MemoryCard {
     this.changedFlag = false;
     this.undoList = [];
     this.redoList = [];
+    this.savesCache = null;
   }
 
   getSuperblock(): Ps2Superblock {
@@ -190,6 +194,7 @@ export class PS2MemoryCard {
 
   /** Existing save directories in the root, in on-card order. */
   getSaves(): Ps2SaveInfo[] {
+    if (this.savesCache) return this.savesCache;
     const saves: Ps2SaveInfo[] = [];
     for (const entry of readDirectory(this.raw, this.sb, ROOT_CLUSTER)) {
       if (
@@ -201,6 +206,7 @@ export class PS2MemoryCard {
       }
       saves.push(this.describeSave(entry));
     }
+    this.savesCache = saves;
     return saves;
   }
 
@@ -410,6 +416,7 @@ export class PS2MemoryCard {
     this.redoList = [];
     this.changedFlag = false;
     this.savedState = raw.slice();
+    this.savesCache = null;
     return true;
   }
 
@@ -430,6 +437,7 @@ export class PS2MemoryCard {
     for (let i = 0; i < item.pages.length; i++) {
       this.raw.set(item.data[i], item.pages[i] * PAGE_SIZE);
     }
+    this.savesCache = null;
   }
 
   // Snapshot the given pages before a mutation runs; clears the redo branch
@@ -440,6 +448,7 @@ export class PS2MemoryCard {
     this.undoList.push(this.capturePages(unique));
     while (this.undoList.length > this.undoLimit) this.undoList.shift();
     this.redoList = [];
+    this.savesCache = null;
   }
 
   // -------------------------------------------------------------------
@@ -697,16 +706,28 @@ export class PS2MemoryCard {
       }
     }
     const iconFiles = new Set(
-      [icon?.viewIcon, icon?.copyIcon, icon?.delIcon].filter(
-        (n) => n !== undefined && n !== "",
-      ),
+      [icon?.viewIcon, icon?.copyIcon, icon?.delIcon]
+        .filter((name): name is string => name !== undefined && name !== "")
+        .map((name) => name.toLowerCase()),
     );
     const list: Ps2FileInfo[] = [];
     let totalSize = 0;
     for (const file of files) {
       list.push({ name: file.name, size: file.length });
-      if (file.name.toLowerCase() !== "icon.sys" && !iconFiles.has(file.name)) {
+      const normalizedName = file.name.toLowerCase();
+      if (normalizedName !== "icon.sys" && !iconFiles.has(normalizedName)) {
         totalSize += file.length;
+      }
+    }
+    let iconModel: Ps2IconModel | null = null;
+    const viewIcon = icon?.viewIcon;
+    if (viewIcon) {
+      const normalizedViewIcon = viewIcon.toLowerCase();
+      const iconFile = files.find(
+        (file) => file.name.toLowerCase() === normalizedViewIcon,
+      );
+      if (iconFile) {
+        iconModel = parsePs2Icon(this.readChainBytes(iconFile));
       }
     }
     return {
@@ -723,6 +744,16 @@ export class PS2MemoryCard {
       totalSize,
       files: list,
       background: icon ? icon.bgColors.map((c) => [c.r, c.g, c.b, c.a]) : [],
+      backgroundTransparency: icon?.transparency ?? 0,
+      viewIcon: icon?.viewIcon ?? "",
+      iconModel,
+      iconLighting: icon
+        ? {
+            dirs: icon.lightDir.slice(0, 3),
+            cols: icon.lightCol.slice(0, 3),
+            ambient: icon.lightAmbient,
+          }
+        : null,
     };
   }
 

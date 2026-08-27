@@ -426,6 +426,9 @@ export const MemoryCardManager: React.FC = () => {
     if (openedCards.length > 0) {
       setMemoryCards((prevCards) => [...prevCards, ...openedCards]);
       setSelectedCard(openedCards[openedCards.length - 1].id);
+      setSelectedSlot(null);
+      setSelectedPs2Save(null);
+      setSidebarOpen(false);
     }
 
     setError(
@@ -1048,6 +1051,7 @@ export const MemoryCardManager: React.FC = () => {
                       />
                       {selectedCardEntry.card.kind === "ps2" ? (
                         <Ps2SaveList
+                          key={selectedCardEntry.id}
                           card={selectedCardEntry.card}
                           selectedSave={selectedPs2Save}
                           onSelectSave={handlePs2SaveClick}
@@ -1072,6 +1076,7 @@ export const MemoryCardManager: React.FC = () => {
                     {selectedCardEntry.card.kind === "ps2" &&
                       selectedPs2Save !== null && (
                         <Ps2SaveInfoSidebar
+                          key={`${selectedCardEntry.id}:${selectedPs2Save}`}
                           card={selectedCardEntry.card}
                           saveName={selectedPs2Save}
                           onClose={() => setSelectedPs2Save(null)}

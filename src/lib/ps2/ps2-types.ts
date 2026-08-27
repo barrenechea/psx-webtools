@@ -1,5 +1,7 @@
 // Shared PS2 memory card types (card model level, above the PFS layer).
 
+import type { Ps2IconModel } from "./ps2-icon";
+
 /** File-system date/time as stored in directory entries (Japan Standard Time). */
 export interface Ps2DateTime {
   sec: number;
@@ -34,8 +36,31 @@ export interface Ps2SaveInfo {
   /** Total bytes of user-data files (icons and icon.sys excluded). */
   totalSize: number;
   files: Ps2FileInfo[];
-  /** icon.sys background corner colors (RGBA, 0..0x80 per channel). */
+  /** icon.sys background corner colors (RGBA, 0..255 per channel). */
   background: [number, number, number, number][];
+  /**
+   * icon.sys background transparency (0x00 clear … 0x80 opaque). 0 when the
+   * save has no icon.sys. Corner X is stored in `background[][3]` and is not
+   * used as color (OSDSYS RGB-).
+   */
+  backgroundTransparency: number;
+  /**
+   * View-icon filename from icon.sys (`_SCE8` for system config). Empty when
+   * the save has no icon.sys. Built-in `_SCE*` names are not files on the card.
+   */
+  viewIcon: string;
+  /**
+   * Parsed 3D icon model of the view icon file, or null when the save has no
+   * on-card icon file or it is not a valid 3D icon. The UI substitutes
+   * OSDSYS ICOBYSYS for `_SCE8` / `B[IEA]DATA-SYSTEM`, otherwise ICOBFBRK.
+   */
+  iconModel: Ps2IconModel | null;
+  /** icon.sys lighting for the 3D icon: three directional lights + ambient. */
+  iconLighting: {
+    dirs: number[][];
+    cols: number[][];
+    ambient: number[];
+  } | null;
 }
 
 /** Raw card image extensions (detection is by size/528 + magic, not name). */

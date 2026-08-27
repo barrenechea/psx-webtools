@@ -97,7 +97,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".mcr,.mcd,.gme,.vgs,.vmp,.psm,.ps1,.bin,.mem,.psx,.pda,.mc,.ddf,.mc1,.mc2,.srm"
+        accept=".mcr,.mcd,.gme,.vgs,.vmp,.psm,.ps1,.ps2,.bin,.mem,.psx,.pda,.mc,.ddf,.mc1,.mc2,.srm"
         className="sr-only"
         multiple
         onChange={onFileChange}

@@ -83,6 +83,7 @@ interface SaveSpec {
   hidden?: boolean;
   title?: string;
   bgColors?: Ps2IconCorner[];
+  viewIcon?: string;
   files?: FileSpec[];
 }
 
@@ -92,6 +93,7 @@ function addSave(raw: Uint8Array, sb: Ps2Superblock, spec: SaveSpec): void {
   const icon = buildIconSys({
     title: spec.title ?? spec.name,
     bgColors: spec.bgColors,
+    viewIcon: spec.viewIcon,
   });
   const files: FileSpec[] = [
     { name: "icon.sys", data: icon },
@@ -247,6 +249,7 @@ describe("PS2MemoryCard", () => {
     ]);
     expect(a.totalSize).toBe(2500);
     expect(a.background[0]).toEqual([128, 0, 0, 128]);
+    expect(a.backgroundTransparency).toBe(0);
     expect(b.hidden).toBe(true);
     expect(b.totalSize).toBe(300);
     expect(c.totalSize).toBe(1024);
@@ -265,6 +268,20 @@ describe("PS2MemoryCard", () => {
     for (let p = 0; p < raw.length; p += PAGE_SIZE) {
       expect(checkPage(raw.subarray(p, p + PAGE_SIZE))).not.toBe("corrupt");
     }
+  });
+
+  it("keeps _SCE8 view icons as built-in names with no on-card model", () => {
+    const { raw, sb } = blankCard();
+    addSave(raw, sb, {
+      name: "BEDATA-SYSTEM",
+      hidden: true,
+      viewIcon: "_SCE8",
+      files: [{ name: "BEDATA-SYSTEM", data: pattern(100) }],
+    });
+    const save = PS2MemoryCard.fromRaw(raw).getSaves()[0];
+    expect(save.name).toBe("BEDATA-SYSTEM");
+    expect(save.viewIcon).toBe("_SCE8");
+    expect(save.iconModel).toBeNull();
   });
 
   it("ignores stale entries past the declared entry count", () => {
@@ -314,6 +331,99 @@ describe("PS2MemoryCard", () => {
       0xc0,
     );
     expect(parseIconSys(icon).title).toBe("GTA VCS");
+  });
+
+  it("round-trips all four background corners (uint32 channels)", () => {
+    const corners: Ps2IconCorner[] = [
+      { r: 128, g: 0, b: 0, a: 0 },
+      { r: 0, g: 128, b: 0, a: 0 },
+      { r: 0, g: 0, b: 128, a: 0 },
+      { r: 128, g: 128, b: 128, a: 0 },
+    ];
+    const icon = buildIconSys({ bgColors: corners });
+    // Each channel is a 4-byte little-endian uint32, one corner per 16 bytes.
+    expect([...icon.subarray(16, 20)]).toEqual([128, 0, 0, 0]);
+    expect([...icon.subarray(20, 24)]).toEqual([0, 0, 0, 0]);
+    expect([...icon.subarray(32, 36)]).toEqual([0, 0, 0, 0]);
+    expect([...icon.subarray(36, 40)]).toEqual([128, 0, 0, 0]);
+    expect(parseIconSys(icon).bgColors).toEqual(corners);
+  });
+
+  it("reads three four-float directional light records", () => {
+    const icon = buildIconSys();
+    const view = new DataView(icon.buffer);
+    const dirs = [
+      [1, 2, 3],
+      [4, 5, 6],
+      [7, 8, 9],
+    ];
+    const cols = [
+      [0.1, 0.2, 0.3],
+      [0.4, 0.5, 0.6],
+      [0.7, 0.8, 0.9],
+    ];
+    for (let light = 0; light < 3; light++) {
+      for (let component = 0; component < 3; component++) {
+        view.setFloat32(
+          0x50 + light * 16 + component * 4,
+          dirs[light][component],
+          true,
+        );
+        view.setFloat32(
+          0x80 + light * 16 + component * 4,
+          cols[light][component],
+          true,
+        );
+      }
+      view.setFloat32(0x50 + light * 16 + 12, 100 + light, true);
+      view.setFloat32(0x80 + light * 16 + 12, 200 + light, true);
+    }
+    const parsed = parseIconSys(icon);
+    expect(parsed.lightDir).toEqual(dirs);
+    for (let light = 0; light < 3; light++) {
+      expect(parsed.lightCol[light]).toEqual(
+        cols[light].map((value) => Math.fround(value)),
+      );
+    }
+  });
+
+  it("exposes the view icon texture on the save info", () => {
+    const { raw, sb } = blankCard();
+    // Minimal 3-vertex, 1-frame icon with a uniform raw texture.
+    const texBytes = new Uint8Array(128 * 128 * 2);
+    for (let i = 0; i < 128 * 128; i++) {
+      texBytes[i * 2] = 0xff;
+      texBytes[i * 2 + 1] = 0xff;
+    }
+    const texStart = 20 + 3 * 24 + 20 + 16;
+    const ico = new Uint8Array(texStart + texBytes.length);
+    const view = new DataView(ico.buffer);
+    view.setUint32(0, 0x00010000, true);
+    view.setUint32(4, 1, true); // animShapes
+    view.setUint32(8, 0x04, true); // texType: has texture, raw
+    view.setFloat32(12, 1, true);
+    view.setUint32(16, 3, true); // vertexCount
+    view.setUint32(20 + 3 * 24, 0x01, true); // animation magic
+    view.setUint32(20 + 3 * 24 + 16, 1, true); // frameCount
+    view.setUint32(20 + 3 * 24 + 20 + 4, 1, true); // frame keyCount
+    ico.set(texBytes, texStart);
+    addSave(raw, sb, {
+      name: "BESCES-53133GodOfWar",
+      viewIcon: "GOD.ICO",
+      files: [
+        { name: "BESCES-53133GodOfWar", data: pattern(200) },
+        { name: "god.ico", data: ico },
+      ],
+    });
+    const card = PS2MemoryCard.fromRaw(raw);
+    const save = card.getSaves()[0];
+    expect(save.iconModel?.vertexCount).toBe(3);
+    // 0xFFFF: bit-replicated 5-bit max, A1 opaque.
+    expect([...(save.iconModel?.texture?.subarray(0, 4) ?? [])]).toEqual([
+      255, 255, 255, 255,
+    ]);
+    expect(save.iconLighting).not.toBeNull();
+    expect(card.getSaves()[0]).toBe(save);
   });
 
   it("checksum changes when the card is modified", () => {

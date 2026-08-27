@@ -3,7 +3,18 @@
 // the console shows, plus icon file names and colors.
 
 export const ICON_SYS_SIZE = 964;
+/** icon.sys background transparency: 0x00 clear … 0x80 opaque. */
+export const ICON_SYS_TRANSPARENCY_OPAQUE = 0x80;
 const ICON_MAGIC = "PS2D";
+
+/** Map the icon.sys transparency field to CSS/WebGL opacity 0..1. */
+export function iconSysBackgroundAlpha(transparency: number): number {
+  if (!Number.isFinite(transparency) || transparency <= 0) return 0;
+  return (
+    Math.min(transparency, ICON_SYS_TRANSPARENCY_OPAQUE) /
+    ICON_SYS_TRANSPARENCY_OPAQUE
+  );
+}
 
 export interface Ps2IconCorner {
   r: number;
@@ -76,20 +87,20 @@ export function parseIconSys(data: Uint8Array): Ps2IconSys {
     throw new Error("Not an icon.sys (bad magic)");
   }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  // Components are stored raw (0..0xFF; 0x80 is the full-scale value).
+  // Four corners, each R,G,B,A stored as a uint32 (value 0..255).
   const bgColors: Ps2IconCorner[] = [];
   for (let i = 0; i < 4; i++) {
     const off = 0x10 + i * 16;
     bgColors.push({
-      r: data[off],
-      g: data[off + 1],
-      b: data[off + 2],
-      a: data[off + 3],
+      r: view.getUint32(off, true),
+      g: view.getUint32(off + 4, true),
+      b: view.getUint32(off + 8, true),
+      a: view.getUint32(off + 12, true),
     });
   }
   const lightDir: number[][] = [];
-  for (let i = 0; i < 4; i++) {
-    const off = 0x50 + i * 12;
+  for (let i = 0; i < 3; i++) {
+    const off = 0x50 + i * 16;
     lightDir.push([
       view.getFloat32(off, true),
       view.getFloat32(off + 4, true),
@@ -97,8 +108,8 @@ export function parseIconSys(data: Uint8Array): Ps2IconSys {
     ]);
   }
   const lightCol: number[][] = [];
-  for (let i = 0; i < 4; i++) {
-    const off = 0x80 + i * 12;
+  for (let i = 0; i < 3; i++) {
+    const off = 0x80 + i * 16;
     lightCol.push([
       view.getFloat32(off, true),
       view.getFloat32(off + 4, true),
@@ -148,10 +159,10 @@ export function buildIconSys(f: Ps2IconSysFields = {}): Uint8Array {
     const c = colors[i];
     if (!c) continue;
     const off = 0x10 + i * 16;
-    view.setUint8(off, c.r & 0xff);
-    view.setUint8(off + 1, c.g & 0xff);
-    view.setUint8(off + 2, c.b & 0xff);
-    view.setUint8(off + 3, c.a & 0xff);
+    view.setUint32(off, c.r & 0xff, true);
+    view.setUint32(off + 4, c.g & 0xff, true);
+    view.setUint32(off + 8, c.b & 0xff, true);
+    view.setUint32(off + 12, c.a & 0xff, true);
   }
   writeTitle(data, f.title ?? "");
   const writeAscii = (off: number, name: string) => {
