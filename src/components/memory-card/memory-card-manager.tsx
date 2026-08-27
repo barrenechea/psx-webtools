@@ -16,7 +16,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { UniromConnectDialog } from "@/components/unirom-connect-dialog";
 import { useDeviceManager } from "@/hooks/use-device-manager";
-import { usePrefetchGameData } from "@/hooks/use-game-data";
+import {
+  gameDataTargetsFromPs2Saves,
+  gameDataTargetsFromSaves,
+  usePrefetchGameData,
+} from "@/hooks/use-game-data";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import type { SaveFormatOption } from "@/hooks/use-save-file-form";
 import PS1MemoryCard, {
@@ -256,11 +260,18 @@ export const MemoryCardManager: React.FC = () => {
     setPocketStationTime,
   } = useDeviceManager();
 
-  usePrefetchGameData(
-    memoryCards.flatMap((entry) =>
-      isPs2Card(entry.card) ? [] : entry.card.getSaves(),
+  usePrefetchGameData([
+    ...gameDataTargetsFromSaves(
+      memoryCards.flatMap((entry) =>
+        isPs2Card(entry.card) ? [] : entry.card.getSaves(),
+      ),
     ),
-  );
+    ...gameDataTargetsFromPs2Saves(
+      memoryCards.flatMap((entry) =>
+        isPs2Card(entry.card) ? entry.card.getSaves() : [],
+      ),
+    ),
+  ]);
 
   // PS1-only view of a card entry; the slot-based handlers below are PS1.
   const ps1Card = (id: number | null): PS1MemoryCard | undefined => {

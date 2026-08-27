@@ -10,26 +10,75 @@ export const queryClient = new QueryClient({
   },
 });
 
+export type GamePlatform = "ps1" | "ps2";
+
 export const gameDataKeys = {
   all: ["game-data"] as const,
-  details: (region: string, gameId: string) =>
-    [...gameDataKeys.all, "details", region, gameId] as const,
+  details: (platform: GamePlatform, region: string, gameId: string) =>
+    [...gameDataKeys.all, "details", platform, region, gameId] as const,
 };
 
-export interface GameData {
-  commonTitle: string;
-  cover: string | null;
-  description: string;
-  developer: string;
-  discs: number;
-  genre: string;
-  id: string | string[];
-  languages: string[];
-  officialTitle: string;
-  publisher: string;
+export interface GameDataTarget {
+  platform: GamePlatform;
   region: string;
-  releaseDate: string;
+  gameId: string;
+}
+
+export interface GameData {
+  commonTitle?: string;
+  cover: string | null;
+  description?: string;
+  developer?: string;
+  discs?: number;
+  genre?: string;
+  id: string | string[];
+  languages?: string[];
+  officialTitle?: string;
+  publisher?: string;
+  region?: string;
+  releaseDate?: string;
   title: string;
+}
+
+const GAME_DATA_ORIGIN: Record<GamePlatform, string> = {
+  ps1: "https://ps1data.pages.dev",
+  ps2: "https://ps2data.pages.dev",
+};
+
+/** Four-letter serial prefix → DataCenter region folder. */
+const PRODUCT_PREFIX_REGION: Record<string, string> = {
+  SLUS: "America",
+  SCUS: "America",
+  SLES: "Europe",
+  SCES: "Europe",
+  SLED: "Europe",
+  SCED: "Europe",
+  TLES: "Europe",
+  TCES: "Europe",
+  SLPS: "Japan",
+  SCPS: "Japan",
+  SLPM: "Japan",
+  SCPM: "Japan",
+  SCAJ: "Japan",
+  SLAJ: "Japan",
+  SCCS: "Japan",
+  SLKA: "Japan",
+  SCKA: "Japan",
+  SCPN: "Japan",
+  TCPS: "Japan",
+};
+
+const GAME_SERIAL = /^[A-Z]{4}-\d{5}$/i;
+
+export function isGameSerial(productCode: string): boolean {
+  return GAME_SERIAL.test(productCode.trim());
+}
+
+/** DataCenter region folder encoded in a product code (`SLUS-20062` → America). */
+export function regionOfProductCode(productCode: string): string | null {
+  const prefix = productCode.trim().split("-")[0]?.toUpperCase();
+  if (!prefix) return null;
+  return PRODUCT_PREFIX_REGION[prefix] ?? null;
 }
 
 function mapRegionToApi(region: string): string {
@@ -50,6 +99,11 @@ function mapRegionToApi(region: string): string {
   }
 }
 
+export function resolveGameDataRegion(region: string, gameId: string): string {
+  if (region) return mapRegionToApi(region);
+  return regionOfProductCode(gameId) ?? "";
+}
+
 // Kick the cover into the browser HTTP cache so the details sidebar's <img>
 // can paint without a second round-trip. Failures are ignored: a missing
 // cover must not fail the JSON query.
@@ -59,13 +113,13 @@ function warmCoverCache(url: string): void {
 }
 
 export async function fetchGameData(
+  platform: GamePlatform,
   region: string,
   gameId: string,
 ): Promise<GameData> {
-  const apiRegion = mapRegionToApi(region);
-  const response = await fetch(
-    `https://ps1data.pages.dev/${apiRegion}/${gameId}.json`,
-  );
+  const apiRegion = resolveGameDataRegion(region, gameId);
+  const origin = GAME_DATA_ORIGIN[platform];
+  const response = await fetch(`${origin}/${apiRegion}/${gameId}.json`);
 
   if (!response.ok) {
     throw new Error("Failed to fetch game data");
@@ -73,7 +127,7 @@ export async function fetchGameData(
 
   const data = (await response.json()) as GameData;
   const cover = data.cover
-    ? `https://ps1data.pages.dev/${apiRegion}/covers/${gameId}.${data.cover.split(".").pop()}`
+    ? `${origin}/${apiRegion}/covers/${gameId}.${data.cover.split(".").pop()}`
     : null;
 
   if (cover) warmCoverCache(cover);

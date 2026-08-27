@@ -33,3 +33,17 @@ export function ps2SaveProductCode(name: string): string {
   if (name.length >= 12) return name.slice(2, 12);
   return rest || name;
 }
+
+/** Region folder from the two-byte directory key (`BA` → America). */
+export function ps2SaveRegion(name: string): string {
+  switch (name.slice(0, 2).toUpperCase()) {
+    case "BI":
+      return "Japan";
+    case "BA":
+      return "America";
+    case "BE":
+      return "Europe";
+    default:
+      return "";
+  }
+}

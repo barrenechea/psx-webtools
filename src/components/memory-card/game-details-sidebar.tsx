@@ -1,4 +1,5 @@
 import { FileIcon, InfoIcon, XIcon } from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -9,12 +10,101 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useGameData } from "@/hooks/use-game-data";
+import type { GameData, GamePlatform } from "@/lib/query";
+import { cn } from "@/lib/utils";
 
 interface GameDetailsSidebarProps {
   gameId: string;
   region: string;
   onClose: () => void;
 }
+
+export const GameDetailsFields: React.FC<{
+  gameData: GameData;
+  platform?: GamePlatform;
+  coverFallback?: ReactNode;
+}> = ({ gameData, platform = "ps1", coverFallback }) => {
+  const title = gameData.officialTitle || gameData.title;
+  const hasFacts =
+    Boolean(gameData.genre) ||
+    Boolean(gameData.releaseDate) ||
+    gameData.discs != null;
+  const [failedCover, setFailedCover] = useState<string | null>(null);
+  const showCover = Boolean(gameData.cover) && failedCover !== gameData.cover;
+  const useDvdCover = platform === "ps2" && showCover;
+
+  return (
+    <div className="space-y-6">
+      <div
+        className={cn(
+          "bg-muted flex items-center justify-center overflow-hidden rounded-md",
+          useDvdCover ? "aspect-[1/1.49]" : "aspect-square",
+        )}
+      >
+        {showCover && gameData.cover ? (
+          <img
+            src={gameData.cover}
+            alt="Game cover"
+            className="size-full object-cover"
+            onError={() => {
+              if (gameData.cover) setFailedCover(gameData.cover);
+            }}
+          />
+        ) : coverFallback ? (
+          coverFallback
+        ) : (
+          <div className="text-muted-foreground flex size-full items-center justify-center">
+            No cover available
+          </div>
+        )}
+      </div>
+      <div>
+        {title ? <h4 className="mb-1 text-sm font-semibold">{title}</h4> : null}
+        {gameData.developer ? (
+          <p className="text-muted-foreground text-xs">
+            Developed by {gameData.developer}
+          </p>
+        ) : null}
+        {gameData.publisher ? (
+          <p className="text-muted-foreground text-xs">
+            Published by {gameData.publisher}
+          </p>
+        ) : null}
+      </div>
+      {hasFacts ? (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            {gameData.genre ? (
+              <div>
+                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                  Genre / Style
+                </p>
+                <p className="text-sm">{gameData.genre}</p>
+              </div>
+            ) : null}
+            {gameData.releaseDate ? (
+              <div>
+                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                  Release Date
+                </p>
+                <p className="text-sm">{gameData.releaseDate}</p>
+              </div>
+            ) : null}
+            {gameData.discs != null ? (
+              <div>
+                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                  Discs
+                </p>
+                <p className="text-sm">{gameData.discs}</p>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+};
 
 export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
   gameId,
@@ -25,7 +115,7 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
     gameData,
     isLoading,
     error: gameDataError,
-  } = useGameData("PS1", region, gameId);
+  } = useGameData("ps1", region, gameId);
 
   return (
     <div className="border-border bg-muted/80 flex w-80 flex-col border-l">
@@ -64,52 +154,8 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
         <div className="text-destructive text-center">{gameDataError}</div>
       ) : gameData ? (
         <ScrollArea className="grow overflow-hidden">
-          <div className="space-y-6 p-4">
-            <div className="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-md">
-              {gameData.cover ? (
-                <img
-                  src={gameData.cover}
-                  alt="Game cover"
-                  className="size-full object-cover"
-                />
-              ) : (
-                <div className="text-muted-foreground flex size-full items-center justify-center">
-                  No cover available
-                </div>
-              )}
-            </div>
-            <div>
-              <h4 className="mb-1 text-sm font-semibold">
-                {gameData.officialTitle}
-              </h4>
-              <p className="text-muted-foreground text-xs">
-                Developed by {gameData.developer}
-              </p>
-              <p className="text-muted-foreground text-xs">
-                Published by {gameData.publisher}
-              </p>
-            </div>
-            <Separator />
-            <div className="space-y-3">
-              <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                  Genre / Style
-                </p>
-                <p className="text-sm">{gameData.genre}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                  Release Date
-                </p>
-                <p className="text-sm">{gameData.releaseDate}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                  Discs
-                </p>
-                <p className="text-sm">{gameData.discs}</p>
-              </div>
-            </div>
+          <div className="p-4">
+            <GameDetailsFields gameData={gameData} platform="ps1" />
           </div>
         </ScrollArea>
       ) : (
