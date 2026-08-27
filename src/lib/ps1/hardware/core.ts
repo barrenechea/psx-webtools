@@ -180,6 +180,20 @@ export abstract class HardwareInterface {
     });
   }
 
+  // Write a PS2 card image over the SIO2 raw-SIO channel. Only hardware that
+  // probes the slot (the PS3 MC Adaptor) supports it; the default reports that
+  // it is unavailable so a PS2 slot on another interface fails clearly.
+  writePS2CardImage(
+    _image: Uint8Array,
+    _onProgress: (progress: number) => void,
+    _verify = false,
+  ): Promise<Ps2CardImageResult> {
+    return Promise.resolve({
+      status: "error",
+      message: "PS2 card write is not supported by this interface",
+    });
+  }
+
   readMemoryCardFrame(frameNumber: number): Promise<Uint8Array | null> {
     console.error("readMemoryCardFrame not implemented");
     console.error(frameNumber);

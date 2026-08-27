@@ -28,7 +28,6 @@ export function useDeviceManager() {
     readMemoryCard,
     writeMemoryCard,
     firmwareVersion,
-    slotCardKind,
   } = useHardwareConnection(() => setConnectedDevice(null));
 
   const getMemcarduinoSignalsConfig = (
@@ -177,7 +176,10 @@ export function useDeviceManager() {
     return card;
   };
 
-  const writeCard = async (card: PS1MemoryCard, verify = false) => {
+  const writeCard = async (
+    card: PS1MemoryCard | PS2MemoryCard,
+    verify = false,
+  ) => {
     showDialog("Writing to Memory Card", "Preparing to write data...");
     let success: boolean;
 
@@ -292,7 +294,6 @@ export function useDeviceManager() {
     isConnected,
     connectionError,
     connectedDevice,
-    slotCardKind,
     firmwareVersion,
     connectDexDrive,
     connectMemcarduino,

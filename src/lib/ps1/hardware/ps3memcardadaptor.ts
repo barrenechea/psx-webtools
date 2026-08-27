@@ -85,6 +85,9 @@ const PS2_SIO_MAX_RETRIES = 5;
 const PS2_TERM_RESET = 0x55;
 const PS2_TERM_MCMAN = 0x5a;
 const PS2_NOT_READY = 0x66;
+// mcman_eraseblock polls the flush (0x12) this many times for a ready term
+// while the NAND block is still erasing (0x66 = not ready).
+const PS2_ERASE_FLUSH_POLLS = 100;
 const PS2_PAGE_SIZES = [128, 256, 512, 1024];
 // Same ceiling as ps3mca_probe.py: Get Specs cardsize is a page count.
 const PS2_MAX_PAGES = 0x00200000;
@@ -445,6 +448,200 @@ export class PS3MemCardAdaptor extends HardwareInterface {
       }
       image.set(data, page * pageBytes);
       onProgress((page + 1) / specs.pageCount);
+    }
+    return { status: "ok", image, specs };
+  }
+
+  // Write one page. Sequence: start write (0x22), N× write 128 (0x42, data at
+  // MOSI [3..130] + EDC [131]), spare 0x42 (ECC) only if CF_USE_ECC, then end
+  // (0x81). Retries the whole page like MCMAN. `image` is the page as the card
+  // model stores it: pageSize data bytes followed by the wire spare (if any).
+  async ps2WritePage(
+    page: number,
+    image: Uint8Array,
+    specs: Ps2CardSpecs,
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < PS2_SIO_MAX_RETRIES; attempt++) {
+      if (await this.ps2WritePageOnce(page, image, specs)) return true;
+    }
+    return false;
+  }
+
+  private async ps2WritePageOnce(
+    page: number,
+    image: Uint8Array,
+    specs: Ps2CardSpecs,
+  ): Promise<boolean> {
+    const chunks = (specs.pageSize + 127) >> 7;
+    const wireSpare = ps2WireSpareSize(specs);
+    const data = image.subarray(0, specs.pageSize);
+
+    const start = new Uint8Array(9);
+    start[0] = 0x81;
+    start[1] = 0x22;
+    start[2] = page & 0xff;
+    start[3] = (page >> 8) & 0xff;
+    start[4] = (page >> 16) & 0xff;
+    start[5] = (page >> 24) & 0xff;
+    start[6] = ps2Edc(start.subarray(2, 6));
+    const startMiso = await this.ps2Sio2(start);
+    if (!startMiso || !ps2TermOk(startMiso[8])) return false;
+
+    const chunkSio = new Uint8Array(134);
+    chunkSio[0] = 0x81;
+    chunkSio[1] = 0x42;
+    chunkSio[2] = 128;
+    for (let c = 0; c < chunks; c++) {
+      const chunk = data.subarray(c * 128, c * 128 + 128);
+      chunkSio.set(chunk, 3);
+      chunkSio[131] = ps2Edc(chunk);
+      const m = await this.ps2Sio2(chunkSio);
+      if (!m || !ps2TermOk(m[133])) return false;
+    }
+
+    if (wireSpare > 0) {
+      const spare = image.subarray(specs.pageSize, specs.pageSize + wireSpare);
+      const spareSio = new Uint8Array(wireSpare + 6);
+      spareSio[0] = 0x81;
+      spareSio[1] = 0x42;
+      spareSio[2] = wireSpare;
+      spareSio.set(spare, 3);
+      spareSio[3 + wireSpare] = ps2Edc(spare);
+      const m = await this.ps2Sio2(spareSio);
+      if (!m || !ps2TermOk(m[wireSpare + 5])) return false;
+    }
+
+    const endSio = new Uint8Array(4);
+    endSio[0] = 0x81;
+    endSio[1] = 0x81;
+    const endMiso = await this.ps2Sio2(endSio);
+    if (!endMiso || !ps2TermOk(endMiso[3])) return false;
+    return true;
+  }
+
+  // Erase one block (blockPages pages), mirroring MCMAN mcman_eraseblock:
+  // retry start erase (0x21, page = block * blockPages) + erase block (0x82)
+  // until both ACK, then poll flush (0x12) until it ACKs — 0x66 means the NAND
+  // is still erasing, so keep polling rather than re-issuing 0x21. A NAND page
+  // cannot be reprogrammed until its block is erased, so writePS2CardImage
+  // erases each block before writing its pages.
+  async ps2EraseBlock(block: number, specs: Ps2CardSpecs): Promise<boolean> {
+    const page = block * specs.blockPages;
+
+    let started = false;
+    for (let attempt = 0; attempt < PS2_SIO_MAX_RETRIES; attempt++) {
+      if (await this.ps2StartEraseOnce(page)) {
+        started = true;
+        break;
+      }
+    }
+    if (!started) return false;
+
+    for (let poll = 0; poll < PS2_ERASE_FLUSH_POLLS; poll++) {
+      if (await this.ps2FlushOnce()) return true;
+    }
+    return false;
+  }
+
+  // Start Erase (0x21, page LE + EDC, term [8]) then Erase Block (0x82, term
+  // [3]). True when both ACK.
+  private async ps2StartEraseOnce(page: number): Promise<boolean> {
+    const start = new Uint8Array(9);
+    start[0] = 0x81;
+    start[1] = 0x21;
+    start[2] = page & 0xff;
+    start[3] = (page >> 8) & 0xff;
+    start[4] = (page >> 16) & 0xff;
+    start[5] = (page >> 24) & 0xff;
+    start[6] = ps2Edc(start.subarray(2, 6));
+    const startMiso = await this.ps2Sio2(start);
+    if (!startMiso || !ps2TermOk(startMiso[8])) return false;
+
+    const erase = new Uint8Array(4);
+    erase[0] = 0x81;
+    erase[1] = 0x82;
+    const eraseMiso = await this.ps2Sio2(erase);
+    return !!eraseMiso && ps2TermOk(eraseMiso[3]);
+  }
+
+  // One flush (0x12) poll, term [3]. True when the erase has completed; 0x66
+  // (still erasing) fails the check so the caller keeps polling.
+  private async ps2FlushOnce(): Promise<boolean> {
+    const flush = new Uint8Array(4);
+    flush[0] = 0x81;
+    flush[1] = 0x12;
+    const miso = await this.ps2Sio2(flush);
+    return !!miso && ps2TermOk(miso[3]);
+  }
+
+  override async writePS2CardImage(
+    image: Uint8Array,
+    onProgress: (progress: number) => void,
+    verify = false,
+  ): Promise<Ps2CardImageResult> {
+    await this.ps2SyncTerminator();
+    const specsResult = await this.ps2GetSpecs();
+    if (specsResult.status !== "ok") return specsResult;
+    const specs = specsResult.specs;
+    const pageBytes = ps2ImagePageSize(specs);
+    if (image.length !== specs.pageCount * pageBytes) {
+      return {
+        status: "error",
+        message: "The PS2 card image size does not match the card in the slot.",
+      };
+    }
+    const writeShare = verify ? 0.5 : 1;
+    const blockCount = Math.ceil(specs.pageCount / specs.blockPages);
+    for (let block = 0; block < blockCount; block++) {
+      const erased = await this.ps2EraseBlock(block, specs);
+      if (!erased) {
+        return {
+          status: "error",
+          message: `Failed to erase block ${block} of ${blockCount}.`,
+        };
+      }
+      const blockStart = block * specs.blockPages;
+      const blockEnd = Math.min(blockStart + specs.blockPages, specs.pageCount);
+      for (let page = blockStart; page < blockEnd; page++) {
+        const ok = await this.ps2WritePage(
+          page,
+          image.subarray(page * pageBytes, (page + 1) * pageBytes),
+          specs,
+        );
+        if (!ok) {
+          return {
+            status: "error",
+            message: `Failed to write page ${page} of ${specs.pageCount}.`,
+          };
+        }
+        onProgress(((page + 1) / specs.pageCount) * writeShare);
+      }
+    }
+    if (verify) {
+      for (let page = 0; page < specs.pageCount; page++) {
+        const readPage = await this.ps2ReadPage(page, specs);
+        if (!readPage) {
+          return {
+            status: "error",
+            message: `Failed to verify page ${page} of ${specs.pageCount}.`,
+          };
+        }
+        const written = image.subarray(
+          page * pageBytes,
+          (page + 1) * pageBytes,
+        );
+        for (let i = 0; i < pageBytes; i++) {
+          if (readPage[i] !== written[i]) {
+            return {
+              status: "error",
+              message: `Verify failed at page ${page} of ${specs.pageCount}.`,
+            };
+          }
+        }
+        onProgress(
+          writeShare + ((page + 1) / specs.pageCount) * (1 - writeShare),
+        );
+      }
     }
     return { status: "ok", image, specs };
   }

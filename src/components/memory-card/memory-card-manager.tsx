@@ -245,7 +245,6 @@ export const MemoryCardManager: React.FC = () => {
     isConnected,
     connectionError,
     connectedDevice,
-    slotCardKind,
     firmwareVersion,
     connectDexDrive,
     connectMemcarduino,
@@ -365,17 +364,12 @@ export const MemoryCardManager: React.FC = () => {
 
   const handleWriteToDevice = () => {
     if (selectedCard === null) return;
-    const card = memoryCards.find((c) => c.id === selectedCard)?.card;
-    if (card && isPs2Card(card)) {
-      setError("Writing PS2 cards over hardware is not supported yet");
-      return;
-    }
     setIsWriteDialogOpen(true);
   };
 
   const handleWriteConfirm = async () => {
     if (selectedCard === null) return;
-    const card = ps1Card(selectedCard);
+    const card = ps1Card(selectedCard) ?? ps2Card(selectedCard);
     if (!card) return;
     setIsWriteDialogOpen(false);
     setError(null);
@@ -1035,7 +1029,6 @@ export const MemoryCardManager: React.FC = () => {
                 onFixCorruptedChange={setFixCorrupted}
                 isConnected={isConnected}
                 connectedDevice={connectedDevice}
-                slotCardKind={slotCardKind}
                 onDisconnect={() => void handleDisconnect()}
                 onRead={() => void handleReadFromDevice()}
                 onWrite={handleWriteToDevice}

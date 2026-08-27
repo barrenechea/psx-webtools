@@ -134,6 +134,90 @@ function enqueuePageRead(
   usb.enqueueIn(ps2Reply(end));
 }
 
+// A raw-SIO write: the card ACKs each command with a terminator at the last
+// MISO position (start [8], data [133], spare [len-1], end [3]).
+function enqueuePageWrite(usb: ScriptedUsb, withSpare = true): void {
+  const start = new Uint8Array(9);
+  start[0] = 0x81;
+  start[1] = 0x22;
+  start[8] = 0x5a;
+  usb.enqueueIn(ps2Reply(start));
+  for (let c = 0; c < 4; c++) {
+    const m = new Uint8Array(134);
+    m[0] = 0x81;
+    m[1] = 0x42;
+    m[133] = 0x5a;
+    usb.enqueueIn(ps2Reply(m));
+  }
+  if (withSpare) {
+    const spare = new Uint8Array(22);
+    spare[0] = 0x81;
+    spare[1] = 0x42;
+    spare[21] = 0x5a;
+    usb.enqueueIn(ps2Reply(spare));
+  }
+  const end = new Uint8Array(4);
+  end[0] = 0x81;
+  end[1] = 0x81;
+  end[3] = 0x5a;
+  usb.enqueueIn(ps2Reply(end));
+}
+
+// SIO replies for one block erase (MCMAN mcman_eraseblock order): start erase
+// (0x21, term [8]), erase block (0x82, term [3]), flush (0x12, term [3]).
+function enqueueBlockErase(usb: ScriptedUsb): void {
+  const start = new Uint8Array(9);
+  start[0] = 0x81;
+  start[1] = 0x21;
+  start[8] = 0x5a;
+  usb.enqueueIn(ps2Reply(start));
+  const erase = new Uint8Array(4);
+  erase[0] = 0x81;
+  erase[1] = 0x82;
+  erase[3] = 0x5a;
+  usb.enqueueIn(ps2Reply(erase));
+  const flush = new Uint8Array(4);
+  flush[0] = 0x81;
+  flush[1] = 0x12;
+  flush[3] = 0x5a;
+  usb.enqueueIn(ps2Reply(flush));
+}
+
+// Read-back of a page that echoes the bytes just written (verify tests): the
+// card returns the given 528-byte image page, EDC-checked.
+function enqueuePageReadEcho(usb: ScriptedUsb, imagePage: Uint8Array): void {
+  const start = new Uint8Array(9);
+  start[0] = 0x81;
+  start[1] = 0x23;
+  start[8] = 0x5a;
+  usb.enqueueIn(ps2Reply(start));
+  for (let c = 0; c < 4; c++) {
+    const m = new Uint8Array(134);
+    m[0] = 0x81;
+    m[1] = 0x43;
+    m.set(imagePage.subarray(c * 128, (c + 1) * 128), 4);
+    for (let i = 4; i < 132; i++) m[132] ^= m[i];
+    usb.enqueueIn(ps2Reply(m));
+  }
+  const spare = new Uint8Array(22);
+  spare[0] = 0x81;
+  spare[1] = 0x43;
+  spare.set(imagePage.subarray(512, 528), 4);
+  usb.enqueueIn(ps2Reply(spare));
+  const end = new Uint8Array(4);
+  end[0] = 0x81;
+  end[1] = 0x81;
+  end[3] = 0x5a;
+  usb.enqueueIn(ps2Reply(end));
+}
+
+// EDC over a run of bytes (XOR) — mirrors the adapter's mcman_calcEDC.
+function edc(bytes: Uint8Array): number {
+  let e = 0;
+  for (let i = 0; i < bytes.length; i++) e ^= bytes[i];
+  return e & 0xff;
+}
+
 describe("N. PS3 MC Adaptor (WebUSB)", () => {
   it("N1 read command layout: AA 42 (len-4) 00 81 'R', frame MSB/LSB at [8]/[9]", async () => {
     const a = new PS3MemCardAdaptor();
@@ -654,5 +738,107 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect([...r.image.subarray(528, 1056)]).toEqual([
       ...assembleImagePage(p1),
     ]);
+  });
+
+  it("N34 ps2WritePage sends start/data/spare/end and reports success", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueuePageWrite(usb, true);
+    const image = new Uint8Array(528);
+    for (let i = 0; i < 528; i++) image[i] = (i * 7) & 0xff;
+    const specs = { flags: 0x2b, pageSize: 512, blockPages: 16, pageCount: 2 };
+    expect(await a.ps2WritePage(5, image, specs)).toBe(true);
+
+    expect(usb.writes.map((w) => w[5])).toEqual([
+      0x22, 0x42, 0x42, 0x42, 0x42, 0x42, 0x81,
+    ]);
+    const start = usb.writes[0];
+    expect(start[6]).toBe(5);
+    expect(start[10]).toBe(edc(start.subarray(6, 10)));
+    const d0 = usb.writes[1];
+    expect(d0[6]).toBe(128);
+    expect([...d0.subarray(7, 135)]).toEqual([...image.subarray(0, 128)]);
+    expect(d0[135]).toBe(edc(image.subarray(0, 128)));
+    const d3 = usb.writes[4];
+    expect([...d3.subarray(7, 135)]).toEqual([...image.subarray(384, 512)]);
+    const sp = usb.writes[5];
+    expect(sp[6]).toBe(16);
+    expect([...sp.subarray(7, 23)]).toEqual([...image.subarray(512, 528)]);
+    expect(sp[23]).toBe(edc(image.subarray(512, 528)));
+  });
+
+  it("N35 ps2WritePage without CF_USE_ECC omits the spare packet", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueuePageWrite(usb, false);
+    const image = new Uint8Array(528);
+    const specs = { flags: 0x2a, pageSize: 512, blockPages: 16, pageCount: 2 };
+    expect(await a.ps2WritePage(0, image, specs)).toBe(true);
+    expect(usb.writes.map((w) => w[5])).toEqual([
+      0x22, 0x42, 0x42, 0x42, 0x42, 0x81,
+    ]);
+  });
+
+  it("N36 writePS2CardImage erases each block before writing its pages", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(32, 0x5a, 0x2b)));
+    // Two 16-page blocks: the loop must erase block 0, write its 16 pages,
+    // then erase block 1 again before writing those pages.
+    enqueueBlockErase(usb);
+    for (let p = 0; p < 16; p++) enqueuePageWrite(usb, true);
+    enqueueBlockErase(usb);
+    for (let p = 0; p < 16; p++) enqueuePageWrite(usb, true);
+    const image = new Uint8Array(32 * 528);
+    for (let i = 0; i < image.length; i++) image[i] = (i * 3) & 0xff;
+    const r = await a.writePS2CardImage(image, () => {});
+    expect(r.status).toBe("ok");
+    const cmds = usb.writes.map((w) => w[5]);
+    // sync, specs, then block 0's erase before its first page write...
+    expect(cmds.slice(0, 7)).toEqual([
+      0x28, 0x27, 0x26, 0x21, 0x82, 0x12, 0x22,
+    ]);
+    // ...the erase repeats (0x21, 0x82, 0x12) right before page 16's write...
+    expect(cmds.slice(118, 122)).toEqual([0x21, 0x82, 0x12, 0x22]);
+    // ...and two erases + 32 page writes cover the whole card.
+    expect(cmds.length).toBe(3 + 2 * 3 + 32 * 7);
+  });
+
+  it("N37 writePS2CardImage rejects a mismatched image size", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(2, 0x5a, 0x2b)));
+    const r = await a.writePS2CardImage(new Uint8Array(528), () => {});
+    expect(r).toMatchObject({
+      status: "error",
+      message: "The PS2 card image size does not match the card in the slot.",
+    });
+  });
+
+  it("N38 writePS2CardImage verifies each written page", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(1, 0x5a, 0x2b)));
+    enqueueBlockErase(usb);
+    enqueuePageWrite(usb, true);
+    const image = new Uint8Array(528);
+    for (let i = 0; i < 528; i++) image[i] = (i * 5) & 0xff;
+    enqueuePageReadEcho(usb, image);
+    const r = await a.writePS2CardImage(image, () => {}, true);
+    expect(r.status).toBe("ok");
+  });
+
+  it("N39 writePS2CardImage propagates needs-auth from Get Specs", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(new Uint8Array(13).fill(0xff)));
+
+    expect(await a.writePS2CardImage(new Uint8Array(528), () => {})).toEqual({
+      status: "needs-auth",
+    });
   });
 });
