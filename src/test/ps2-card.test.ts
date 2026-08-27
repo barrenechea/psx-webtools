@@ -18,6 +18,7 @@ import {
   fatSet,
   findFreeCluster,
   format2,
+  PAGE_DATA_SIZE,
   PAGE_SIZE,
   parseSuperblock,
   type Ps2Superblock,
@@ -209,6 +210,28 @@ describe("PS2MemoryCard", () => {
     const blank = blankCard().raw;
     const truncated = blank.subarray(0, 100 * PAGE_SIZE);
     expect(() => PS2MemoryCard.fromRaw(truncated)).toThrow(/truncated/i);
+  });
+
+  it("fromRaw() inflates a data-only (512 B/page) image", () => {
+    const raw = format2(64);
+    const pages = raw.length / PAGE_SIZE;
+    const dataOnly = new Uint8Array(pages * PAGE_DATA_SIZE);
+    for (let p = 0; p < pages; p++) {
+      dataOnly.set(
+        raw.subarray(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_DATA_SIZE),
+        p * PAGE_DATA_SIZE,
+      );
+    }
+    const card = PS2MemoryCard.fromRaw(dataOnly);
+    expect(card.getRawData().length).toBe(raw.length);
+    expect(card.getSaves()).toEqual([]);
+    for (let p = 0; p < pages; p++) {
+      expect(
+        checkPage(
+          card.getRawData().subarray(p * PAGE_SIZE, (p + 1) * PAGE_SIZE),
+        ),
+      ).not.toBe("corrupt");
+    }
   });
 
   it("reads saves, files and icons written through the PFS layer", () => {

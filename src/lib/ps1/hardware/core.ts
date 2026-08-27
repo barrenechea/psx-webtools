@@ -1,3 +1,5 @@
+import type { Ps2CardImageResult } from "@/lib/ps2/ps2-types";
+
 export enum Types {
   DexDrive,
   MemCARDuino,
@@ -164,6 +166,18 @@ export abstract class HardwareInterface {
   // present PS1 card; the PS3 MC Adaptor overrides this to probe the slot.
   async checkCard(): Promise<CardCheck> {
     return { present: true, kind: "ps1" };
+  }
+
+  // Dump a PS2 card over the SIO2 raw-SIO channel. Only hardware that probes
+  // the slot (the PS3 MC Adaptor) supports it; the default reports that it is
+  // unavailable so a PS2 slot on another interface fails clearly.
+  readPS2CardImage(
+    _onProgress: (progress: number) => void,
+  ): Promise<Ps2CardImageResult> {
+    return Promise.resolve({
+      status: "error",
+      message: "PS2 card read is not supported by this interface",
+    });
   }
 
   readMemoryCardFrame(frameNumber: number): Promise<Uint8Array | null> {

@@ -1,4 +1,16 @@
 import {
+  assembleImagePage,
+  ECC_PAGE_DATA_SIZE,
+  ECC_PAGE_SIZE,
+} from "@/lib/ps2/ps2-ecc";
+import {
+  CF_USE_ECC,
+  type Ps2CardImageResult,
+  type Ps2CardSpecs,
+  type Ps2SpecsResult,
+} from "@/lib/ps2/ps2-types";
+
+import {
   CardCheck,
   HardwareInterface,
   SlotCardKind,
@@ -64,6 +76,62 @@ async function transferInMessage(
     return null;
   }
   return data;
+}
+
+// PS2 SIO2 over the CECHZM1 raw-SIO channel (AA 42). One AA 42 per SIO2 command
+// (SEND3); the card fills MISO into the same buffer positions it was sent.
+// Offsets are the validated ROM MCMAN map (analyze_ps2_bios_pageio.py).
+const PS2_SIO_MAX_RETRIES = 5;
+const PS2_TERM_RESET = 0x55;
+const PS2_TERM_MCMAN = 0x5a;
+const PS2_NOT_READY = 0x66;
+const PS2_PAGE_SIZES = [128, 256, 512, 1024];
+// Same ceiling as ps3mca_probe.py: Get Specs cardsize is a page count.
+const PS2_MAX_PAGES = 0x00200000;
+
+// EDC over a run of bytes (XOR), matching the card's mcman_calcEDC.
+function ps2Edc(bytes: Uint8Array): number {
+  let e = 0;
+  for (let i = 0; i < bytes.length; i++) e ^= bytes[i];
+  return e & 0xff;
+}
+
+// Wrap an SIO2 command in an "AA 42" raw-SIO frame: [AA][42][len][00][<sio>].
+function ps2SioCommand(sio: Uint8Array): Uint8Array<ArrayBuffer> {
+  const buffer = new Uint8Array(4 + sio.length);
+  buffer[0] = 0xaa;
+  buffer[1] = 0x42;
+  buffer[2] = sio.length & 0xff;
+  buffer[3] = 0x00;
+  buffer.set(sio, 4);
+  return buffer;
+}
+
+function ps2TermOk(b: number): boolean {
+  return b === PS2_TERM_RESET || b === PS2_TERM_MCMAN;
+}
+
+function ps2SpecsPlausible(specs: Ps2CardSpecs): boolean {
+  if (!PS2_PAGE_SIZES.includes(specs.pageSize)) return false;
+  if (specs.blockPages < 1 || specs.blockPages > 32) return false;
+  if (specs.pageCount < 1 || specs.pageCount > PS2_MAX_PAGES) return false;
+  return true;
+}
+
+// Spare bytes on the SIO2 wire. MCMAN only queues the spare 0x43 when
+// cardflags & CF_USE_ECC (mcsio2.c mcman_readpage).
+function ps2WireSpareSize(specs: Ps2CardSpecs): number {
+  if ((specs.flags & CF_USE_ECC) === 0) return 0;
+  return (specs.pageSize + 0x1f) >> 5;
+}
+
+// Dump/image page size. The model stores 512 data + 16 spare even when the
+// card has no ECC on the wire — the same concatenation as McReadPage's data
+// buffer plus eccbuf. Non-512 pagesizes keep data + whatever spare the wire
+// actually returned (the PFS model still requires 512).
+function ps2ImagePageSize(specs: Ps2CardSpecs): number {
+  if (specs.pageSize === ECC_PAGE_DATA_SIZE) return ECC_PAGE_SIZE;
+  return specs.pageSize + ps2WireSpareSize(specs);
 }
 
 export class PS3MemCardAdaptor extends HardwareInterface {
@@ -199,6 +267,186 @@ export class PS3MemCardAdaptor extends HardwareInterface {
       case null:
         return { present: false, message: "Device not connected." };
     }
+  }
+
+  // Send one SIO2 command as a single raw-SIO frame and return the card's MISO
+  // bytes (the command's positions, card-filled). null when no valid `55 5A`
+  // reply arrives after retries. The adaptor mirrors the 4-byte `AA 42 len 00`
+  // header back as `55 5A len 00` followed by the MISO, so the reply is
+  // `4 + sio` bytes long and the MISO starts at [4].
+  private async ps2Sio2(sio: Uint8Array): Promise<Uint8Array | null> {
+    if (!this.device) return null;
+    const out = ps2SioCommand(sio);
+    const replyLength = 4 + sio.length;
+    for (let attempt = 0; attempt < PS2_SIO_MAX_RETRIES; attempt++) {
+      try {
+        await this.device.transferOut(WRITE_EP, out);
+        const reply = await transferInMessage(this.device, replyLength);
+        if (
+          reply &&
+          reply.length >= replyLength &&
+          reply[0] === 0x55 &&
+          reply[1] === 0x5a
+        ) {
+          const miso = new Uint8Array(sio.length);
+          miso.set(reply.subarray(4, 4 + sio.length));
+          return miso;
+        }
+      } catch {
+        // Retry on a USB error.
+      }
+    }
+    return null;
+  }
+
+  // MCMAN Get Terminator (0x28) retries while MISO [4] is 0x66, then Set
+  // Terminator (0x27) with 0x5A. Best-effort: a clone dump still proceeds if
+  // this fails, and later packets accept reset term 0x55 as well as 0x5A.
+  private async ps2SyncTerminator(): Promise<void> {
+    const get = new Uint8Array(5);
+    get[0] = 0x81;
+    get[1] = 0x28;
+    for (let attempt = 0; attempt < PS2_SIO_MAX_RETRIES; attempt++) {
+      const m = await this.ps2Sio2(get);
+      if (m && m[4] !== PS2_NOT_READY) break;
+    }
+    const set = new Uint8Array(5);
+    set[0] = 0x81;
+    set[1] = 0x27;
+    set[2] = PS2_TERM_MCMAN;
+    for (let attempt = 0; attempt < PS2_SIO_MAX_RETRIES; attempt++) {
+      const m = await this.ps2Sio2(set);
+      if (m && m[4] === PS2_TERM_MCMAN) return;
+    }
+  }
+
+  // Get Specs (0x26, 13 B). MCMAN accepts EDC of [3..10] at [11] and
+  // terminator 0x55 (reset) or 0x5A (after Set Terminator); [2] is stored as
+  // flags (Sony 0x2B, including CF_USE_ECC). Official pre-auth is typically
+  // all 0xFF, which fails EDC, so it is needs-auth.
+  async ps2GetSpecs(): Promise<Ps2SpecsResult> {
+    const sio = new Uint8Array(13);
+    sio[0] = 0x81;
+    sio[1] = 0x26;
+    const m = await this.ps2Sio2(sio);
+    if (m === null) {
+      return {
+        status: "error",
+        message: "PS2 Get Specs: no response from the card.",
+      };
+    }
+    const edcOk = ps2Edc(m.subarray(3, 11)) === m[11];
+    if (!edcOk || !ps2TermOk(m[12])) {
+      return { status: "needs-auth" };
+    }
+    const specs: Ps2CardSpecs = {
+      flags: m[2],
+      pageSize: m[3] | (m[4] << 8),
+      blockPages: m[5] | (m[6] << 8),
+      pageCount: (m[7] | (m[8] << 8) | (m[9] << 16) | (m[10] << 24)) >>> 0,
+    };
+    if (!ps2SpecsPlausible(specs)) {
+      return {
+        status: "error",
+        message: "PS2 Get Specs: implausible card geometry.",
+      };
+    }
+    return { status: "ok", specs };
+  }
+
+  // Read one page. Sequence: start read (0x23), N× read 128 (0x43), spare
+  // 0x43 only if CF_USE_ECC, then end (0x81). Retries the whole page like MCMAN.
+  // Returns a 528-byte image page when pagesize is 512 (synthesizing spare if
+  // the card has none on the wire).
+  async ps2ReadPage(
+    page: number,
+    specs: Ps2CardSpecs,
+  ): Promise<Uint8Array | null> {
+    for (let attempt = 0; attempt < PS2_SIO_MAX_RETRIES; attempt++) {
+      const image = await this.ps2ReadPageOnce(page, specs);
+      if (image) return image;
+    }
+    return null;
+  }
+
+  private async ps2ReadPageOnce(
+    page: number,
+    specs: Ps2CardSpecs,
+  ): Promise<Uint8Array | null> {
+    const chunks = (specs.pageSize + 127) >> 7;
+    const wireSpare = ps2WireSpareSize(specs);
+    const data = new Uint8Array(specs.pageSize);
+
+    const start = new Uint8Array(9);
+    start[0] = 0x81;
+    start[1] = 0x23;
+    start[2] = page & 0xff;
+    start[3] = (page >> 8) & 0xff;
+    start[4] = (page >> 16) & 0xff;
+    start[5] = (page >> 24) & 0xff;
+    start[6] = ps2Edc(start.subarray(2, 6));
+    const startMiso = await this.ps2Sio2(start);
+    if (!startMiso || !ps2TermOk(startMiso[8])) return null;
+
+    const chunkSio = new Uint8Array(134);
+    chunkSio[0] = 0x81;
+    chunkSio[1] = 0x43;
+    chunkSio[2] = 128;
+    for (let c = 0; c < chunks; c++) {
+      const m = await this.ps2Sio2(chunkSio);
+      if (!m) return null;
+      const chunk = m.subarray(4, 132);
+      if (ps2Edc(chunk) !== m[132]) return null;
+      data.set(chunk, c * 128);
+    }
+
+    let spare: Uint8Array | null = null;
+    if (wireSpare > 0) {
+      const spareSio = new Uint8Array(wireSpare + 6);
+      spareSio[0] = 0x81;
+      spareSio[1] = 0x43;
+      spareSio[2] = wireSpare;
+      const spareMiso = await this.ps2Sio2(spareSio);
+      if (!spareMiso) return null;
+      spare = spareMiso.subarray(4, 4 + wireSpare);
+    }
+
+    const endSio = new Uint8Array(4);
+    endSio[0] = 0x81;
+    endSio[1] = 0x81;
+    const endMiso = await this.ps2Sio2(endSio);
+    if (!endMiso || !ps2TermOk(endMiso[3])) return null;
+
+    if (specs.pageSize === ECC_PAGE_DATA_SIZE) {
+      return assembleImagePage(data, spare);
+    }
+    const image = new Uint8Array(specs.pageSize + (spare?.length ?? 0));
+    image.set(data);
+    if (spare) image.set(spare, specs.pageSize);
+    return image;
+  }
+
+  override async readPS2CardImage(
+    onProgress: (progress: number) => void,
+  ): Promise<Ps2CardImageResult> {
+    await this.ps2SyncTerminator();
+    const specsResult = await this.ps2GetSpecs();
+    if (specsResult.status !== "ok") return specsResult;
+    const specs = specsResult.specs;
+    const pageBytes = ps2ImagePageSize(specs);
+    const image = new Uint8Array(specs.pageCount * pageBytes);
+    for (let page = 0; page < specs.pageCount; page++) {
+      const data = await this.ps2ReadPage(page, specs);
+      if (!data) {
+        return {
+          status: "error",
+          message: `Failed to read page ${page} of ${specs.pageCount}.`,
+        };
+      }
+      image.set(data, page * pageBytes);
+      onProgress((page + 1) / specs.pageCount);
+    }
+    return { status: "ok", image, specs };
   }
 
   override async readMemoryCardFrame(

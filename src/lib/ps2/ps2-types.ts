@@ -85,3 +85,30 @@ export enum Ps2CardFormats {
 export enum Ps2SingleSaveTypes {
   Sdt = 0,
 }
+
+/** Get Specs flags bit 0: page has spare ECC. Sony 8 MB `0x2B` includes this. */
+export const CF_USE_ECC = 0x01;
+
+/** Physical geometry reported by the PS2 SIO2 Get Specs (0x26) command. */
+export interface Ps2CardSpecs {
+  /** Flags at MISO [2] (0x2B command-OK on a Sony 8 MB card; 0x52 is the XOR). */
+  flags: number;
+  /** Page size in bytes (512 on official cards). */
+  pageSize: number;
+  /** Pages per erase block. */
+  blockPages: number;
+  /** Total page count (the Get Specs "cardsize" is pages, not bytes). */
+  pageCount: number;
+}
+
+/** Get Specs outcome: usable specs, a refusal that needs auth, or a comm error. */
+export type Ps2SpecsResult =
+  | { status: "ok"; specs: Ps2CardSpecs }
+  | { status: "needs-auth" }
+  | { status: "error"; message: string };
+
+/** Full-card dump outcome: the raw image, a needs-auth refusal, or an error. */
+export type Ps2CardImageResult =
+  | { status: "ok"; image: Uint8Array; specs: Ps2CardSpecs }
+  | { status: "needs-auth" }
+  | { status: "error"; message: string };

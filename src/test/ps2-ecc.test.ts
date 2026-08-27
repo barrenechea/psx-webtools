@@ -3,6 +3,7 @@
 // contained hex below), plus the all-FF / all-zero constant and round-trips.
 
 import {
+  assembleImagePage,
   calcEcc,
   checkPage,
   ECC_ALL_FF_CODE,
@@ -100,5 +101,23 @@ describe("ps2-ecc", () => {
 
   it("calcEcc rejects a short input", () => {
     expect(() => calcEcc(new Uint8Array(ECC_CHUNK_SIZE - 1))).toThrow();
+  });
+
+  it("assembleImagePage keeps a provided spare and synthesizes a missing one", () => {
+    const data = new Uint8Array(ECC_PAGE_DATA_SIZE);
+    for (let i = 0; i < data.length; i++) data[i] = (i * 31 + 7) & 0xff;
+    const spare = pageSpare(data);
+    const withSpare = assembleImagePage(data, spare);
+    expect(withSpare.length).toBe(ECC_PAGE_SIZE);
+    expect([...withSpare.subarray(ECC_PAGE_DATA_SIZE)]).toEqual([...spare]);
+    expect(checkPage(withSpare)).toBe("valid");
+
+    const synthesized = assembleImagePage(data);
+    expect([...synthesized]).toEqual([...withSpare]);
+
+    const erased = assembleImagePage(
+      new Uint8Array(ECC_PAGE_DATA_SIZE).fill(0xff),
+    );
+    expect(checkPage(erased)).toBe("erased");
   });
 });

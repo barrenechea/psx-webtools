@@ -75,6 +75,39 @@ export function pageSpare(data: Uint8Array): Uint8Array {
   return out;
 }
 
+function isAllFF(data: Uint8Array): boolean {
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] !== 0xff) return false;
+  }
+  return true;
+}
+
+/**
+ * Concatenate 512 data bytes with a 16-byte spare into a 528-byte image page.
+ * MCMAN keeps those in separate buffers; .ps2 / mymc dumps store them back to
+ * back. A missing spare (no-ECC card, or a data-only file) is filled with the
+ * Hamming code, except an all-0xFF data page keeps the erased all-0xFF spare.
+ */
+export function assembleImagePage(
+  data: Uint8Array,
+  spare?: Uint8Array | null,
+): Uint8Array {
+  if (data.length < ECC_PAGE_DATA_SIZE) {
+    throw new Error("assembleImagePage needs 512 data bytes");
+  }
+  const page = new Uint8Array(ECC_PAGE_SIZE);
+  const d = data.subarray(0, ECC_PAGE_DATA_SIZE);
+  page.set(d);
+  if (spare && spare.length >= ECC_PAGE_SPARE_SIZE) {
+    page.set(spare.subarray(0, ECC_PAGE_SPARE_SIZE), ECC_PAGE_DATA_SIZE);
+  } else if (isAllFF(d)) {
+    page.fill(0xff, ECC_PAGE_DATA_SIZE);
+  } else {
+    page.set(pageSpare(d), ECC_PAGE_DATA_SIZE);
+  }
+  return page;
+}
+
 export type PageEccStatus = "valid" | "erased" | "corrupt";
 
 // A never-written page holds all-0xFF data AND all-0xFF spare (flash erase

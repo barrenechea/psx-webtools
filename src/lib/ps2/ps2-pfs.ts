@@ -3,7 +3,11 @@
 // functions operate on a full raw image: consecutive 528-byte pages
 // (512 data + 16 spare).
 
-import { ECC_PAGE_DATA_SIZE, ECC_PAGE_SIZE, pageSpare } from "./ps2-ecc";
+import {
+  assembleImagePage,
+  ECC_PAGE_DATA_SIZE,
+  ECC_PAGE_SIZE,
+} from "./ps2-ecc";
 import type { Ps2DateTime } from "./ps2-types";
 
 export const PAGE_SIZE = ECC_PAGE_SIZE; // 528
@@ -57,13 +61,6 @@ export function clusterDataOffset(absCluster: number, offset: number): number {
   );
 }
 
-function isAllFF(data: Uint8Array): boolean {
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] !== 0xff) return false;
-  }
-  return true;
-}
-
 // Write a 512-byte data area plus its 16-byte spare. All-0xFF data keeps the
 // erased all-0xFF spare (an all-FF page is not given a computed code).
 function setPageData(
@@ -71,22 +68,48 @@ function setPageData(
   pageBase: number,
   data: Uint8Array,
 ): void {
-  raw.set(data, pageBase);
-  const spareBase = pageBase + PAGE_DATA_SIZE;
-  if (isAllFF(data)) {
-    raw.fill(0xff, spareBase, spareBase + (PAGE_SIZE - PAGE_DATA_SIZE));
-  } else {
-    raw.set(pageSpare(data), spareBase);
-  }
+  raw.set(assembleImagePage(data), pageBase);
 }
 
 function refreshPageSpare(raw: Uint8Array, pageBase: number): void {
-  const data = raw.subarray(pageBase, pageBase + PAGE_DATA_SIZE);
-  if (isAllFF(data)) {
-    raw.fill(0xff, pageBase + PAGE_DATA_SIZE, pageBase + PAGE_SIZE);
-  } else {
-    raw.set(pageSpare(data), pageBase + PAGE_DATA_SIZE);
+  raw.set(
+    assembleImagePage(raw.subarray(pageBase, pageBase + PAGE_DATA_SIZE)),
+    pageBase,
+  );
+}
+
+/**
+ * Canonicalize a raw dump to 528-byte pages. 528-stride images pass through;
+ * a full-card data-only dump (pageCount × 512) is inflated by inserting spare.
+ * PFS still addresses 512-byte data pages; 528 is only the image packing.
+ */
+export function normalizeCardImage(raw: Uint8Array): Uint8Array {
+  if (raw.length === 0) {
+    throw new Error("Invalid PS2 card image size");
   }
+  if (raw.length % PAGE_SIZE === 0) {
+    return raw;
+  }
+  if (raw.length % PAGE_DATA_SIZE !== 0) {
+    throw new Error("Invalid PS2 card image size");
+  }
+  const sb = parseSuperblock(raw);
+  const pages = sb.clustersPerCard * PAGES_PER_CLUSTER;
+  if (raw.length < pages * PAGE_DATA_SIZE) {
+    throw new Error("PS2 card image is truncated");
+  }
+  if (raw.length !== pages * PAGE_DATA_SIZE) {
+    throw new Error("Invalid PS2 card image size");
+  }
+  const out = new Uint8Array(pages * PAGE_SIZE);
+  for (let p = 0; p < pages; p++) {
+    setPageData(
+      out,
+      p * PAGE_SIZE,
+      raw.subarray(p * PAGE_DATA_SIZE, (p + 1) * PAGE_DATA_SIZE),
+    );
+  }
+  return out;
 }
 
 /** Read one cluster's 1024 data bytes (joined data of its two pages). */
@@ -181,7 +204,7 @@ function readString(raw: Uint8Array, start: number, length: number): string {
 
 /** Parse and validate the superblock on page 0. Throws on non-PS2 images. */
 export function parseSuperblock(raw: Uint8Array): Ps2Superblock {
-  if (raw.length < PAGE_SIZE) {
+  if (raw.length < PAGE_DATA_SIZE) {
     throw new Error("Not a PS2 memory card image (too small)");
   }
   if (readString(raw, 0, 28) !== PS2_MAGIC) {

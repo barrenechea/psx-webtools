@@ -8,6 +8,7 @@ import { PS1CardLink } from "@/lib/ps1/hardware/ps1cardlink";
 import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
 import { Unirom } from "@/lib/ps1/hardware/unirom";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
+import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 
 /**
  * Owns the hardware connection lifecycle (connect/disconnect/read/write) and the
@@ -151,7 +152,7 @@ export function useDeviceManager() {
 
   const readCard = async (fixData: boolean) => {
     showDialog("Reading Memory Card", "Reading memory card data...");
-    let card: PS1MemoryCard | null;
+    let card: PS1MemoryCard | PS2MemoryCard | null;
 
     try {
       card = await readMemoryCard((progress) => {

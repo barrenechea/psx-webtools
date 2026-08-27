@@ -1,5 +1,6 @@
 import { SupportedFeatures, Types } from "@/lib/ps1/hardware/core";
 import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
+import { assembleImagePage } from "@/lib/ps2/ps2-ecc";
 
 import { makeScriptedUsb, nonNull, type ScriptedUsb } from "./hardware-helpers";
 import { equalBytes } from "./psx-helpers";
@@ -42,6 +43,95 @@ function pocketResponse(f: Uint8Array): Uint8Array {
   const r = new Uint8Array(142);
   r.set(f, 14);
   return r;
+}
+
+// A raw-SIO reply: 55 5A len 00 header, then the card's MISO at offset 4.
+function ps2Reply(miso: Uint8Array): Uint8Array {
+  const r = new Uint8Array(4 + miso.length);
+  r[0] = 0x55;
+  r[1] = 0x5a;
+  r[2] = miso.length & 0xff;
+  r[3] = 0x00;
+  r.set(miso, 4);
+  return r;
+}
+
+// Enqueue Get Terminator (0x28) ready + Set Terminator (0x27) 0x5A ack.
+function enqueueTerminator(usb: ScriptedUsb): void {
+  const get = new Uint8Array(5);
+  get[0] = 0x81;
+  get[1] = 0x28;
+  get[3] = 0x55;
+  get[4] = 0x5a;
+  usb.enqueueIn(ps2Reply(get));
+  const set = new Uint8Array(5);
+  set[0] = 0x81;
+  set[1] = 0x27;
+  set[2] = 0x5a;
+  set[4] = 0x5a;
+  usb.enqueueIn(ps2Reply(set));
+}
+
+function sonySpecsMiso(
+  pageCount: number,
+  term = 0x5a,
+  flags = 0x2b,
+): Uint8Array {
+  const m = new Uint8Array(13);
+  m[0] = 0x81;
+  m[1] = 0x26;
+  m[2] = flags;
+  m[3] = 0x00;
+  m[4] = 0x02; // pagesize 512
+  m[5] = 0x10;
+  m[6] = 0x00; // blockPages 16
+  m[7] = pageCount & 0xff;
+  m[8] = (pageCount >> 8) & 0xff;
+  m[9] = (pageCount >> 16) & 0xff;
+  m[10] = (pageCount >> 24) & 0xff;
+  for (let i = 3; i < 11; i++) m[11] ^= m[i];
+  m[12] = term;
+  return m;
+}
+
+// SIO replies for one 512-byte page: start read, four 128-byte chunks
+// (pattern-filled and EDC-checked), optional 16-byte spare, and the end.
+function enqueuePageRead(
+  usb: ScriptedUsb,
+  pattern: number,
+  ecc: number,
+  withSpare = true,
+): void {
+  const start = new Uint8Array(9);
+  start[0] = 0x81;
+  start[1] = 0x23;
+  start[8] = 0x5a;
+  usb.enqueueIn(ps2Reply(start));
+
+  for (let c = 0; c < 4; c++) {
+    const m = new Uint8Array(134);
+    m[0] = 0x81;
+    m[1] = 0x43;
+    // Each chunk carries its own page offset, so the assembled page is one
+    // continuous ramp from `pattern` (catches a mis-placed chunk).
+    for (let i = 0; i < 128; i++) m[4 + i] = (pattern + c * 128 + i) & 0xff;
+    for (let i = 4; i < 132; i++) m[132] ^= m[i];
+    usb.enqueueIn(ps2Reply(m));
+  }
+
+  if (withSpare) {
+    const spare = new Uint8Array(22);
+    spare[0] = 0x81;
+    spare[1] = 0x43;
+    for (let i = 0; i < 16; i++) spare[4 + i] = (ecc + i) & 0xff;
+    usb.enqueueIn(ps2Reply(spare));
+  }
+
+  const end = new Uint8Array(4);
+  end[0] = 0x81;
+  end[1] = 0x81;
+  end[3] = 0x5a;
+  usb.enqueueIn(ps2Reply(end));
 }
 
 describe("N. PS3 MC Adaptor (WebUSB)", () => {
@@ -387,5 +477,182 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
       present: false,
       message: "Device not connected.",
     });
+  });
+
+  it("N24 Get Specs parses a Sony 8 MB card and sends the 13-byte command", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(16384)));
+
+    expect(await a.ps2GetSpecs()).toEqual({
+      status: "ok",
+      specs: { flags: 0x2b, pageSize: 512, blockPages: 16, pageCount: 16384 },
+    });
+
+    const w = usb.writes[0];
+    expect(w.length).toBe(17);
+    expect(w[0]).toBe(0xaa);
+    expect(w[1]).toBe(0x42);
+    expect(w[2]).toBe(13);
+    expect(w[4]).toBe(0x81);
+    expect(w[5]).toBe(0x26);
+  });
+
+  it("N25 Get Specs all-FF (pre-auth) reports needs auth", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.enqueueIn(ps2Reply(new Uint8Array(13).fill(0xff)));
+
+    expect(await a.ps2GetSpecs()).toEqual({ status: "needs-auth" });
+  });
+
+  it("N26 Get Specs with no reply reports an error", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.failWrites(true);
+
+    expect(await a.ps2GetSpecs()).toEqual({
+      status: "error",
+      message: "PS2 Get Specs: no response from the card.",
+    });
+  });
+
+  it("N27 ps2ReadPage assembles a 528-byte page and sends the page number", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueuePageRead(usb, 0x11, 0x77);
+
+    const page = nonNull(
+      await a.ps2ReadPage(5, {
+        flags: 0x2b,
+        pageSize: 512,
+        blockPages: 16,
+        pageCount: 16384,
+      }),
+    );
+    expect(page.length).toBe(528);
+    for (let i = 0; i < 512; i++) expect(page[i]).toBe((0x11 + i) & 0xff);
+    for (let i = 0; i < 16; i++) expect(page[512 + i]).toBe((0x77 + i) & 0xff);
+
+    const w = usb.writes[0];
+    expect(w.length).toBe(13);
+    expect(w[2]).toBe(9); // len
+    expect(w[4]).toBe(0x81);
+    expect(w[5]).toBe(0x23);
+    expect(w[6]).toBe(5); // page number, LE byte 0
+    expect(usb.writes.map((cmd) => cmd[5])).toEqual([
+      0x23, 0x43, 0x43, 0x43, 0x43, 0x43, 0x81,
+    ]);
+  });
+
+  it("N28 readPS2CardImage propagates needs-auth from Get Specs", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(new Uint8Array(13).fill(0xff)));
+
+    expect(await a.readPS2CardImage(() => {})).toEqual({
+      status: "needs-auth",
+    });
+  });
+
+  it("N29 readPS2CardImage dumps every page into the raw image", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(2)));
+    enqueuePageRead(usb, 0x00, 0xa0);
+    enqueuePageRead(usb, 0x01, 0xa1);
+
+    let progress = 0;
+    const r = await a.readPS2CardImage((p) => {
+      progress = p;
+    });
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.image.length).toBe(2 * 528);
+    for (let i = 0; i < 512; i++) {
+      expect(r.image[i]).toBe(i & 0xff);
+      expect(r.image[528 + i]).toBe((0x01 + i) & 0xff);
+    }
+    expect(progress).toBe(1);
+    expect(usb.writes[0][5]).toBe(0x28);
+    expect(usb.writes[1][5]).toBe(0x27);
+    expect(usb.writes[1][6]).toBe(0x5a);
+    expect(usb.writes[2][5]).toBe(0x26);
+  });
+
+  it("N30 Get Specs with reset terminator 0x55 is still valid", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(16384, 0x55)));
+
+    expect(await a.ps2GetSpecs()).toEqual({
+      status: "ok",
+      specs: { flags: 0x2b, pageSize: 512, blockPages: 16, pageCount: 16384 },
+    });
+  });
+
+  it("N31 Get Specs with implausible geometry is an error, not needs-auth", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    const m = sonySpecsMiso(16384);
+    m[3] = 0x03;
+    m[4] = 0x00; // pageSize 3
+    m[11] = 0;
+    for (let i = 3; i < 11; i++) m[11] ^= m[i];
+    usb.enqueueIn(ps2Reply(m));
+
+    expect(await a.ps2GetSpecs()).toEqual({
+      status: "error",
+      message: "PS2 Get Specs: implausible card geometry.",
+    });
+  });
+
+  it("N32 without CF_USE_ECC skips the spare packet and still emits 528 bytes", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueuePageRead(usb, 0x11, 0x77, false);
+
+    const data = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) data[i] = (0x11 + i) & 0xff;
+    const page = nonNull(
+      await a.ps2ReadPage(0, {
+        flags: 0x2a, // 0x2B without bit 0
+        pageSize: 512,
+        blockPages: 16,
+        pageCount: 16384,
+      }),
+    );
+    expect(page.length).toBe(528);
+    expect([...page]).toEqual([...assembleImagePage(data)]);
+    expect(usb.writes.map((cmd) => cmd[5])).toEqual([
+      0x23, 0x43, 0x43, 0x43, 0x43, 0x81,
+    ]);
+  });
+
+  it("N33 no-ECC dump is still a 528-byte-page image", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(2, 0x5a, 0x2a)));
+    enqueuePageRead(usb, 0x00, 0xa0, false);
+    enqueuePageRead(usb, 0x01, 0xa1, false);
+
+    const r = await a.readPS2CardImage(() => {});
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.specs.flags).toBe(0x2a);
+    expect(r.image.length).toBe(2 * 528);
+    const p0 = new Uint8Array(512);
+    const p1 = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) {
+      p0[i] = i & 0xff;
+      p1[i] = (0x01 + i) & 0xff;
+    }
+    expect([...r.image.subarray(0, 528)]).toEqual([...assembleImagePage(p0)]);
+    expect([...r.image.subarray(528, 1056)]).toEqual([
+      ...assembleImagePage(p1),
+    ]);
   });
 });

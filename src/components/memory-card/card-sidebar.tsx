@@ -190,7 +190,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
         <>
           {slotCardKind === "ps2" && (
             <p className="text-muted-foreground px-2 py-1 text-xs">
-              PS2 card in slot. PS2 device read and write are not supported yet.
+              PS2 card in slot. Writing to a PS2 card is not supported yet.
             </p>
           )}
           <Button

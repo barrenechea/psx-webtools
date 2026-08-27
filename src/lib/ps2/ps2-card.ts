@@ -20,6 +20,7 @@ import {
   MODE_HIDDEN,
   MODE_PDA,
   MODE_PSX,
+  normalizeCardImage,
   PAGE_SIZE,
   PAGES_PER_CLUSTER,
   PARENT_ENTRY,
@@ -89,14 +90,12 @@ export class PS2MemoryCard {
   private readonly undoLimit = 50;
 
   static fromRaw(raw: Uint8Array): PS2MemoryCard {
-    if (raw.length === 0 || raw.length % PAGE_SIZE !== 0) {
-      throw new Error("Invalid PS2 card image size");
-    }
-    const sb = parseSuperblock(raw);
-    if (raw.length < sb.clustersPerCard * PAGES_PER_CLUSTER * PAGE_SIZE) {
+    const image = normalizeCardImage(raw);
+    const sb = parseSuperblock(image);
+    if (image.length < sb.clustersPerCard * PAGES_PER_CLUSTER * PAGE_SIZE) {
       throw new Error("PS2 card image is truncated");
     }
-    return new PS2MemoryCard(raw, sb);
+    return new PS2MemoryCard(image, sb);
   }
 
   // Probe helper for open flows: returns null instead of throwing so callers
@@ -122,14 +121,12 @@ export class PS2MemoryCard {
   // Replace the card's contents in place, mirroring the PS1
   // loadFromRawData surface (validates, then resets state to clean).
   loadFromRawData(data: Uint8Array): void {
-    if (data.length === 0 || data.length % PAGE_SIZE !== 0) {
-      throw new Error("Invalid PS2 card image size");
-    }
-    const sb = parseSuperblock(data);
-    if (data.length < sb.clustersPerCard * PAGES_PER_CLUSTER * PAGE_SIZE) {
+    const image = normalizeCardImage(data);
+    const sb = parseSuperblock(image);
+    if (image.length < sb.clustersPerCard * PAGES_PER_CLUSTER * PAGE_SIZE) {
       throw new Error("PS2 card image is truncated");
     }
-    this.raw = data.slice();
+    this.raw = image.slice();
     this.sb = sb;
     this.savedState = this.raw.slice();
     this.changedFlag = false;

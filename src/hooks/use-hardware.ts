@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { crc32, formatCrc32 } from "@/lib/crc32";
 import type { HardwareInterface, SlotCardKind } from "@/lib/ps1/hardware/core";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
+import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 
 export interface HardwareStartConfig {
   deviceType: string;
@@ -102,7 +103,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
   const readMemoryCard = async (
     onProgress?: (progress: number) => void,
     fixData = false,
-  ): Promise<PS1MemoryCard | null> => {
+  ): Promise<PS1MemoryCard | PS2MemoryCard | null> => {
     if (!device) {
       setError("Device not connected");
       return null;
@@ -113,9 +114,23 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
       throw new Error(cardCheck.message);
     }
     if (cardCheck.kind === "ps2") {
-      throw new Error(
-        "A PS2 memory card is in the slot. PS2 card read over hardware is not supported yet.",
-      );
+      const result = await device.readPS2CardImage((progress) => {
+        onProgress?.(progress);
+      });
+      if (result.status === "needs-auth") {
+        throw new Error(
+          "This PS2 card needs authentication before it can be read, which is not supported yet.",
+        );
+      }
+      if (result.status === "error") {
+        throw new Error(result.message);
+      }
+      const card = PS2MemoryCard.tryFromBytes(result.image);
+      if (!card) {
+        throw new Error("The PS2 card could not be read as a card image.");
+      }
+      card.markChanged();
+      return card;
     }
 
     try {
