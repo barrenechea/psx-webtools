@@ -305,4 +305,87 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     );
     expect(a.type).toBe(Types.PS3MCA);
   });
+
+  it("N18 card-type probe: AA 40 command, 55 02 reply classifies a PS2 card", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.enqueueIn(new Uint8Array([0x55, 0x02]));
+
+    expect(await a.ps2ProbeCardType()).toBe("ps2");
+
+    expect(usb.writes.length).toBe(1);
+    const w = usb.writes[0];
+    expect(w.length).toBe(2);
+    expect(w[0]).toBe(0xaa);
+    expect(w[1]).toBe(0x40);
+  });
+
+  it("N19 the probe classifies empty, PS1, and unclassifiable replies", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.enqueueIn(new Uint8Array([0x55, 0x00]));
+    expect(await a.ps2ProbeCardType()).toBe("empty");
+
+    usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    expect(await a.ps2ProbeCardType()).toBe("ps1");
+
+    usb.enqueueIn(new Uint8Array([0x55, 0x03]));
+    expect(await a.ps2ProbeCardType()).toBe("unknown");
+
+    usb.enqueueIn(new Uint8Array([0x56, 0x01])); // bad header
+    expect(await a.ps2ProbeCardType()).toBe("unknown");
+
+    usb.enqueueIn(new Uint8Array([0x55])); // short
+    expect(await a.ps2ProbeCardType()).toBe("unknown");
+
+    // no reply at all
+    expect(await a.ps2ProbeCardType()).toBe("unknown");
+  });
+
+  it("N20 a USB failure during the probe classifies as unknown", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.failWrites(true);
+
+    expect(await a.ps2ProbeCardType()).toBe("unknown");
+  });
+
+  it("N21 a disconnected adaptor probes as null", async () => {
+    const a = new PS3MemCardAdaptor();
+
+    expect(await a.ps2ProbeCardType()).toBeNull();
+  });
+
+  it("N22 checkCard reports the probed card kind", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.enqueueIn(new Uint8Array([0x55, 0x02]));
+
+    expect(await a.checkCard()).toEqual({ present: true, kind: "ps2" });
+
+    usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    expect(await a.checkCard()).toEqual({ present: true, kind: "ps1" });
+
+    usb.enqueueIn(new Uint8Array([0x55, 0x00]));
+    expect(await a.checkCard()).toEqual({
+      present: false,
+      message: "No memory card detected. Insert a card and try again.",
+    });
+
+    usb.enqueueIn(new Uint8Array([0x55, 0x03]));
+    expect(await a.checkCard()).toEqual({
+      present: false,
+      message:
+        "Could not detect the memory card. Try reseating the card or reconnecting.",
+    });
+  });
+
+  it("N23 checkCard without a device reports not connected", async () => {
+    const a = new PS3MemCardAdaptor();
+
+    expect(await a.checkCard()).toEqual({
+      present: false,
+      message: "Device not connected.",
+    });
+  });
 });

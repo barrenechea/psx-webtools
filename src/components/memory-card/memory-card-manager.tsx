@@ -245,6 +245,7 @@ export const MemoryCardManager: React.FC = () => {
     isConnected,
     connectionError,
     connectedDevice,
+    slotCardKind,
     firmwareVersion,
     connectDexDrive,
     connectMemcarduino,
@@ -1034,6 +1035,7 @@ export const MemoryCardManager: React.FC = () => {
                 onFixCorruptedChange={setFixCorrupted}
                 isConnected={isConnected}
                 connectedDevice={connectedDevice}
+                slotCardKind={slotCardKind}
                 onDisconnect={() => void handleDisconnect()}
                 onRead={() => void handleReadFromDevice()}
                 onWrite={handleWriteToDevice}

@@ -1,4 +1,14 @@
-import { CardCheck, HardwareInterface, SupportedFeatures, Types } from "./core";
+import {
+  CardCheck,
+  HardwareInterface,
+  SlotCardKind,
+  SupportedFeatures,
+  Types,
+} from "./core";
+
+// What the card-slot probe classified. "empty" is a valid, detected state;
+// "unknown" covers both an undetected slot and an unclassifiable reply.
+export type CardProbeResult = SlotCardKind | "empty" | "unknown";
 
 const VENDOR_ID = 0x054c;
 const PRODUCT_ID = 0x02ea;
@@ -144,49 +154,50 @@ export class PS3MemCardAdaptor extends HardwareInterface {
 
   // Probe the card slot. The adaptor can be connected without a card, so the
   // read/write paths call this before operating. The reply is `55 <type>`:
-  // 00 empty, 01 PS1/PocketStation, 02 PS2.
-  override async checkCard(): Promise<CardCheck> {
-    if (!this.device) {
-      return { present: false, message: "Device not connected." };
-    }
+  // 00 empty, 01 PS1/PocketStation, 02 PS2. Returns null when the adaptor is
+  // not connected; "unknown" when the slot cannot be classified.
+  async ps2ProbeCardType(): Promise<CardProbeResult | null> {
+    if (!this.device) return null;
     try {
       await this.device.transferOut(WRITE_EP, CMD_GET_CARD_TYPE);
       const data = await transferInMessage(this.device, 2);
       if (!data || data.length < 2 || data[0] !== 0x55) {
+        return "unknown";
+      }
+      switch (data[1]) {
+        case 0x00:
+          return "empty";
+        case 0x01:
+          return "ps1";
+        case 0x02:
+          return "ps2";
+        default:
+          return "unknown";
+      }
+    } catch {
+      return "unknown";
+    }
+  }
+
+  override async checkCard(): Promise<CardCheck> {
+    switch (await this.ps2ProbeCardType()) {
+      case "ps1":
+        return { present: true, kind: "ps1" };
+      case "ps2":
+        return { present: true, kind: "ps2" };
+      case "empty":
+        return {
+          present: false,
+          message: "No memory card detected. Insert a card and try again.",
+        };
+      case "unknown":
         return {
           present: false,
           message:
             "Could not detect the memory card. Try reseating the card or reconnecting.",
         };
-      }
-      switch (data[1]) {
-        case 0x00:
-          return {
-            present: false,
-            message:
-              "No memory card detected. Insert a PS1 memory card and try again.",
-          };
-        case 0x01:
-          return { present: true };
-        case 0x02:
-          return {
-            present: false,
-            message:
-              "A PS2 memory card is detected, but only PS1/PocketStation cards can be read. Insert a PS1 card and try again.",
-          };
-        default:
-          return {
-            present: false,
-            message:
-              "Unrecognized memory card. Try reseating the card or reconnecting.",
-          };
-      }
-    } catch {
-      return {
-        present: false,
-        message:
-          "Could not detect the memory card. Try reseating the card or reconnecting.",
-      };
+      case null:
+        return { present: false, message: "Device not connected." };
     }
   }
 

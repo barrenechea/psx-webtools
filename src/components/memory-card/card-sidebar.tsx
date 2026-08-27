@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { SlotCardKind } from "@/lib/ps1/hardware/core";
 
 import { CardListItem } from "./card-list-item";
 import type { MemoryCard } from "./types";
@@ -45,6 +46,7 @@ interface CardSidebarProps {
   onFixCorruptedChange: (value: boolean) => void;
   isConnected: boolean;
   connectedDevice: string | null;
+  slotCardKind: SlotCardKind | null;
   onDisconnect: () => void;
   onRead: () => void;
   onWrite: () => void;
@@ -71,6 +73,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onFixCorruptedChange,
   isConnected,
   connectedDevice,
+  slotCardKind,
   onDisconnect,
   onRead,
   onWrite,
@@ -185,6 +188,11 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
       </DropdownMenu>
       {isConnected && (
         <>
+          {slotCardKind === "ps2" && (
+            <p className="text-muted-foreground px-2 py-1 text-xs">
+              PS2 card in slot. PS2 device read and write are not supported yet.
+            </p>
+          )}
           <Button
             variant="ghost"
             className="hover:bg-card/80 w-full justify-start"

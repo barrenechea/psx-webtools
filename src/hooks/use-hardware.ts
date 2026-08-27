@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { crc32, formatCrc32 } from "@/lib/crc32";
-import type { HardwareInterface } from "@/lib/ps1/hardware/core";
+import type { HardwareInterface, SlotCardKind } from "@/lib/ps1/hardware/core";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 
 export interface HardwareStartConfig {
@@ -18,6 +18,10 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
+  // Last probed card kind in the connected slot. Cards can be hot-swapped
+  // without disconnecting, so this is refreshed by every slot check
+  // (connect, read, write), never trusted as a connect-time snapshot.
+  const [slotCardKind, setSlotCardKind] = useState<SlotCardKind | null>(null);
 
   const onDeviceDisconnectedRef = useRef(onDeviceDisconnected);
   useEffect(() => {
@@ -30,6 +34,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     setDevice(null);
     setIsConnected(false);
     setFirmwareVersion(null);
+    setSlotCardKind(null);
     setError("Device disconnected.");
     onDeviceDisconnectedRef.current?.();
   };
@@ -40,6 +45,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     onStatusUpdate: (status: string) => void,
   ) => {
     hardware.onDisconnected = handleDeviceDisconnected;
+    setSlotCardKind(null);
 
     let result: string | null;
 
@@ -68,6 +74,12 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     setError(null);
     setFirmwareVersion(hardware.firmware());
     onStatusUpdate("Connected successfully.");
+
+    // Probe the slot right after connect so the UI knows the card kind
+    // before the first read/write. Default checkCard implementations are
+    // no-ops; only slot-probing hardware talks to the device.
+    const slotCheck = await hardware.checkCard();
+    setSlotCardKind(slotCheck.present ? slotCheck.kind : null);
   };
 
   const disconnect = async (onStatusUpdate: (status: string) => void) => {
@@ -79,6 +91,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
         setDevice(null);
         setIsConnected(false);
         setFirmwareVersion(null);
+        setSlotCardKind(null);
       } catch (err) {
         setError((err as Error).message);
         onStatusUpdate(`Error disconnecting: ${(err as Error).message}`);
@@ -95,8 +108,14 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
       return null;
     }
     const cardCheck = await device.checkCard();
+    setSlotCardKind(cardCheck.present ? cardCheck.kind : null);
     if (!cardCheck.present) {
       throw new Error(cardCheck.message);
+    }
+    if (cardCheck.kind === "ps2") {
+      throw new Error(
+        "A PS2 memory card is in the slot. PS2 card read over hardware is not supported yet.",
+      );
     }
 
     try {
@@ -137,8 +156,14 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
       return false;
     }
     const cardCheck = await device.checkCard();
+    setSlotCardKind(cardCheck.present ? cardCheck.kind : null);
     if (!cardCheck.present) {
       throw new Error(cardCheck.message);
+    }
+    if (cardCheck.kind === "ps2") {
+      throw new Error(
+        "A PS2 memory card is in the slot. PS2 card write over hardware is not supported yet.",
+      );
     }
 
     let failure: string | null = null;
@@ -209,5 +234,6 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     readMemoryCard,
     writeMemoryCard,
     firmwareVersion,
+    slotCardKind,
   };
 }

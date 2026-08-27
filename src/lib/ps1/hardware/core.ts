@@ -28,10 +28,16 @@ export enum SupportedFeatures {
   PocketStation = 1 << 2,
 }
 
-// Result of checking the memory-card slot. `present` means a usable
-// (PS1/PocketStation) card is ready; otherwise `message` explains what was
-// found (empty slot, PS2 card, ...).
-export type CardCheck = { present: true } | { present: false; message: string };
+// Card family currently in a device's slot.
+export type SlotCardKind = "ps1" | "ps2";
+
+// Result of checking the memory-card slot. `present` means a usable card is
+// ready, with `kind` naming the family the slot probe classified (only
+// hardware that probes the slot, like the PS3 MC Adaptor, can report "ps2";
+// other interfaces report "ps1"); otherwise `message` explains what was
+// found (empty slot, undetectable card, ...).
+export type CardCheck =
+  { present: true; kind: SlotCardKind } | { present: false; message: string };
 
 const pocketstationError =
   "PocketStation commands are not supported by this interface";
@@ -153,11 +159,11 @@ export abstract class HardwareInterface {
     return SupportedFeatures.None;
   }
 
-  // Check whether a usable (PS1/PocketStation) memory card is in the slot.
-  // Most interfaces only surface a missing card as a failed frame read, so
-  // the default assumes present; the PS3 MC Adaptor overrides this to probe.
+  // Check whether a usable memory card is in the slot. Most interfaces only
+  // surface a missing card as a failed frame read, so the default assumes a
+  // present PS1 card; the PS3 MC Adaptor overrides this to probe the slot.
   async checkCard(): Promise<CardCheck> {
-    return { present: true };
+    return { present: true, kind: "ps1" };
   }
 
   readMemoryCardFrame(frameNumber: number): Promise<Uint8Array | null> {

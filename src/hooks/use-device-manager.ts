@@ -27,6 +27,7 @@ export function useDeviceManager() {
     readMemoryCard,
     writeMemoryCard,
     firmwareVersion,
+    slotCardKind,
   } = useHardwareConnection(() => setConnectedDevice(null));
 
   const getMemcarduinoSignalsConfig = (
@@ -290,6 +291,7 @@ export function useDeviceManager() {
     isConnected,
     connectionError,
     connectedDevice,
+    slotCardKind,
     firmwareVersion,
     connectDexDrive,
     connectMemcarduino,
