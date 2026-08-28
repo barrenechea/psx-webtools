@@ -4,9 +4,15 @@ import {
   ECC_PAGE_SIZE,
 } from "@/lib/ps2/ps2-ecc";
 import {
+  PS2Mechacon,
+  type Ps2MgKeyset,
+  validateMgKeyset,
+} from "@/lib/ps2/ps2-mechacon";
+import {
   CF_USE_ECC,
   type Ps2CardImageResult,
   type Ps2CardSpecs,
+  type Ps2MgAuthResult,
   type Ps2SpecsResult,
 } from "@/lib/ps2/ps2-types";
 
@@ -142,6 +148,9 @@ export class PS3MemCardAdaptor extends HardwareInterface {
   private disconnectHandler: ((event: USBConnectionEvent) => void) | null =
     null;
   private interfaceName = "PS3 MC Adaptor";
+  // Last successful MagicGate SessionKey (8 B). Never logged; cleared when a
+  // handshake re-runs, fails, or the device is dropped.
+  private sessionKey: Uint8Array | null = null;
 
   private readFrameCommand = makeCommand(READ_COMMAND_LENGTH, 0x52);
   private writeFrameCommand = makeCommand(WRITE_COMMAND_LENGTH, 0x57);
@@ -203,6 +212,7 @@ export class PS3MemCardAdaptor extends HardwareInterface {
       await this.device.close().catch(() => undefined);
       this.device = null;
     }
+    this.sessionKey = null;
   }
 
   // The OS fires a "disconnect" event on navigator.usb (not on the USBDevice,
@@ -211,7 +221,10 @@ export class PS3MemCardAdaptor extends HardwareInterface {
   private attachDisconnectHandler() {
     if (!this.device) return;
     this.disconnectHandler = (event: USBConnectionEvent) => {
-      if (event.device === this.device) this.onDisconnected?.();
+      if (event.device === this.device) {
+        this.sessionKey = null;
+        this.onDisconnected?.();
+      }
     };
     navigator.usb.addEventListener("disconnect", this.disconnectHandler);
   }
@@ -357,6 +370,166 @@ export class PS3MemCardAdaptor extends HardwareInterface {
     return { status: "ok", specs };
   }
 
+  // --- MagicGate (mechacon) handshake, one AA 42 frame per packet. ---
+  // 5-byte ack packet [0x81, cmd, param, 0, 0]; the card answers id at [3] and
+  // the terminator at [4].
+  private async ps2Mg5(
+    cmd: number,
+    param: number,
+    retryNotReady = true,
+  ): Promise<{ id: number; term: number } | null> {
+    const sio = new Uint8Array(5);
+    sio[0] = 0x81;
+    sio[1] = cmd;
+    sio[2] = param;
+    const tries = retryNotReady ? PS2_SIO_MAX_RETRIES : 1;
+    let m: Uint8Array | null = null;
+    for (let i = 0; i < tries; i++) {
+      m = await this.ps2Sio2(sio);
+      // 0x2B + 0x66 is "not ready": poll up to the cap. A NAK (id != 0x2B) is a
+      // definite rejection — stop immediately, no spin.
+      if (!m || !(m[3] === 0x2b && m[4] === PS2_NOT_READY)) break;
+    }
+    if (!m) return null;
+    return { id: m[3], term: m[4] };
+  }
+
+  // 14-byte vector read [0x81, 0xF0, sub, 0...]; the 8-byte vector returns
+  // byte-reversed at [4..11] with an XOR at [12] and terminator at [13].
+  private async ps2MgRead(subcmd: number): Promise<Uint8Array | null> {
+    const sio = new Uint8Array(14);
+    sio[0] = 0x81;
+    sio[1] = 0xf0;
+    sio[2] = subcmd;
+    let m: Uint8Array | null = null;
+    for (let i = 0; i < PS2_SIO_MAX_RETRIES; i++) {
+      m = await this.ps2Sio2(sio);
+      if (!m || !(m[3] === 0x2b && m[13] === PS2_NOT_READY)) break;
+    }
+    if (!m || m[3] !== 0x2b) return null;
+    let xor = 0;
+    for (let i = 4; i <= 11; i++) xor ^= m[i];
+    if (xor !== m[12] || !ps2TermOk(m[13])) return null;
+    const data = new Uint8Array(8);
+    for (let i = 0; i < 8; i++) data[i] = m[11 - i];
+    return data;
+  }
+
+  // 14-byte vector write [0x81, 0xF0, sub, reversed data, xor, 0, 0].
+  private async ps2MgWrite(subcmd: number, data: Uint8Array): Promise<boolean> {
+    const sio = new Uint8Array(14);
+    sio[0] = 0x81;
+    sio[1] = 0xf0;
+    sio[2] = subcmd;
+    for (let i = 0; i < 8; i++) sio[3 + i] = data[7 - i];
+    let xor = 0;
+    for (let i = 0; i < 8; i++) xor ^= data[i];
+    sio[11] = xor;
+    let m: Uint8Array | null = null;
+    for (let i = 0; i < PS2_SIO_MAX_RETRIES; i++) {
+      m = await this.ps2Sio2(sio);
+      if (!m || !(m[12] === 0x2b && m[13] === PS2_NOT_READY)) break;
+    }
+    if (!m) return false;
+    return m[12] === 0x2b && ps2TermOk(m[13]);
+  }
+
+  private async ps2MgStep(
+    cmd: number,
+    param: number,
+    retryNotReady = true,
+  ): Promise<boolean> {
+    const r = await this.ps2Mg5(cmd, param, retryNotReady);
+    return r !== null && r.id === 0x2b && ps2TermOk(r.term);
+  }
+
+  // Reset the card (F3) and report the failed step.
+  private async ps2MgFail(step: string): Promise<Ps2MgAuthResult> {
+    this.sessionKey = null;
+    await this.ps2Mg5(0xf3, 0);
+    return {
+      status: "error",
+      message: `PS2 MagicGate auth failed at ${step}.`,
+      step,
+    };
+  }
+
+  // Drive the full handshake, standing in for the mechacon. `mechaNonce` is the
+  // host's fresh 8-byte nonce. Returns the SessionKey on success or the failed
+  // step on error. DEX (keychangeParam 0) omits the F7 key-change packet.
+  async ps2AuthMg(
+    keyset: Ps2MgKeyset,
+    mechaNonce: Uint8Array,
+  ): Promise<Ps2MgAuthResult> {
+    this.sessionKey = null;
+    validateMgKeyset(keyset);
+    if (mechaNonce.length !== 8) {
+      return {
+        status: "error",
+        message: `Mecha nonce must be 8 bytes, got ${mechaNonce.length}.`,
+        step: "nonce",
+      };
+    }
+    const mc = new PS2Mechacon();
+    if (!(await this.ps2MgStep(0xf3, 0))) return this.ps2MgFail("F3");
+    if (
+      keyset.keychangeParam !== 0 &&
+      !(await this.ps2MgStep(0xf7, keyset.keychangeParam))
+    ) {
+      return this.ps2MgFail("F7");
+    }
+    if (!(await this.ps2MgStep(0xf0, 0x00))) return this.ps2MgFail("F0 00");
+
+    const cardIv = await this.ps2MgRead(0x01);
+    if (!cardIv) return this.ps2MgFail("F0 01");
+    const cardMaterial = await this.ps2MgRead(0x02);
+    if (!cardMaterial) return this.ps2MgFail("F0 02");
+    mc.calcUniqueKey(keyset, cardIv, cardMaterial);
+
+    if (!(await this.ps2MgStep(0xf0, 0x03))) return this.ps2MgFail("F0 03");
+    const cardNonce = await this.ps2MgRead(0x04);
+    if (!cardNonce) return this.ps2MgFail("F0 04");
+    mc.setCardNonce(cardNonce);
+    if (!(await this.ps2MgStep(0xf0, 0x05))) return this.ps2MgFail("F0 05");
+
+    const { c1, c2, c3 } = mc.generateChallenges(keyset, mechaNonce);
+    if (!(await this.ps2MgWrite(0x06, c3))) return this.ps2MgFail("F0 06");
+    if (!(await this.ps2MgWrite(0x07, c2))) return this.ps2MgFail("F0 07");
+    if (!(await this.ps2MgStep(0xf0, 0x08))) return this.ps2MgFail("F0 08");
+    if (!(await this.ps2MgStep(0xf0, 0x09))) return this.ps2MgFail("F0 09");
+    // The card's own C3/C2 check reports a mismatch here. F0 0A is the
+    // keyset-mismatch step: a 0x66/NAK is a definite failure, never "not ready",
+    // so do not poll it (retryNotReady false).
+    if (!(await this.ps2MgStep(0xf0, 0x0a, false)))
+      return this.ps2MgFail("F0 0A");
+    if (!(await this.ps2MgWrite(0x0b, c1))) return this.ps2MgFail("F0 0B");
+    if (!(await this.ps2MgStep(0xf0, 0x0c))) return this.ps2MgFail("F0 0C");
+    if (!(await this.ps2MgStep(0xf0, 0x0d))) return this.ps2MgFail("F0 0D");
+    if (!(await this.ps2MgStep(0xf0, 0x0e))) return this.ps2MgFail("F0 0E");
+
+    const cr1 = await this.ps2MgRead(0x0f);
+    if (!cr1) return this.ps2MgFail("F0 0F");
+    if (!(await this.ps2MgStep(0xf0, 0x10))) return this.ps2MgFail("F0 10");
+    const cr2 = await this.ps2MgRead(0x11);
+    if (!cr2) return this.ps2MgFail("F0 11");
+    if (!(await this.ps2MgStep(0xf0, 0x12))) return this.ps2MgFail("F0 12");
+    const cr3 = await this.ps2MgRead(0x13);
+    if (!cr3) return this.ps2MgFail("F0 13");
+
+    if (!mc.verifyResponses(keyset, cr1, cr2, cr3)) {
+      return this.ps2MgFail("verify");
+    }
+    if (!(await this.ps2MgStep(0xf0, 0x14))) return this.ps2MgFail("F0 14");
+    this.sessionKey = mc.sessionKey!;
+    return { status: "ok", sessionKey: this.sessionKey };
+  }
+
+  // The 8-byte SessionKey from the last successful handshake, or null. Returns a
+  // copy; the stored key is never logged.
+  getPs2SessionKey(): Uint8Array | null {
+    return this.sessionKey ? this.sessionKey.slice() : null;
+  }
+
   // Read one page. Sequence: start read (0x23), N× read 128 (0x43), spare
   // 0x43 only if CF_USE_ECC, then end (0x81). Retries the whole page like MCMAN.
   // Returns a 528-byte image page when pagesize is 512 (synthesizing spare if
@@ -429,11 +602,40 @@ export class PS3MemCardAdaptor extends HardwareInterface {
     return image;
   }
 
+  // Get Specs, authenticating first when the card refuses (needs-auth) and a
+  // keyset is supplied. `needs-auth` is returned only when no keyset was used
+  // (clones keep dumping). Once a keyset is used the outcome is either ok or an
+  // error (a failed handshake keeps its step; a card that still refuses after a
+  // successful auth is an error, not needs-auth).
+  private async ps2GetSpecsAuth(keyset?: Ps2MgKeyset): Promise<Ps2SpecsResult> {
+    let result = await this.ps2GetSpecs();
+    if (result.status !== "needs-auth") return result;
+    if (!keyset) return result;
+    const nonce = new Uint8Array(8);
+    crypto.getRandomValues(nonce);
+    const auth = await this.ps2AuthMg(keyset, nonce);
+    if (auth.status !== "ok") {
+      return { status: "error", message: auth.message, step: auth.step };
+    }
+    // Auth reset the card; re-sync the terminator and re-Get Specs.
+    await this.ps2SyncTerminator();
+    result = await this.ps2GetSpecs();
+    if (result.status === "needs-auth") {
+      return {
+        status: "error",
+        message:
+          "Authentication succeeded but the card still requires MagicGate authentication.",
+      };
+    }
+    return result;
+  }
+
   override async readPS2CardImage(
     onProgress: (progress: number) => void,
+    keyset?: Ps2MgKeyset,
   ): Promise<Ps2CardImageResult> {
     await this.ps2SyncTerminator();
-    const specsResult = await this.ps2GetSpecs();
+    const specsResult = await this.ps2GetSpecsAuth(keyset);
     if (specsResult.status !== "ok") return specsResult;
     const specs = specsResult.specs;
     const pageBytes = ps2ImagePageSize(specs);
@@ -578,9 +780,10 @@ export class PS3MemCardAdaptor extends HardwareInterface {
     image: Uint8Array,
     onProgress: (progress: number) => void,
     verify = false,
+    keyset?: Ps2MgKeyset,
   ): Promise<Ps2CardImageResult> {
     await this.ps2SyncTerminator();
-    const specsResult = await this.ps2GetSpecs();
+    const specsResult = await this.ps2GetSpecsAuth(keyset);
     if (specsResult.status !== "ok") return specsResult;
     const specs = specsResult.specs;
     const pageBytes = ps2ImagePageSize(specs);

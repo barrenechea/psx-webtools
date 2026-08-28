@@ -101,14 +101,30 @@ export interface Ps2CardSpecs {
   pageCount: number;
 }
 
-/** Get Specs outcome: usable specs, a refusal that needs auth, or a comm error. */
+/**
+ * Get Specs outcome: usable specs, a refusal that needs auth (no keyset used),
+ * or an error. On a MagicGate error `step` names the failed handshake step
+ * (e.g. "F0 0A") so a caller can report which packet the card refused.
+ */
 export type Ps2SpecsResult =
   | { status: "ok"; specs: Ps2CardSpecs }
   | { status: "needs-auth" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; step?: string };
 
-/** Full-card dump outcome: the raw image, a needs-auth refusal, or an error. */
+/**
+ * Full-card dump outcome: the raw image, a needs-auth refusal (no keyset used),
+ * or an error. `step` is present when a MagicGate handshake step failed.
+ */
 export type Ps2CardImageResult =
   | { status: "ok"; image: Uint8Array; specs: Ps2CardSpecs }
   | { status: "needs-auth" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; step?: string };
+
+/**
+ * MagicGate (mechacon) authentication outcome. `ok` carries the derived
+ * 8-byte SessionKey; `error` names the step that failed so a caller can report
+ * the keyset.
+ */
+export type Ps2MgAuthResult =
+  | { status: "ok"; sessionKey: Uint8Array }
+  | { status: "error"; message: string; step: string };

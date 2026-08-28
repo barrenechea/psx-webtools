@@ -1,3 +1,4 @@
+import type { Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
 import type { Ps2CardImageResult } from "@/lib/ps2/ps2-types";
 
 export enum Types {
@@ -173,6 +174,7 @@ export abstract class HardwareInterface {
   // unavailable so a PS2 slot on another interface fails clearly.
   readPS2CardImage(
     _onProgress: (progress: number) => void,
+    _keyset?: Ps2MgKeyset,
   ): Promise<Ps2CardImageResult> {
     return Promise.resolve({
       status: "error",
@@ -187,6 +189,7 @@ export abstract class HardwareInterface {
     _image: Uint8Array,
     _onProgress: (progress: number) => void,
     _verify = false,
+    _keyset?: Ps2MgKeyset,
   ): Promise<Ps2CardImageResult> {
     return Promise.resolve({
       status: "error",

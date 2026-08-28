@@ -4,6 +4,7 @@ import { crc32, formatCrc32 } from "@/lib/crc32";
 import type { HardwareInterface } from "@/lib/ps1/hardware/core";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
 
 export interface HardwareStartConfig {
   deviceType: string;
@@ -90,6 +91,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
   const readMemoryCard = async (
     onProgress?: (progress: number) => void,
     fixData = false,
+    keyset?: Ps2MgKeyset,
   ): Promise<PS1MemoryCard | PS2MemoryCard | null> => {
     if (!device) {
       setError("Device not connected");
@@ -102,14 +104,14 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     if (cardCheck.kind === "ps2") {
       const result = await device.readPS2CardImage((progress) => {
         onProgress?.(progress);
-      });
+      }, keyset);
       if (result.status === "needs-auth") {
         throw new Error(
-          "This PS2 card needs authentication before it can be read, which is not supported yet.",
+          "This PS2 card needs MagicGate authentication, but no key set is set.",
         );
       }
       if (result.status === "error") {
-        throw new Error(result.message);
+        throw new Ps2CardError(result.message, result.step);
       }
       const card = PS2MemoryCard.tryFromBytes(result.image);
       if (!card) {
@@ -151,6 +153,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     onProgress?: (progress: number) => void,
     verify = false,
     frameCount = 1024,
+    keyset?: Ps2MgKeyset,
   ): Promise<boolean> => {
     if (!device) {
       setError("Device not connected");
@@ -173,14 +176,15 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
           onProgress?.(progress);
         },
         verify,
+        keyset,
       );
       if (result.status === "needs-auth") {
         throw new Error(
-          "This PS2 card needs authentication before it can be written, which is not supported yet.",
+          "This PS2 card needs MagicGate authentication, but no key set is set.",
         );
       }
       if (result.status === "error") {
-        throw new Error(result.message);
+        throw new Ps2CardError(result.message, result.step);
       }
       return true;
     }

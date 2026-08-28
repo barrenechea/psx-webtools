@@ -9,6 +9,7 @@ import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
 import { Unirom } from "@/lib/ps1/hardware/unirom";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+import type { Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
 
 /**
  * Owns the hardware connection lifecycle (connect/disconnect/read/write) and the
@@ -149,18 +150,22 @@ export function useDeviceManager() {
     }
   };
 
-  const readCard = async (fixData: boolean) => {
+  const readCard = async (fixData: boolean, keyset?: Ps2MgKeyset) => {
     showDialog("Reading Memory Card", "Reading memory card data...");
     let card: PS1MemoryCard | PS2MemoryCard | null;
 
     try {
-      card = await readMemoryCard((progress) => {
-        updateDialog(
-          `Reading memory card... ${Math.round(progress * 100)}%`,
-          undefined,
-          progress,
-        );
-      }, fixData);
+      card = await readMemoryCard(
+        (progress) => {
+          updateDialog(
+            `Reading memory card... ${Math.round(progress * 100)}%`,
+            undefined,
+            progress,
+          );
+        },
+        fixData,
+        keyset,
+      );
     } catch (err) {
       hideDialog();
       throw err;
@@ -179,6 +184,7 @@ export function useDeviceManager() {
   const writeCard = async (
     card: PS1MemoryCard | PS2MemoryCard,
     verify = false,
+    keyset?: Ps2MgKeyset,
   ) => {
     showDialog("Writing to Memory Card", "Preparing to write data...");
     let success: boolean;
@@ -202,6 +208,8 @@ export function useDeviceManager() {
           );
         },
         verify,
+        undefined,
+        keyset,
       );
     } catch (err) {
       hideDialog();
