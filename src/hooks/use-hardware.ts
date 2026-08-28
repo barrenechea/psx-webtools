@@ -106,8 +106,10 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
         onProgress?.(progress);
       }, keyset);
       if (result.status === "needs-auth") {
-        throw new Error(
+        throw new Ps2CardError(
           "This PS2 card needs MagicGate authentication, but no key set is set.",
+          undefined,
+          true,
         );
       }
       if (result.status === "error") {
@@ -179,8 +181,10 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
         keyset,
       );
       if (result.status === "needs-auth") {
-        throw new Error(
+        throw new Ps2CardError(
           "This PS2 card needs MagicGate authentication, but no key set is set.",
+          undefined,
+          true,
         );
       }
       if (result.status === "error") {

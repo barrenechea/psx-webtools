@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { MemcarduinoConnectDialog } from "@/components/memcarduino-connect-dialog";
 import { PS1CardLinkConnectDialog } from "@/components/ps1cardlink-connect-dialog";
@@ -37,6 +37,14 @@ import PS1MemoryCard, {
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
+import {
+  fromStoredMgKeyset,
+  PS2_MG_KEYSET_STORAGE_KEY,
+  shouldClearKeysetOn,
+  type StoredMgKeyset,
+  toStoredMgKeyset,
+} from "@/lib/ps2/ps2-mgkeyset";
 import {
   PS2_RAW_EXTENSIONS,
   PS2_SINGLE_SAVE_EXTENSIONS,
@@ -56,6 +64,7 @@ import type { SlotAction } from "./memory-card-slot";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
 import { PocketStationDialog } from "./pocketstation-dialog";
 import { Ps2ImportSaveDialog } from "./ps2-import-save-dialog";
+import { Ps2MgKeyDialog } from "./ps2-mg-key-dialog";
 import { Ps2NewCardDialog } from "./ps2-new-card-dialog";
 import { Ps2SaveInfoSidebar } from "./ps2-save-info-sidebar";
 import { Ps2SaveList } from "./ps2-save-list";
@@ -66,6 +75,11 @@ import { WriteCardDialog } from "./write-card-dialog";
 
 let lastCardId = 0;
 const nextCardId = (): number => ++lastCardId;
+
+// The read or write awaiting a MagicGate keyset, so the key dialog can retry
+// the exact operation once a section is picked (or on a repeated failure).
+type MgPendingOp =
+  { kind: "read" } | { kind: "write"; card: PS1MemoryCard | PS2MemoryCard };
 
 // Save-dialog format lists. PS1 entries derive from the PS1 extension maps so
 // the generalized dialogs keep their exact previous options; PS2 is a single
@@ -235,11 +249,42 @@ export const MemoryCardManager: React.FC = () => {
     "psx-webtools.verifyAfterWrite",
     true,
   );
+  const [storedMgKeyset, setStoredMgKeyset] =
+    usePersistentState<StoredMgKeyset | null>(PS2_MG_KEYSET_STORAGE_KEY, null);
   const [isWriteDialogOpen, setIsWriteDialogOpen] = useState(false);
   const [isFormatDialogOpen, setIsFormatDialogOpen] = useState(false);
+  const [isMgKeyDialogOpen, setIsMgKeyDialogOpen] = useState(false);
+  // The read/write awaiting a keyset, kept in a ref (not state) so the close
+  // path always sees the latest value and a successful pick clears it before
+  // the dialog closes.
+  const pendingMgOpRef = useRef<MgPendingOp | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const singleSaveFileInputRef = useRef<HTMLInputElement>(null);
   const ps2ImportFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Live keyset restored from the persisted entry. A missing or corrupt entry
+  // restores to null, so it degrades to the normal "no keyset" prompt instead
+  // of crashing the manager on load. A MagicGate rejection clears it; a
+  // successful pick persists it.
+  const mgKeyset = fromStoredMgKeyset(storedMgKeyset);
+  // Only surface the stored section name when the entry actually restored.
+  const storedSection =
+    mgKeyset !== null && storedMgKeyset !== null
+      ? storedMgKeyset.section
+      : null;
+
+  // A corrupt entry restores to null but would otherwise linger in localStorage
+  // forever, since a clone dump never hits the auth path that clears it — so
+  // clear it via the hook's setter, which empties state and storage together.
+  // Converges: once storedMgKeyset is null the check stops.
+  useEffect(() => {
+    if (
+      storedMgKeyset !== null &&
+      fromStoredMgKeyset(storedMgKeyset) === null
+    ) {
+      setStoredMgKeyset(null);
+    }
+  }, [storedMgKeyset, setStoredMgKeyset]);
 
   const {
     isConnected,
@@ -341,24 +386,61 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
+  // Route a read/write failure: a MagicGate rejection (no keyset yet, or the
+  // stored one was rejected) opens the key dialog to re-prompt; anything else
+  // is a plain error message.
+  const handleMgAuthError = (err: unknown, op: MgPendingOp): void => {
+    if (
+      err instanceof Ps2CardError &&
+      (err.needsKey || err.step !== undefined)
+    ) {
+      // Clear the stored keyset when a named step rejected it, or when the
+      // stored entry restored to null (corrupt) so it stops lingering.
+      // needsKey with a valid entry is impossible (a keyset would have been
+      // passed), so needsKey here means "no usable keyset" — prompt, don't
+      // clear a healthy one.
+      if (
+        shouldClearKeysetOn(err) ||
+        (storedMgKeyset !== null && mgKeyset === null)
+      ) {
+        setStoredMgKeyset(null);
+      }
+      pendingMgOpRef.current = op;
+      setIsMgKeyDialogOpen(true);
+      return;
+    }
+    setError((err as Error).message);
+  };
+
+  const performRead = async (keyset?: Ps2MgKeyset) => {
+    const card = await readCard(fixCorrupted, keyset ?? mgKeyset ?? undefined);
+    const deviceLabel = connectedDevice ?? "Device";
+    const newMemoryCard: MemoryCard = {
+      id: nextCardId(),
+      name: `${deviceLabel} Read`,
+      type: "device",
+      source: firmwareVersion
+        ? `${deviceLabel} v${firmwareVersion}`
+        : deviceLabel,
+      card,
+    };
+    setMemoryCards((prev) => [...prev, newMemoryCard]);
+    setSelectedCard(newMemoryCard.id);
+  };
+
+  const performWrite = async (
+    card: PS1MemoryCard | PS2MemoryCard,
+    keyset?: Ps2MgKeyset,
+  ) => {
+    await writeCard(card, verifyAfterWrite, keyset ?? mgKeyset ?? undefined);
+  };
+
   const handleReadFromDevice = async () => {
     setError(null);
     try {
-      const card = await readCard(fixCorrupted);
-      const deviceLabel = connectedDevice ?? "Device";
-      const newMemoryCard: MemoryCard = {
-        id: nextCardId(),
-        name: `${deviceLabel} Read`,
-        type: "device",
-        source: firmwareVersion
-          ? `${deviceLabel} v${firmwareVersion}`
-          : deviceLabel,
-        card,
-      };
-      setMemoryCards((prev) => [...prev, newMemoryCard]);
-      setSelectedCard(newMemoryCard.id);
+      await performRead();
     } catch (err) {
-      setError((err as Error).message);
+      handleMgAuthError(err, { kind: "read" });
     }
   };
 
@@ -374,10 +456,53 @@ export const MemoryCardManager: React.FC = () => {
     setIsWriteDialogOpen(false);
     setError(null);
     try {
-      await writeCard(card, verifyAfterWrite);
+      await performWrite(card);
     } catch (err) {
-      setError((err as Error).message);
+      handleMgAuthError(err, { kind: "write", card });
     }
+  };
+
+  // Persist the picked keyset and re-run the awaiting operation with it. The
+  // fresh keyset is passed explicitly because the persisted-state update is
+  // not yet visible in this render.
+  const handleMgKeySelect = (section: string, keyset: Ps2MgKeyset) => {
+    setStoredMgKeyset(toStoredMgKeyset(section, keyset));
+    setIsMgKeyDialogOpen(false);
+    // Capture-and-clear before the close/retry so a close routed through
+    // handleMgKeyClose can never mistake a successful pick for a cancel.
+    const op = pendingMgOpRef.current;
+    pendingMgOpRef.current = null;
+    if (!op) return;
+    void (async () => {
+      setError(null);
+      try {
+        if (op.kind === "read") await performRead(keyset);
+        else await performWrite(op.card, keyset);
+      } catch (err) {
+        handleMgAuthError(err, op);
+      }
+    })();
+  };
+
+  // Wipe the persisted keyset but stay in the dialog (keeping the loaded file)
+  // so a needs-auth user can load another file and pick a section without
+  // re-triggering the read/write.
+  const handleMgKeyClear = () => {
+    setStoredMgKeyset(null);
+  };
+
+  const handleMgKeyClose = (open: boolean) => {
+    if (!open) {
+      // Only report a cancel while an operation is still waiting on a keyset;
+      // Use clears pendingMgOpRef first, so a successful pick never lands here
+      // with a pending op.
+      const hadPending = pendingMgOpRef.current !== null;
+      pendingMgOpRef.current = null;
+      if (hadPending) {
+        setError("Canceled. Load a key file and retry the read/write.");
+      }
+    }
+    setIsMgKeyDialogOpen(open);
   };
 
   const handleFormatConfirm = async (quick: boolean) => {
@@ -1229,6 +1354,13 @@ export const MemoryCardManager: React.FC = () => {
         defaultName={ps2ImportFile?.name.replace(/\.[^.]+$/, "") ?? ""}
         takenNames={selectedPs2Card?.getSaves().map((s) => s.name) ?? []}
         onImport={(name, title) => handlePs2ImportConfirm(name, title)}
+      />
+      <Ps2MgKeyDialog
+        isOpen={isMgKeyDialogOpen}
+        onOpenChange={handleMgKeyClose}
+        storedSection={storedSection}
+        onSelect={handleMgKeySelect}
+        onClear={handleMgKeyClear}
       />
       <EditHeaderDialog
         key={`header-${dialogSlot ?? "none"}`}

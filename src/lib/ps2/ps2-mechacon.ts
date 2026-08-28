@@ -10,12 +10,14 @@ import { mgCbcDecrypt, mgCbcEncrypt } from "@/lib/ps2/ps2-des";
  * A PS2 card read/write failure surfaced to the UI. `step` names the MagicGate
  * handshake step that failed (e.g. "F0 0A") when the failure was an auth
  * rejection, so the key-file UI can clear a bad keyset instead of parsing the
- * message string.
+ * message string. `needsKey` marks the "card needs auth but no keyset was
+ * used" case, so the UI can prompt for a key file.
  */
 export class Ps2CardError extends Error {
   constructor(
     message: string,
     public readonly step?: string,
+    public readonly needsKey = false,
   ) {
     super(message);
     this.name = "Ps2CardError";
