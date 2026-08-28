@@ -7,12 +7,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import type { Ps2DateTime, Ps2SaveInfo } from "@/lib/ps2/ps2-types";
 import { cn } from "@/lib/utils";
 
 interface Ps2SaveListProps {
-  card: PS2MemoryCard;
+  saves: Ps2SaveInfo[];
   selectedSave: string | null;
   onSelectSave: (name: string) => void;
 }
@@ -83,11 +82,10 @@ const Ps2SaveRow: React.FC<{
 );
 
 export const Ps2SaveList: React.FC<Ps2SaveListProps> = ({
-  card,
+  saves,
   selectedSave,
   onSelectSave,
 }) => {
-  const saves = card.getSaves();
   if (saves.length === 0) {
     return (
       <div className="bg-card/80 text-muted-foreground flex grow flex-col items-center justify-center p-4">

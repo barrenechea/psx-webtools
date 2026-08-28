@@ -1087,6 +1087,10 @@ export const MemoryCardManager: React.FC = () => {
   const selectedCardEntry = memoryCards.find((c) => c.id === selectedCard);
   const selectedPs1Card = ps1Card(selectedCard);
   const selectedPs2Card = ps2Card(selectedCard);
+  const ps2Saves =
+    selectedCardEntry && selectedCardEntry.card.kind === "ps2"
+      ? selectedCardEntry.card.getSaves()
+      : [];
   const cardHistory = selectedCardEntry
     ? (historyLabels[selectedCardEntry.id] ?? [selectedCardEntry.name])
     : [];
@@ -1183,7 +1187,7 @@ export const MemoryCardManager: React.FC = () => {
                       {selectedCardEntry.card.kind === "ps2" ? (
                         <Ps2SaveList
                           key={selectedCardEntry.id}
-                          card={selectedCardEntry.card}
+                          saves={ps2Saves}
                           selectedSave={selectedPs2Save}
                           onSelectSave={handlePs2SaveClick}
                         />
