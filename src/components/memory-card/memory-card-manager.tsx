@@ -60,16 +60,17 @@ import { EditCommentDialog } from "./edit-comment-dialog";
 import { EditHeaderDialog } from "./edit-header-dialog";
 import { FormatCardDialog } from "./format-card-dialog";
 import { GameDetailsSidebar } from "./game-details-sidebar";
-import type { SlotAction } from "./memory-card-slot";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
 import { PocketStationDialog } from "./pocketstation-dialog";
+import { Ps1SaveInfoDialog } from "./ps1-save-info-dialog";
+import type { Ps1SlotAction } from "./ps1-slot";
+import { Ps1SlotList } from "./ps1-slot-list";
+import { derivePs1SlotRows } from "./ps1-slot-rows";
 import { Ps2ImportSaveDialog } from "./ps2-import-save-dialog";
 import { Ps2MgKeyDialog } from "./ps2-mg-key-dialog";
 import { Ps2NewCardDialog } from "./ps2-new-card-dialog";
 import { Ps2SaveInfoSidebar } from "./ps2-save-info-sidebar";
 import { Ps2SaveList } from "./ps2-save-list";
-import { SaveInfoDialog } from "./save-info-dialog";
-import { SlotList } from "./slot-list";
 import { isPs2Card, type MemoryCard } from "./types";
 import { WriteCardDialog } from "./write-card-dialog";
 
@@ -741,7 +742,7 @@ export const MemoryCardManager: React.FC = () => {
     setRemoveConfirmOpen(false);
   };
 
-  const handleSlotAction = (action: SlotAction, index: number) => {
+  const handleSlotAction = (action: Ps1SlotAction, index: number) => {
     const card = ps1Card(selectedCard);
     // Resolve to the save's first (master) slot so header/comment/info edits
     // target the real save, not a linked continuation slot.
@@ -1091,6 +1092,10 @@ export const MemoryCardManager: React.FC = () => {
     selectedCardEntry && selectedCardEntry.card.kind === "ps2"
       ? selectedCardEntry.card.getSaves()
       : [];
+  const ps1Slots =
+    selectedCardEntry && selectedCardEntry.card.kind === "ps1"
+      ? derivePs1SlotRows(selectedCardEntry.card)
+      : [];
   const cardHistory = selectedCardEntry
     ? (historyLabels[selectedCardEntry.id] ?? [selectedCardEntry.name])
     : [];
@@ -1192,8 +1197,8 @@ export const MemoryCardManager: React.FC = () => {
                           onSelectSave={handlePs2SaveClick}
                         />
                       ) : (
-                        <SlotList
-                          card={selectedCardEntry.card}
+                        <Ps1SlotList
+                          slots={ps1Slots}
                           selectedSlot={selectedSlot}
                           hasTempBuffer={copiedSaveBytes !== null}
                           onSlotClick={handleSlotClick}
@@ -1383,7 +1388,7 @@ export const MemoryCardManager: React.FC = () => {
         onSave={handleEditCommentConfirm}
       />
       {dialogSaveInfo && dialogCard && dialogSlot !== null && (
-        <SaveInfoDialog
+        <Ps1SaveInfoDialog
           isOpen={isInfoDialogOpen}
           onOpenChange={setIsInfoDialogOpen}
           save={dialogSaveInfo}

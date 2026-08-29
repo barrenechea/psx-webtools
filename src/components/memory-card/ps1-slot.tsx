@@ -14,10 +14,10 @@ import {
 } from "@/lib/ps1-memory-card";
 import { cn } from "@/lib/utils";
 
-export type SlotAction =
+export type Ps1SlotAction =
   "editHeader" | "editComment" | "info" | "remove" | "compare";
 
-interface MemoryCardSlotProps {
+interface Ps1SlotProps {
   slot: SaveInfo;
   index: number;
   isSelected: boolean;
@@ -58,7 +58,7 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
   }
 };
 
-export const MemoryCardSlot: React.FC<MemoryCardSlotProps> = ({
+export const Ps1Slot: React.FC<Ps1SlotProps> = ({
   slot,
   index,
   isSelected,

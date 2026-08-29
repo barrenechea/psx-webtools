@@ -22,7 +22,7 @@ interface PocketStationIcon {
   delay: number;
 }
 
-interface SaveInfoDialogProps {
+interface Ps1SaveInfoDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   save: SaveInfo;
@@ -43,7 +43,7 @@ const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   </div>
 );
 
-export const SaveInfoDialog: React.FC<SaveInfoDialogProps> = ({
+export const Ps1SaveInfoDialog: React.FC<Ps1SaveInfoDialogProps> = ({
   isOpen,
   onOpenChange,
   save,
@@ -129,4 +129,4 @@ export const SaveInfoDialog: React.FC<SaveInfoDialogProps> = ({
   </Dialog>
 );
 
-export default SaveInfoDialog;
+export default Ps1SaveInfoDialog;
