@@ -35,6 +35,11 @@ import {
   writeClusterData,
   writeDirEntry,
 } from "./ps2-pfs";
+import {
+  type Ps2Container,
+  Ps2ContainerFormat,
+  writePs2Container,
+} from "./ps2-single-save";
 import type { Ps2DateTime, Ps2FileInfo, Ps2SaveInfo } from "./ps2-types";
 
 // Entry modes as written by the console (verified on real cards).
@@ -279,6 +284,24 @@ export class PS2MemoryCard {
     return picked === null ? null : this.readChainBytes(picked);
   }
 
+  /** Every file in a save as name + bytes (container export input). */
+  getSaveFiles(saveName: string): { name: string; data: Uint8Array }[] {
+    const saveDir = this.getRootDirEntry(saveName);
+    if (saveDir === null) return [];
+    const out: { name: string; data: Uint8Array }[] = [];
+    for (const entry of readDirectory(
+      this.raw,
+      this.sb,
+      saveDir.cluster,
+      saveDir.length,
+    )) {
+      if (entry.isFile) {
+        out.push({ name: entry.name, data: this.readChainBytes(entry) });
+      }
+    }
+    return out;
+  }
+
   // -------------------------------------------------------------------
   // File I/O (downloads)
   // -------------------------------------------------------------------
@@ -297,6 +320,41 @@ export class PS2MemoryCard {
     saveName: string,
   ): Promise<boolean> {
     const data = this.getSingleSaveBytes(saveName);
+    if (data === null) return false;
+    return this.download(fileName, data);
+  }
+
+  /** Container bytes (MAX or EMS) for a save, or null when it has no files. */
+  public getContainerBytes(
+    saveName: string,
+    format: "max" | "ems",
+  ): Uint8Array | null {
+    const files = this.getSaveFiles(saveName);
+    if (files.length === 0) return null;
+    const save = this.getSaves().find((s) => s.name === saveName);
+    const time = save?.created ?? ZERO_TIME;
+    const container: Ps2Container = {
+      format:
+        format === "max" ? Ps2ContainerFormat.MaxDrive : Ps2ContainerFormat.Ems,
+      title: saveName,
+      created: time,
+      modified: save?.modified ?? ZERO_TIME,
+      files: files.map((f) => ({
+        name: f.name,
+        data: f.data,
+        created: time,
+        modified: time,
+      })),
+    };
+    return writePs2Container(container);
+  }
+
+  public async saveSingleSaveContainer(
+    fileName: string,
+    saveName: string,
+    format: "max" | "ems",
+  ): Promise<boolean> {
+    const data = this.getContainerBytes(saveName, format);
     if (data === null) return false;
     return this.download(fileName, data);
   }
@@ -397,6 +455,43 @@ export class PS2MemoryCard {
       { name: "icon.sys", mode: FILE_MODE, data: icon },
       { name, mode: fileMode, data },
     ]);
+  }
+
+  /**
+   * Create a save from a container's file set: the files land verbatim and an
+   * icon.sys is generated only when the container does not carry one.
+   */
+  public importContainer(
+    name: string,
+    files: { name: string; data: Uint8Array }[],
+    opts: Ps2ImportOptions = {},
+  ): boolean {
+    if (files.length === 0) return false;
+    let mode = DIR_MODE;
+    let fileMode = FILE_MODE;
+    if (opts.hidden) mode |= MODE_HIDDEN;
+    if (opts.ps1) {
+      mode |= MODE_PSX;
+      fileMode |= MODE_PSX;
+    }
+    if (opts.pocketStation) {
+      mode |= MODE_PDA;
+      fileMode |= MODE_PDA;
+    }
+    const specs: FileSpec[] = [];
+    let hasIcon = false;
+    for (const f of files) {
+      if (f.name.toLowerCase() === "icon.sys") hasIcon = true;
+      specs.push({ name: f.name, mode: fileMode, data: f.data });
+    }
+    if (!hasIcon) {
+      const icon = buildIconSys({
+        title: opts.title ?? name,
+        bgColors: opts.bgColors,
+      });
+      specs.push({ name: "icon.sys", mode: FILE_MODE, data: icon });
+    }
+    return this.createSave(name, mode, specs);
   }
 
   /**

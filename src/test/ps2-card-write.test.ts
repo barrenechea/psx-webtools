@@ -24,6 +24,7 @@ import {
   writeClusterData,
   writeDirEntry,
 } from "@/lib/ps2/ps2-pfs";
+import { readPs2Container } from "@/lib/ps2/ps2-single-save";
 import type { Ps2DateTime } from "@/lib/ps2/ps2-types";
 
 import { toFile } from "./psx-helpers";
@@ -262,6 +263,101 @@ describe("PS2MemoryCard importSingleSave", () => {
     const raw = card.getRawData();
     const sb = card.getSuperblock();
     expect(readDirEntry(raw, sb, 1, 0).mode).toBe(0x8427 | 0x2000 | 0x1000);
+  });
+});
+
+describe("PS2MemoryCard importContainer", () => {
+  it("creates a save from a container's files and generates icon.sys", () => {
+    const card = PS2MemoryCard.format(8192);
+    const a = pattern(300, 1);
+    const b = pattern(600, 2);
+    expect(
+      card.importContainer(
+        "SAVE-MAX0001",
+        [
+          { name: "SAVE01.BIN", data: a },
+          { name: "PIC.PNG", data: b },
+        ],
+        { title: "Container Game" },
+      ),
+    ).toBe(true);
+    const save = card.getSaves()[0];
+    expect(save.name).toBe("SAVE-MAX0001");
+    expect(save.title).toBe("Container Game");
+    expect(save.files.map((f) => f.name).sort()).toEqual([
+      "PIC.PNG",
+      "SAVE01.BIN",
+      "icon.sys",
+    ]);
+    expect([...card.readFile("SAVE-MAX0001", "SAVE01.BIN")]).toEqual([...a]);
+    expect([...card.readFile("SAVE-MAX0001", "PIC.PNG")]).toEqual([...b]);
+    expect(card.getIconSys("SAVE-MAX0001")?.title).toBe("Container Game");
+  });
+
+  it("keeps the container's icon.sys when present", () => {
+    const card = PS2MemoryCard.format(8192);
+    const icon = buildIconSys({ title: "Original" });
+    const a = pattern(100, 3);
+    card.importContainer("SAVE-ICN0001", [
+      { name: "icon.sys", data: icon },
+      { name: "SAVE01.BIN", data: a },
+    ]);
+    expect(
+      card
+        .getSaves()[0]
+        .files.map((f) => f.name)
+        .sort(),
+    ).toEqual(["SAVE01.BIN", "icon.sys"]);
+    expect(card.getIconSys("SAVE-ICN0001")?.title).toBe("Original");
+  });
+
+  it("rejects empty file sets and duplicate names", () => {
+    const card = PS2MemoryCard.format(8192);
+    expect(card.importContainer("SAVE-EMPTY0001", [])).toBe(false);
+    card.importContainer("SAVE-DUP0001", [
+      { name: "A.BIN", data: pattern(50) },
+    ]);
+    expect(
+      card.importContainer("SAVE-DUP0001", [
+        { name: "B.BIN", data: pattern(50) },
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("PS2MemoryCard container export", () => {
+  it("round-trips a save through MAX and EMS containers", async () => {
+    const card = PS2MemoryCard.format(8192);
+    const a = pattern(300, 1);
+    const b = pattern(600, 2);
+    card.importContainer("SAVE-MAX0001", [
+      { name: "SAVE01.BIN", data: a },
+      { name: "PIC.PNG", data: b },
+    ]);
+    expect(
+      card
+        .getSaveFiles("SAVE-MAX0001")
+        .map((f) => f.name)
+        .sort(),
+    ).toEqual(["PIC.PNG", "SAVE01.BIN", "icon.sys"]);
+
+    for (const format of ["max", "ems"] as const) {
+      const bytes = card.getContainerBytes("SAVE-MAX0001", format)!;
+      const container = await readPs2Container(
+        bytes,
+        format === "max" ? "x.max" : "x.psu",
+      );
+      expect(container.title).toBe("SAVE-MAX0001");
+      const byName = new Map(container.files.map((f) => [f.name, f.data]));
+      expect([...byName.get("SAVE01.BIN")!]).toEqual([...a]);
+      expect([...byName.get("PIC.PNG")!]).toEqual([...b]);
+    }
+  });
+
+  it("returns null/empty for unknown saves", () => {
+    const card = PS2MemoryCard.format(8192);
+    expect(card.getContainerBytes("NOPE", "max")).toBeNull();
+    expect(card.getSaveFiles("NOPE")).toEqual([]);
   });
 });
 

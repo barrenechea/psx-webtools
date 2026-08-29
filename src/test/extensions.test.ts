@@ -80,6 +80,9 @@ describe("free functions: extension handling", () => {
     expect(withSingleExtension("card.gme", ".gme")).toBe("card.gme");
     expect(withSingleExtension("card.ps2", ".mcd")).toBe("card.mcd");
     expect(withSingleExtension("card.sdt", ".sdt")).toBe("card.sdt");
+    expect(withSingleExtension("save.sdt", ".psu")).toBe("save.psu");
+    expect(withSingleExtension("save.psu", ".sdt")).toBe("save.sdt");
+    expect(withSingleExtension("save.max", ".psu")).toBe("save.psu");
   });
 
   it("hasFileExtension", () => {

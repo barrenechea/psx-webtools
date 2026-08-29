@@ -57,8 +57,9 @@ export const Ps2ImportSaveDialog: React.FC<Ps2ImportSaveDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Import PS2 Save</DialogTitle>
           <DialogDescription>
-            Create a new save directory from the selected file. The file becomes
-            the save's data file.
+            Create a new save directory from the selected file. Single-save
+            containers (MAX, EMS, SharkPort, CodeBreaker, PSV) import all of
+            their files.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">

@@ -46,6 +46,11 @@ import {
   toStoredMgKeyset,
 } from "@/lib/ps2/ps2-mgkeyset";
 import {
+  detectPs2Container,
+  Ps2ContainerFormat,
+  readPs2Container,
+} from "@/lib/ps2/ps2-single-save";
+import {
   PS2_RAW_EXTENSIONS,
   PS2_SINGLE_SAVE_EXTENSIONS,
   Ps2CardFormats,
@@ -150,6 +155,16 @@ const PS2_SINGLE_SAVE_FORMATS: readonly SaveFormatOption<Ps2SingleSaveTypes>[] =
       value: Ps2SingleSaveTypes.Sdt,
       label: "Single save (.sdt)",
       extensions: PS2_SINGLE_SAVE_EXTENSIONS,
+    },
+    {
+      value: Ps2SingleSaveTypes.MaxDrive,
+      label: "MAX Drive (.psu)",
+      extensions: [".psu"],
+    },
+    {
+      value: Ps2SingleSaveTypes.Ems,
+      label: "EMS (.psu)",
+      extensions: [".psu"],
     },
   ];
 
@@ -874,11 +889,29 @@ export const MemoryCardManager: React.FC = () => {
     setIsSingleSaveDialogOpen(false);
   };
 
-  const handlePs2ExportConfirm = async (fileName: string) => {
+  const handlePs2ExportConfirm = async (
+    fileName: string,
+    saveType: Ps2SingleSaveTypes,
+  ) => {
     if (selectedCard !== null && selectedPs2Save !== null) {
       const card = ps2Card(selectedCard);
       if (card) {
-        const success = await card.saveSingleSave(fileName, selectedPs2Save);
+        let success: boolean;
+        if (saveType === Ps2SingleSaveTypes.MaxDrive) {
+          success = await card.saveSingleSaveContainer(
+            fileName,
+            selectedPs2Save,
+            "max",
+          );
+        } else if (saveType === Ps2SingleSaveTypes.Ems) {
+          success = await card.saveSingleSaveContainer(
+            fileName,
+            selectedPs2Save,
+            "ems",
+          );
+        } else {
+          success = await card.saveSingleSave(fileName, selectedPs2Save);
+        }
         setError(success ? null : "Failed to export save");
       }
     }
@@ -919,9 +952,22 @@ export const MemoryCardManager: React.FC = () => {
     if (!card) return false;
     const bytes = new Uint8Array(await ps2ImportFile.arrayBuffer());
     const rowBefore = card.undoCount;
-    const success = card.importSingleSave(name, bytes, {
-      title: title.length > 0 ? title : undefined,
-    });
+    const format = detectPs2Container(bytes, ps2ImportFile.name);
+    let success: boolean;
+    if (format !== Ps2ContainerFormat.Unknown) {
+      try {
+        const container = await readPs2Container(bytes, ps2ImportFile.name);
+        success = card.importContainer(name, container.files, {
+          title: title.length > 0 ? title : container.title || undefined,
+        });
+      } catch {
+        success = false;
+      }
+    } else {
+      success = card.importSingleSave(name, bytes, {
+        title: title.length > 0 ? title : undefined,
+      });
+    }
     if (success) {
       appendHistoryLabel(selectedCard, rowBefore, "Save imported");
       setSelectedPs2Save(name);
@@ -1305,7 +1351,7 @@ export const MemoryCardManager: React.FC = () => {
       <input
         ref={ps2ImportFileInputRef}
         type="file"
-        accept=".sdt,.dat"
+        accept=".sdt,.dat,.psu,.max,.sps,.xps,.cbs,.psv,.npo"
         className="sr-only"
         onChange={(e) => void handlePs2ImportFileChange(e)}
       />

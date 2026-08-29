@@ -80,10 +80,13 @@ export enum Ps2CardFormats {
 
 /**
  * Single-save export formats. `Sdt` carries the save's user-data file bytes
- * under the scene `.sdt` extension.
+ * under the scene `.sdt` extension; `MaxDrive` and `Ems` wrap the save's whole
+ * file set in a PS2 single-save container under `.psu`.
  */
 export enum Ps2SingleSaveTypes {
   Sdt = 0,
+  MaxDrive = 1,
+  Ems = 2,
 }
 
 /** Get Specs flags bit 0: page has spare ECC. Sony 8 MB `0x2B` includes this. */
