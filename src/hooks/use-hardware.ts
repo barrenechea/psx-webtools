@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { crc32, formatCrc32 } from "@/lib/crc32";
 import type { HardwareInterface } from "@/lib/ps1/hardware/core";
+import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
+import { PAGES_PER_BLOCK, PAGES_PER_CLUSTER } from "@/lib/ps2/ps2-pfs";
 
 export interface HardwareStartConfig {
   deviceType: string;
@@ -117,6 +120,13 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
       }
       const card = PS2MemoryCard.tryFromBytes(result.image);
       if (!card) {
+        // A Conquest dump is not a PFS card and must not fall through to the
+        // PS1 loader either; report it as Conquest so the user knows why.
+        if (isPs2ConquestCard(result.image)) {
+          throw new Error(
+            "The card is a SoulCalibur II Conquest card with no PFS filesystem; it cannot be loaded or written.",
+          );
+        }
         throw new Error("The PS2 card could not be read as a card image.");
       }
       card.markChanged();
@@ -258,6 +268,82 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     return true;
   };
 
+  // Format the card in the slot, building the blank image here and reusing
+  // writeMemoryCard for the destructive work (so the Conquest guard and the
+  // needs-auth path are shared with a normal write). PS1 writes 64 (quick) or
+  // 1024 (full) frames; PS2 has no frame count — writeMemoryCard erases and
+  // writes a format2 image sized to Get Specs.
+  // Returns the blank card on success (the PS2 one so the UI can show it), or
+  // null when no device is connected.
+  const formatMemoryCard = async (
+    quick: boolean,
+    onProgress?: (progress: number) => void,
+    keyset?: Ps2MgKeyset,
+  ): Promise<PS1MemoryCard | PS2MemoryCard | null> => {
+    if (!device) {
+      setError("Device not connected");
+      return null;
+    }
+    const cardCheck = await device.checkCard();
+    if (!cardCheck.present) {
+      throw new Error(cardCheck.message);
+    }
+    let blank: PS1MemoryCard | PS2MemoryCard;
+    if (cardCheck.kind === "ps2") {
+      if (!(device instanceof PS3MemCardAdaptor)) {
+        throw new Error(
+          "PS2 card formatting is only supported on a PS3 MC Adaptor.",
+        );
+      }
+      const specsResult = await device.ps2GetSpecsAuth(keyset);
+      if (specsResult.status === "needs-auth") {
+        throw new Ps2CardError(
+          "This PS2 card needs MagicGate authentication, but no key set is set.",
+          undefined,
+          true,
+        );
+      }
+      if (specsResult.status === "error") {
+        throw new Ps2CardError(specsResult.message, specsResult.step);
+      }
+      if (specsResult.specs.pageSize !== 512) {
+        throw new Error(
+          "Only 512-byte-page PS2 cards can be formatted on this device.",
+        );
+      }
+      const clusters = specsResult.specs.pageCount / PAGES_PER_CLUSTER;
+      const blockClusters = PAGES_PER_BLOCK * PAGES_PER_CLUSTER;
+      if (
+        !Number.isInteger(clusters) ||
+        clusters < 64 ||
+        clusters % blockClusters !== 0
+      ) {
+        throw new Error(
+          "The PS2 card geometry is not block-aligned, so the formatted image would not match the card; refusing to format.",
+        );
+      }
+      blank = PS2MemoryCard.format(clusters);
+    } else {
+      blank = new PS1MemoryCard();
+      blank.formatCard();
+    }
+    // Only the PS1 path carries a frame count (quick/full); PS2 erases and
+    // writes by Get Specs, so no frame count is passed.
+    const frameCount =
+      blank instanceof PS1MemoryCard ? (quick ? 64 : 1024) : undefined;
+    const success = await writeMemoryCard(
+      blank,
+      onProgress,
+      false,
+      frameCount,
+      keyset,
+    );
+    if (!success) {
+      throw new Error("Failed to format memory card");
+    }
+    return blank;
+  };
+
   return {
     isConnected,
     device,
@@ -266,6 +352,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     disconnect,
     readMemoryCard,
     writeMemoryCard,
+    formatMemoryCard,
     firmwareVersion,
   };
 }

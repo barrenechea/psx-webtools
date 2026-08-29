@@ -784,6 +784,8 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     const usb = connect(a);
     enqueueTerminator(usb);
     usb.enqueueIn(ps2Reply(sonySpecsMiso(32, 0x5a, 0x2b)));
+    // Page 0 is read for the Conquest check; a normal, non-Conquest pattern.
+    enqueuePageRead(usb, 0x00, 0x00);
     // Two 16-page blocks: the loop must erase block 0, write its 16 pages,
     // then erase block 1 again before writing those pages.
     enqueueBlockErase(usb);
@@ -795,14 +797,16 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     const r = await a.writePS2CardImage(image, () => {});
     expect(r.status).toBe("ok");
     const cmds = usb.writes.map((w) => w[5]);
-    // sync, specs, then block 0's erase before its first page write...
-    expect(cmds.slice(0, 7)).toEqual([
-      0x28, 0x27, 0x26, 0x21, 0x82, 0x12, 0x22,
+    // sync, specs, the page-0 Conquest check, then block 0's erase before its
+    // first page write...
+    expect(cmds.slice(0, 14)).toEqual([
+      0x28, 0x27, 0x26, 0x23, 0x43, 0x43, 0x43, 0x43, 0x43, 0x81, 0x21, 0x82,
+      0x12, 0x22,
     ]);
     // ...the erase repeats (0x21, 0x82, 0x12) right before page 16's write...
-    expect(cmds.slice(118, 122)).toEqual([0x21, 0x82, 0x12, 0x22]);
-    // ...and two erases + 32 page writes cover the whole card.
-    expect(cmds.length).toBe(3 + 2 * 3 + 32 * 7);
+    expect(cmds.slice(125, 129)).toEqual([0x21, 0x82, 0x12, 0x22]);
+    // ...and two erases + 32 page writes (+ the page-0 read) cover the card.
+    expect(cmds.length).toBe(3 + 7 + 2 * 3 + 32 * 7);
   });
 
   it("N37 writePS2CardImage rejects a mismatched image size", async () => {
@@ -822,6 +826,7 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     const usb = connect(a);
     enqueueTerminator(usb);
     usb.enqueueIn(ps2Reply(sonySpecsMiso(1, 0x5a, 0x2b)));
+    enqueuePageRead(usb, 0x00, 0x00); // page-0 Conquest check
     enqueueBlockErase(usb);
     enqueuePageWrite(usb, true);
     const image = new Uint8Array(528);
@@ -840,5 +845,63 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(await a.writePS2CardImage(new Uint8Array(528), () => {})).toEqual({
       status: "needs-auth",
     });
+  });
+
+  it("N40 writePS2CardImage refuses a Conquest card before any erase", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(32, 0x5a, 0x2b)));
+    // Page 0 opens with the Conquest magic (rest of the page 0xFF).
+    const page0 = new Uint8Array(528).fill(0xff);
+    page0.set(new TextEncoder().encode("Memory Card for SoulCaliburII"), 0);
+    enqueuePageReadEcho(usb, page0);
+
+    const r = await a.writePS2CardImage(new Uint8Array(32 * 528), () => {});
+    expect(r).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("Conquest"),
+    });
+    // The guard fires before the erase loop: specs + page-0 read, then no
+    // erase (0x21/0x82) and no page write (0x22).
+    const cmds = usb.writes.map((w) => w[5]);
+    expect(cmds.slice(0, 4)).toEqual([0x28, 0x27, 0x26, 0x23]);
+    expect(cmds).not.toContain(0x21);
+    expect(cmds).not.toContain(0x82);
+    expect(cmds).not.toContain(0x22);
+  });
+
+  it("N41 an erased (all-0xFF) page 0 is not Conquest and proceeds", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(1, 0x5a, 0x2b)));
+    const erased = new Uint8Array(528).fill(0xff);
+    enqueuePageReadEcho(usb, erased);
+    enqueueBlockErase(usb);
+    enqueuePageWrite(usb, true);
+    const image = new Uint8Array(528);
+    for (let i = 0; i < 528; i++) image[i] = (i * 3) & 0xff;
+    const r = await a.writePS2CardImage(image, () => {});
+    expect(r.status).toBe("ok");
+    // A full block erase + one page write ran (the erased card is not refused).
+    expect(usb.writes.map((w) => w[5])).toContain(0x21);
+    expect(usb.writes.map((w) => w[5])).toContain(0x22);
+  });
+
+  it("N42 a failed page-0 read refuses the write before any erase", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTerminator(usb);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(32, 0x5a, 0x2b)));
+    // No page-0 read reply is enqueued, so ps2ReadPage returns null; the guard
+    // must fail closed rather than erase a card it could not inspect.
+    const r = await a.writePS2CardImage(new Uint8Array(32 * 528), () => {});
+    expect(r).toMatchObject({ status: "error" });
+    const cmds = usb.writes.map((w) => w[5]);
+    expect(cmds[2]).toBe(0x26); // specs were read, then the page-0 read failed
+    expect(cmds).not.toContain(0x21);
+    expect(cmds).not.toContain(0x82);
+    expect(cmds).not.toContain(0x22);
   });
 });

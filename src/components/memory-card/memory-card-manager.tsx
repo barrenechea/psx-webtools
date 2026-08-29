@@ -37,6 +37,7 @@ import PS1MemoryCard, {
   SlotTypes,
 } from "@/lib/ps1-memory-card";
 import { PS2MemoryCard, type Ps2SingleSaveFormat } from "@/lib/ps2/ps2-card";
+import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
 import {
   fromStoredMgKeyset,
@@ -82,10 +83,12 @@ import { WriteCardDialog } from "./write-card-dialog";
 let lastCardId = 0;
 const nextCardId = (): number => ++lastCardId;
 
-// The read or write awaiting a MagicGate keyset, so the key dialog can retry
-// the exact operation once a section is picked (or on a repeated failure).
+// The read, write, or format awaiting a MagicGate keyset, so the key dialog can
+// retry the exact operation once a section is picked (or on a repeated failure).
 type MgPendingOp =
-  { kind: "read" } | { kind: "write"; card: PS1MemoryCard | PS2MemoryCard };
+  | { kind: "read" }
+  | { kind: "write"; card: PS1MemoryCard | PS2MemoryCard }
+  | { kind: "format" };
 
 // Save-dialog format lists. PS1 entries derive from the PS1 extension maps so
 // the generalized dialogs keep their exact previous options; PS2 is a single
@@ -301,6 +304,9 @@ export const MemoryCardManager: React.FC = () => {
     usePersistentState<StoredMgKeyset | null>(PS2_MG_KEYSET_STORAGE_KEY, null);
   const [isWriteDialogOpen, setIsWriteDialogOpen] = useState(false);
   const [isFormatDialogOpen, setIsFormatDialogOpen] = useState(false);
+  // The slot kind probed when the format dialog opens, so it can offer the right
+  // options (PS2 is a full NAND erase, no quick/full).
+  const [formatCardKind, setFormatCardKind] = useState<"ps1" | "ps2">("ps1");
   const [isMgKeyDialogOpen, setIsMgKeyDialogOpen] = useState(false);
   // The read/write awaiting a keyset, kept in a ref (not state) so the close
   // path always sees the latest value and a successful pick clears it before
@@ -348,6 +354,7 @@ export const MemoryCardManager: React.FC = () => {
     readCard,
     writeCard,
     formatCard,
+    checkCard,
     readPocketStationSerial,
     dumpPocketStationBIOS,
     setPocketStationTime,
@@ -525,7 +532,8 @@ export const MemoryCardManager: React.FC = () => {
       setError(null);
       try {
         if (op.kind === "read") await performRead(keyset);
-        else await performWrite(op.card, keyset);
+        else if (op.kind === "write") await performWrite(op.card, keyset);
+        else await performFormat(false, keyset);
       } catch (err) {
         handleMgAuthError(err, op);
       }
@@ -553,13 +561,47 @@ export const MemoryCardManager: React.FC = () => {
     setIsMgKeyDialogOpen(open);
   };
 
+  const addFormattedPs2Card = (blank: PS2MemoryCard) => {
+    const label = connectedDevice ?? "Device";
+    const newCard: MemoryCard = {
+      id: nextCardId(),
+      name: `${label} Formatted`,
+      type: "device",
+      source: firmwareVersion ? `${label} v${firmwareVersion}` : label,
+      card: blank,
+    };
+    setMemoryCards((prev) => [...prev, newCard]);
+    setSelectedCard(newCard.id);
+    setSelectedSlot(null);
+    setSelectedPs2Save(null);
+  };
+
+  // Build and write the blank card, then put the formatted PS2 card in the list
+  // so the sidebar is not a stale save list while the slot reads empty.
+  const performFormat = async (quick: boolean, keyset?: Ps2MgKeyset) => {
+    const blank = await formatCard(quick, keyset ?? mgKeyset ?? undefined);
+    if (blank) addFormattedPs2Card(blank);
+  };
+
+  // Probe the slot so the format dialog can hide quick/full for a PS2 card.
+  const handleFormatClick = async () => {
+    setError(null);
+    const kind = await checkCard();
+    if (!kind) {
+      setError("No memory card detected. Insert a card and try again.");
+      return;
+    }
+    setFormatCardKind(kind);
+    setIsFormatDialogOpen(true);
+  };
+
   const handleFormatConfirm = async (quick: boolean) => {
     setIsFormatDialogOpen(false);
     setError(null);
     try {
-      await formatCard(quick);
+      await performFormat(quick);
     } catch (err) {
-      setError((err as Error).message);
+      handleMgAuthError(err, { kind: "format" });
     }
   };
 
@@ -577,19 +619,28 @@ export const MemoryCardManager: React.FC = () => {
     const errors: string[] = [];
 
     for (const file of files) {
-      try {
-        // Probe by content: PS2 first (size % 528 + superblock magic),
-        // otherwise PS1.
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const ps2Card = PS2MemoryCard.tryFromBytes(bytes);
-        let card: PS1MemoryCard | PS2MemoryCard;
-        if (ps2Card) {
-          card = ps2Card;
-        } else {
+      // Probe by content: PS2 first (size % 528 + superblock magic), otherwise
+      // PS1. A Conquest dump is neither, so refuse it clearly rather than fall
+      // through to the PS1 loader.
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const ps2Card = PS2MemoryCard.tryFromBytes(bytes);
+      let card: PS1MemoryCard | PS2MemoryCard | null = null;
+      let openError: string | null = null;
+      if (ps2Card) {
+        card = ps2Card;
+      } else if (isPs2ConquestCard(bytes)) {
+        openError =
+          "PS2 Conquest card (SoulCalibur II); it has no PFS filesystem, so it cannot be loaded, formatted, or written.";
+      } else {
+        try {
           const ps1 = new PS1MemoryCard();
           await ps1.loadFromFile(file, fixCorrupted);
           card = ps1;
+        } catch (err) {
+          openError = (err as Error).message;
         }
+      }
+      if (card) {
         openedCards.push({
           id: nextCardId(),
           name: file.name,
@@ -597,8 +648,10 @@ export const MemoryCardManager: React.FC = () => {
           source: file.name,
           card,
         });
-      } catch (err) {
-        errors.push(`${file.name}: ${(err as Error).message}`);
+      } else {
+        errors.push(
+          `${file.name}: ${openError ?? "could not be read as a card."}`,
+        );
       }
     }
 
@@ -1240,7 +1293,7 @@ export const MemoryCardManager: React.FC = () => {
                 onDisconnect={() => void handleDisconnect()}
                 onRead={() => void handleReadFromDevice()}
                 onWrite={handleWriteToDevice}
-                onFormat={() => setIsFormatDialogOpen(true)}
+                onFormat={() => void handleFormatClick()}
               />
               <div className="flex grow flex-row bg-transparent">
                 {selectedCardEntry ? (
@@ -1357,6 +1410,7 @@ export const MemoryCardManager: React.FC = () => {
         isOpen={isFormatDialogOpen}
         onOpenChange={setIsFormatDialogOpen}
         deviceName={connectedDevice ?? "device"}
+        cardKind={formatCardKind}
         onFormat={(quick) => void handleFormatConfirm(quick)}
       />
       {compareData && (

@@ -28,6 +28,7 @@ export function useDeviceManager() {
     disconnect,
     readMemoryCard,
     writeMemoryCard,
+    formatMemoryCard,
     firmwareVersion,
   } = useHardwareConnection(() => setConnectedDevice(null));
 
@@ -227,28 +228,46 @@ export function useDeviceManager() {
     setTimeout(hideDialog, 1000);
   };
 
-  const formatCard = async (quick: boolean) => {
+  // Probe the slot's card kind for the format dialog. Returns null when no
+  // device is connected or no card is present; the caller reports that.
+  const checkCard = async (): Promise<"ps1" | "ps2" | null> => {
+    if (!device) return null;
+    const result = await device.checkCard();
+    if (!result.present) return null;
+    return result.kind;
+  };
+
+  // Format the card in the slot (PS2 format2 from Get Specs, or PS1 quick/full
+  // frames). Returns the blank PS2 card on a PS2 format so the caller can put
+  // it in the card list; null on a PS1 format (which the list does not track).
+  const formatCard = async (
+    quick: boolean,
+    keyset?: Ps2MgKeyset,
+  ): Promise<PS2MemoryCard | null> => {
     showDialog("Formatting Memory Card", "Preparing to format...");
+    let blank: PS1MemoryCard | PS2MemoryCard | null;
     try {
-      const blankCard = new PS1MemoryCard();
-      blankCard.formatCard();
-      await writeMemoryCard(
-        blankCard,
+      blank = await formatMemoryCard(
+        quick,
         (progress) =>
           updateDialog(
             `Formatting memory card... ${Math.round(progress * 100)}%`,
             undefined,
             progress,
           ),
-        false,
-        quick ? 64 : 1024,
+        keyset,
       );
     } catch (err) {
       hideDialog();
       throw err;
     }
+    if (!blank) {
+      hideDialog();
+      throw new Error("Failed to format memory card");
+    }
     updateDialog("Memory card formatted!");
     setTimeout(hideDialog, 1000);
+    return blank instanceof PS2MemoryCard ? blank : null;
   };
 
   const getPsDevice = (): MemCARDuino | PS3MemCardAdaptor | null =>
@@ -312,6 +331,7 @@ export function useDeviceManager() {
     readCard,
     writeCard,
     formatCard,
+    checkCard,
     readPocketStationSerial,
     dumpPocketStationBIOS,
     setPocketStationTime,

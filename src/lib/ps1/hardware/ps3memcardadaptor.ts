@@ -1,3 +1,4 @@
+import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import {
   assembleImagePage,
   ECC_PAGE_DATA_SIZE,
@@ -606,8 +607,10 @@ export class PS3MemCardAdaptor extends HardwareInterface {
   // keyset is supplied. `needs-auth` is returned only when no keyset was used
   // (clones keep dumping). Once a keyset is used the outcome is either ok or an
   // error (a failed handshake keeps its step; a card that still refuses after a
-  // successful auth is an error, not needs-auth).
-  private async ps2GetSpecsAuth(keyset?: Ps2MgKeyset): Promise<Ps2SpecsResult> {
+  // successful auth is an error, not needs-auth). Exposed (not just internal)
+  // so the format path can read the page count and size a blank image to it
+  // before the destructive write.
+  async ps2GetSpecsAuth(keyset?: Ps2MgKeyset): Promise<Ps2SpecsResult> {
     let result = await this.ps2GetSpecs();
     if (result.status !== "needs-auth") return result;
     if (!keyset) return result;
@@ -791,6 +794,26 @@ export class PS3MemCardAdaptor extends HardwareInterface {
       return {
         status: "error",
         message: "The PS2 card image size does not match the card in the slot.",
+      };
+    }
+    // Conquest guard, before the first erase packet. Arcade SoulCalibur II
+    // Conquest cards have no PFS filesystem; the firmware erases on request, so
+    // the host must refuse here. The guard is fail-closed: a page-0 read that
+    // does not return a page cannot prove the card is not Conquest, so refuse
+    // too (erasing an unreadable Conquest card would destroy it).
+    const page0 = await this.ps2ReadPage(0, specs);
+    if (page0 === null) {
+      return {
+        status: "error",
+        message:
+          "Page 0 could not be read, so the card could not be checked for Conquest; the format/write was refused before any erase.",
+      };
+    }
+    if (isPs2ConquestCard(page0)) {
+      return {
+        status: "error",
+        message:
+          "The card is a SoulCalibur II Conquest card with no PFS filesystem; it was refused before any erase or write.",
       };
     }
     const writeShare = verify ? 0.5 : 1;
