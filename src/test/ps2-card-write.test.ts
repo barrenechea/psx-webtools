@@ -326,7 +326,15 @@ describe("PS2MemoryCard importContainer", () => {
 });
 
 describe("PS2MemoryCard container export", () => {
-  it("round-trips a save through MAX and EMS containers", async () => {
+  const extFor: Record<string, string> = {
+    max: "x.max",
+    ems: "x.psu",
+    sharkport: "x.sps",
+    xport: "x.xps",
+    codebreaker: "x.cbs",
+    psv: "x.psv",
+  };
+  it("round-trips a save through every container format", async () => {
     const card = PS2MemoryCard.format(8192);
     const a = pattern(300, 1);
     const b = pattern(600, 2);
@@ -341,12 +349,16 @@ describe("PS2MemoryCard container export", () => {
         .sort(),
     ).toEqual(["PIC.PNG", "SAVE01.BIN", "icon.sys"]);
 
-    for (const format of ["max", "ems"] as const) {
-      const bytes = card.getContainerBytes("SAVE-MAX0001", format)!;
-      const container = await readPs2Container(
-        bytes,
-        format === "max" ? "x.max" : "x.psu",
-      );
+    for (const format of [
+      "max",
+      "ems",
+      "sharkport",
+      "xport",
+      "codebreaker",
+      "psv",
+    ] as const) {
+      const bytes = (await card.getContainerBytes("SAVE-MAX0001", format))!;
+      const container = await readPs2Container(bytes, extFor[format]);
       expect(container.title).toBe("SAVE-MAX0001");
       const byName = new Map(container.files.map((f) => [f.name, f.data]));
       expect([...byName.get("SAVE01.BIN")!]).toEqual([...a]);
@@ -354,9 +366,9 @@ describe("PS2MemoryCard container export", () => {
     }
   });
 
-  it("returns null/empty for unknown saves", () => {
+  it("returns null/empty for unknown saves", async () => {
     const card = PS2MemoryCard.format(8192);
-    expect(card.getContainerBytes("NOPE", "max")).toBeNull();
+    expect(await card.getContainerBytes("NOPE", "max")).toBeNull();
     expect(card.getSaveFiles("NOPE")).toEqual([]);
   });
 });

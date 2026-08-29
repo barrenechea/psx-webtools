@@ -36,7 +36,7 @@ import PS1MemoryCard, {
   type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
-import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+import { PS2MemoryCard, type Ps2SingleSaveFormat } from "@/lib/ps2/ps2-card";
 import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
 import {
   fromStoredMgKeyset,
@@ -166,7 +166,39 @@ const PS2_SINGLE_SAVE_FORMATS: readonly SaveFormatOption<Ps2SingleSaveTypes>[] =
       label: "EMS (.psu)",
       extensions: [".psu"],
     },
+    {
+      value: Ps2SingleSaveTypes.SharkPort,
+      label: "SharkPort (.sps)",
+      extensions: [".sps"],
+    },
+    {
+      value: Ps2SingleSaveTypes.XPort,
+      label: "X-Port (.xps)",
+      extensions: [".xps"],
+    },
+    {
+      value: Ps2SingleSaveTypes.CodeBreaker,
+      label: "CodeBreaker (.cbs)",
+      extensions: [".cbs"],
+    },
+    {
+      value: Ps2SingleSaveTypes.Psv,
+      label: "PSV (.psv)",
+      extensions: [".psv"],
+    },
   ];
+
+// Container format the card model accepts for each non-raw export type.
+const PS2_EXPORT_CONTAINER_FORMAT: Partial<
+  Record<Ps2SingleSaveTypes, Ps2SingleSaveFormat>
+> = {
+  [Ps2SingleSaveTypes.MaxDrive]: "max",
+  [Ps2SingleSaveTypes.Ems]: "ems",
+  [Ps2SingleSaveTypes.SharkPort]: "sharkport",
+  [Ps2SingleSaveTypes.XPort]: "xport",
+  [Ps2SingleSaveTypes.CodeBreaker]: "codebreaker",
+  [Ps2SingleSaveTypes.Psv]: "psv",
+};
 
 // PS2 copy naming: keep the prefix and increment the trailing 4-digit index
 // (BASLUS-21590GTA40001 -> ...0002), like the console auto-numbers saves.
@@ -900,22 +932,14 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard !== null && selectedPs2Save !== null) {
       const card = ps2Card(selectedCard);
       if (card) {
-        let success: boolean;
-        if (saveType === Ps2SingleSaveTypes.MaxDrive) {
-          success = await card.saveSingleSaveContainer(
-            fileName,
-            selectedPs2Save,
-            "max",
-          );
-        } else if (saveType === Ps2SingleSaveTypes.Ems) {
-          success = await card.saveSingleSaveContainer(
-            fileName,
-            selectedPs2Save,
-            "ems",
-          );
-        } else {
-          success = await card.saveSingleSave(fileName, selectedPs2Save);
-        }
+        const format = PS2_EXPORT_CONTAINER_FORMAT[saveType];
+        const success = format
+          ? await card.saveSingleSaveContainer(
+              fileName,
+              selectedPs2Save,
+              format,
+            )
+          : await card.saveSingleSave(fileName, selectedPs2Save);
         setError(success ? null : "Failed to export save");
       }
     }

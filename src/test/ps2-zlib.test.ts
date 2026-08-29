@@ -1,4 +1,4 @@
-import { inflateZlib } from "@/lib/ps2/ps2-zlib";
+import { deflateZlib, inflateZlib } from "@/lib/ps2/ps2-zlib";
 
 const eq = (a: Uint8Array, b: Uint8Array): boolean => {
   if (a.length !== b.length) return false;
@@ -47,6 +47,18 @@ describe("ps2-zlib", () => {
       const src = new Uint8Array(n);
       for (let i = 0; i < n; i++) src[i] = (i * 131) & 0xff;
       const compressed = await deflateWeb(src);
+      expect(eq(await inflateZlib(compressed), src), `n=${n}`).toBe(true);
+    }
+  });
+
+  it("deflateZlib emits a zlib stream that inflateZlib reverses", async () => {
+    for (const n of [1, 31, 1024, 8192]) {
+      const src = new Uint8Array(n);
+      for (let i = 0; i < n; i++) src[i] = (i * 131) & 0xff;
+      const compressed = await deflateZlib(src);
+      // RFC 1950 wrapper: 0x78 first byte, a second header byte, adler32 tail.
+      expect(compressed[0], `n=${n}`).toBe(0x78);
+      expect(compressed.length, `n=${n}`).toBeGreaterThan(2);
       expect(eq(await inflateZlib(compressed), src), `n=${n}`).toBe(true);
     }
   });

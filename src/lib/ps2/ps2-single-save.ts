@@ -1,14 +1,18 @@
 // PS2 single-save container codecs: MAX Drive, EMS (raw .psu), SharkPort,
-// X-Port, CodeBreaker, and PSV. Reads any of the formats a PC save file uses;
-// writes the MAX Drive and EMS layouts. Layouts follow the mymc++/mymc
-// implementations.
+// X-Port, CodeBreaker, and PSV. Reads and writes every format a PC save file
+// uses except nPort (recognized but not parsed). Layouts follow the mymc++/
+// mymc implementations and the scene tools that emit each container.
 
 import { crc32 } from "../crc32";
+import { aesCbcDecrypt } from "../crypto-utils";
+import { generateSaltSeed } from "../ps1-keys";
+import { ICON_MAGIC, ICON_SYS_SIZE, parseIconSys } from "./ps2-iconsys";
+import { psvIv, psvPs2Key } from "./ps2-keys";
 import { lzariCompress, lzariDecompress } from "./ps2-lzari";
 import { MODE_DIR, MODE_EXISTS, MODE_FILE } from "./ps2-pfs";
 import { PS2SAVE_CBS_RC4S, rc4Crypt } from "./ps2-rc4";
 import type { Ps2DateTime } from "./ps2-types";
-import { inflateZlib } from "./ps2-zlib";
+import { deflateZlib, inflateZlib } from "./ps2-zlib";
 
 const DF_RWX = 0x0007;
 const DF_0400 = 0x0400;
@@ -113,6 +117,33 @@ function writeName(b: Uint8Array, o: number, name: string): void {
   for (let i = 0; i < 32; i++) {
     b[o + i] = i < name.length ? name.charCodeAt(i) & 0x7f : 0;
   }
+}
+
+function writeNameN(b: Uint8Array, o: number, len: number, name: string): void {
+  for (let i = 0; i < len; i++) {
+    b[o + i] = i < name.length ? name.charCodeAt(i) & 0x7f : 0;
+  }
+}
+
+function setU32(b: Uint8Array, o: number, v: number): void {
+  const x = v >>> 0;
+  b[o] = x & 0xff;
+  b[o + 1] = (x >> 8) & 0xff;
+  b[o + 2] = (x >> 16) & 0xff;
+  b[o + 3] = (x >> 24) & 0xff;
+}
+
+function xorByte(b: Uint8Array, x: number): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) out[i] = b[i] ^ x;
+  return out;
+}
+
+function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
 }
 
 const roundUp = (a: number, n: number): number => Math.ceil(a / n) * n;
@@ -559,7 +590,7 @@ export async function readPs2Container(
 }
 
 // ---------------------------------------------------------------------------
-// Writers (MAX Drive + EMS only)
+// Writers (every format but nPort)
 // ---------------------------------------------------------------------------
 
 function writeMax(c: Ps2Container): Uint8Array {
@@ -653,12 +684,331 @@ function writeEms(c: Ps2Container): Uint8Array {
   return out;
 }
 
-export function writePs2Container(c: Ps2Container): Uint8Array {
+// The container's icon.sys bytes when a valid one is present (named icon.sys,
+// at least ICON_SYS_SIZE long, magic "PS2D"), else null. The raw Shift-JIS
+// title lives at offset 0xC0; callers copy those bytes directly rather than
+// round-tripping through the decoded (Unicode) title.
+function iconSysData(c: Ps2Container): Uint8Array | null {
+  for (const f of c.files) {
+    if (f.name.toUpperCase() !== "ICON.SYS") continue;
+    if (f.data.length < ICON_SYS_SIZE) return null;
+    let magic = "";
+    for (let i = 0; i < 4; i++) magic += String.fromCharCode(f.data[i] & 0x7f);
+    if (magic !== ICON_MAGIC) return null;
+    return f.data;
+  }
+  return null;
+}
+
+// ASCII-printable subset (0x20..0x7E) of a decoded title, for X-Port's
+// title_ascii field. Drops everything else, so a non-ASCII title yields "".
+function asciiTitle(title: string): string {
+  let out = "";
+  for (let i = 0; i < title.length; i++) {
+    const code = title.charCodeAt(i);
+    if (code >= 0x20 && code <= 0x7e) out += String.fromCharCode(code);
+  }
+  return out;
+}
+
+// --- SharkPort / X-Port (.sps / .xps) --------------------------------------
+// One 250-byte descriptor (xpsEntry_t layout) per directory/file record. The
+// mode field is stored byte-swapped in its low 16 bits so the reader's swap16
+// recovers the real mode. SharkPort and X-Port emit identical bytes; only the
+// file extension differs.
+
+const XPS_ENTRY_SIZE = 250;
+const XPS_DIR_MODE = DF_RWX | MODE_DIR | DF_0400 | MODE_EXISTS;
+const XPS_FILE_MODE = DF_RWX | MODE_FILE | DF_0400 | MODE_EXISTS;
+
+function writeXpsDesc(
+  b: Uint8Array,
+  o: number,
+  name: string,
+  length: number,
+  mode: number,
+  created: Ps2DateTime,
+  modified: Ps2DateTime,
+  titleAscii = "",
+): void {
+  b[o] = XPS_ENTRY_SIZE & 0xff;
+  b[o + 1] = (XPS_ENTRY_SIZE >> 8) & 0xff;
+  writeNameN(b, o + 2, 64, name);
+  setU32(b, o + 66, length); // file bytes, or dirent count for the dir record
+  // u32 start @70 and u32 end @74 stay 0 (sector hints; unused on PC files)
+  setU32(b, o + 78, swap16(mode)); // low 16 = swapped mode, high 16 = 0
+  writeTod(b, o + 82, created);
+  writeTod(b, o + 90, modified);
+  if (titleAscii) writeNameN(b, o + 114, 64, titleAscii); // title_ascii[64]
+}
+
+function writeSharkPort(c: Ps2Container): Uint8Array {
+  const dn = enc(c.title);
+  const fileCount = c.files.length;
+  const header = new Uint8Array(37 + dn.length);
+  header.set(SPS_MAGIC, 0); // magic @0 (17)
+  // savetype @17 (4) stays 0
+  setU32(header, 21, dn.length); // dirname length
+  header.set(dn, 25); // dirname
+  setU32(header, 25 + dn.length, 0); // datestamp length
+  setU32(header, 25 + dn.length + 4, 0); // comment length
+  // flen @25+dn.length+8 is set once the payload length is known
+
+  const chunks: Uint8Array[] = [header];
+  // Directory title_ascii is ASCII: the printable subset of the decoded icon
+  // title, falling back to the directory name when nothing printable remains.
+  const icon = iconSysData(c);
+  const decoded = icon !== null ? parseIconSys(icon).title : c.title;
+  const subset = asciiTitle(decoded);
+  const dirTitleAscii = subset !== "" ? subset : c.title;
+  const dirDesc = new Uint8Array(XPS_ENTRY_SIZE);
+  writeXpsDesc(
+    dirDesc,
+    0,
+    c.title,
+    fileCount + 2,
+    XPS_DIR_MODE,
+    c.created,
+    c.modified,
+    dirTitleAscii,
+  );
+  chunks.push(dirDesc);
+  for (const f of c.files) {
+    const desc = new Uint8Array(XPS_ENTRY_SIZE);
+    writeXpsDesc(
+      desc,
+      0,
+      f.name,
+      f.data.length,
+      XPS_FILE_MODE,
+      f.created,
+      f.modified,
+    );
+    chunks.push(desc);
+    chunks.push(f.data);
+  }
+  chunks.push(new Uint8Array(4)); // trailing checksum (zero)
+
+  const total = chunks.reduce((a, ch) => a + ch.length, 0);
+  // flen = size of "files and descriptors" = rest of the file minus the
+  // trailing 4-byte checksum.
+  setU32(header, 25 + dn.length + 8, total - (37 + dn.length) - 4);
+
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const ch of chunks) {
+    out.set(ch, off);
+    off += ch.length;
+  }
+  return out;
+}
+
+// --- CodeBreaker (.cbs) -----------------------------------------------------
+// Plaintext entry blob -> zlib -> RC4. The 0x128 header matches the scene
+// createCBS layout; the body sits exactly at dataOffset (0x128), and the
+// reader recovers its length from compressedSize - hlen.
+
+const CBS_HEADER_SIZE = 0x128;
+const CBS_DIR_MODE = 0x8427;
+const CBS_FILE_MODE = 0x8497;
+
+async function writeCodeBreaker(c: Ps2Container): Promise<Uint8Array> {
+  let blobLen = 0;
+  for (const f of c.files) blobLen += 64 + f.data.length;
+  const blob = new Uint8Array(blobLen);
+  let off = 0;
+  for (const f of c.files) {
+    writeTod(blob, off, f.created); // created @0
+    writeTod(blob, off + 8, f.modified); // modified @8
+    setU32(blob, off + 16, f.data.length); // length
+    setU32(blob, off + 20, CBS_FILE_MODE); // mode
+    // unk[8] @24 stays 0
+    writeName(blob, off + 32, f.name); // name[32]
+    blob.set(f.data, off + 64);
+    off += 64 + f.data.length;
+  }
+  const zlibBody = await deflateZlib(blob);
+  const body = rc4Crypt(PS2SAVE_CBS_RC4S, zlibBody);
+  const zlibLen = zlibBody.length;
+
+  const header = new Uint8Array(CBS_HEADER_SIZE);
+  header.set(CBS_MAGIC, 0); // magic
+  setU32(header, 4, 0x1f40); // unk1
+  setU32(header, 8, CBS_HEADER_SIZE); // dataOffset
+  setU32(header, 0xc, blob.length); // decompressedSize
+  setU32(header, 0x10, zlibLen + CBS_HEADER_SIZE); // compressedSize (whole file)
+  writeName(header, 0x14, c.title); // name[32]
+  writeTod(header, 0x34, c.created); // created
+  writeTod(header, 0x3c, c.modified); // modified
+  setU32(header, 0x48, CBS_DIR_MODE); // mode
+  // unk3[16] @0x4C stays 0; title[72] follows it at 0x5C. The title is a
+  // PS2-side string: copy the raw Shift-JIS bytes from the icon.sys title
+  // (offset 0xC0, 68 bytes, zero-padded to 72). No icon.sys -> dir name ASCII.
+  const icon = iconSysData(c);
+  if (icon !== null) {
+    for (let i = 0; i < 68; i++) header[0x5c + i] = icon[0xc0 + i];
+  } else {
+    writeNameN(header, 0x5c, 72, c.title);
+  }
+
+  const out = new Uint8Array(CBS_HEADER_SIZE + zlibLen);
+  out.set(header, 0);
+  out.set(body, CBS_HEADER_SIZE);
+  return out;
+}
+
+// --- PSV savetype 2 (.psv) ---------------------------------------------------
+// The PS3 USB wrapper for a PS2 save directory. psv_header_t (0x40), then
+// ps2_header_t (10 x u32, numberOfFiles at 0x64), ps2_MainDirInfo_t (0x38),
+// per-file ps2_FileInfo_t (60 bytes), then the raw file bytes. The salt at
+// 0x08 seeds an HMAC at 0x1C signed with the PS2 PSV key/IV so a PS3 accepts
+// the file on OFW (PC import tools skip the check).
+
+const PSV_DIR_MODE = 0x8427;
+const PSV_FILE_MODE = 0x8497;
+
+function iconPositions(
+  files: Ps2ContainerFile[],
+  positions: { pos: number; size: number }[],
+): {
+  sys: [number, number];
+  icon1: [number, number];
+  icon2: [number, number];
+  icon3: [number, number];
+} {
+  const result: {
+    sys: [number, number];
+    icon1: [number, number];
+    icon2: [number, number];
+    icon3: [number, number];
+  } = { sys: [0, 0], icon1: [0, 0], icon2: [0, 0], icon3: [0, 0] };
+  let iconIdx = -1;
+  for (let i = 0; i < files.length; i++) {
+    if (files[i].name.toUpperCase() === "ICON.SYS") {
+      iconIdx = i;
+      break;
+    }
+  }
+  if (iconIdx < 0) return result;
+  result.sys = [positions[iconIdx].pos, positions[iconIdx].size];
+  const data = files[iconIdx].data;
+  if (data.length < ICON_SYS_SIZE) return result;
+  let magic = "";
+  for (let i = 0; i < 4; i++) magic += String.fromCharCode(data[i] & 0x7f);
+  if (magic !== ICON_MAGIC) return result;
+  const sys = parseIconSys(data);
+  const findByName = (nm: string): [number, number] | null => {
+    if (!nm) return null;
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].name.toUpperCase() === nm.toUpperCase()) {
+        return [positions[i].pos, positions[i].size];
+      }
+    }
+    return null;
+  };
+  const v = findByName(sys.viewIcon);
+  if (v) result.icon1 = v;
+  const cp = findByName(sys.copyIcon);
+  if (cp) result.icon2 = cp;
+  const d = findByName(sys.delIcon);
+  if (d) result.icon3 = d;
+  return result;
+}
+
+export async function getPsv2Hmac(
+  data: Uint8Array,
+  saltSeed: Uint8Array,
+): Promise<Uint8Array> {
+  const salt = new Uint8Array(0x40);
+  salt.set(saltSeed.subarray(0, 0x14), 0);
+  const dec = await aesCbcDecrypt(salt, psvPs2Key, psvIv);
+  for (let i = 0x14; i < 0x40; i++) dec[i] = 0;
+  const hash1 = await crypto.subtle.digest(
+    "SHA-1",
+    concatBytes(xorByte(dec, 0x36), data),
+  );
+  const hash2 = await crypto.subtle.digest(
+    "SHA-1",
+    concatBytes(xorByte(dec, 0x36 ^ 0x6a), new Uint8Array(hash1)),
+  );
+  return new Uint8Array(hash2);
+}
+
+async function writePsv(c: Ps2Container): Promise<Uint8Array> {
+  const fileCount = c.files.length;
+  const entriesStart = 0xa0;
+  const dataStart = entriesStart + fileCount * 60;
+  const totalData = c.files.reduce((a, f) => a + f.data.length, 0);
+  const out = new Uint8Array(dataStart + totalData);
+
+  out.set(PSV_MAGIC, 0); // magic @0
+  setU32(out, 4, 0); // version @4
+  // salt @8 (20) and HMAC @0x1c (20) are filled once the header is complete
+  setU32(out, 0x38, 0x2c); // next_section_size @0x38
+  setU32(out, 0x3c, 2); // save_type @0x3c = 2
+
+  const positions: { pos: number; size: number }[] = [];
+  let cursor = dataStart;
+  let displaySize = 0;
+  for (const f of c.files) {
+    positions.push({ pos: cursor, size: f.data.length });
+    cursor += f.data.length;
+    displaySize += f.data.length;
+  }
+  const icons = iconPositions(c.files, positions);
+  setU32(out, 0x40, displaySize); // displaySize
+  setU32(out, 0x44, icons.sys[0]); // sysPos
+  setU32(out, 0x48, icons.sys[1]); // sysSize
+  setU32(out, 0x4c, icons.icon1[0]); // icon1Pos
+  setU32(out, 0x50, icons.icon1[1]); // icon1Size
+  setU32(out, 0x54, icons.icon2[0]); // icon2Pos
+  setU32(out, 0x58, icons.icon2[1]); // icon2Size
+  setU32(out, 0x5c, icons.icon3[0]); // icon3Pos
+  setU32(out, 0x60, icons.icon3[1]); // icon3Size
+  setU32(out, 0x64, fileCount); // numberOfFiles
+
+  writeTod(out, 0x68, c.created); // root created
+  writeTod(out, 0x70, c.modified); // root modified
+  setU32(out, 0x78, fileCount + 2); // numberOfFilesInDir
+  setU32(out, 0x7c, PSV_DIR_MODE); // root attribute
+  writeName(out, 0x80, c.title); // root name[32]
+
+  for (let i = 0; i < fileCount; i++) {
+    const e = entriesStart + i * 60;
+    writeTod(out, e, c.files[i].created);
+    writeTod(out, e + 8, c.files[i].modified);
+    setU32(out, e + 16, c.files[i].data.length); // fileSize
+    setU32(out, e + 20, PSV_FILE_MODE); // attribute
+    writeName(out, e + 24, c.files[i].name); // name[32]
+    setU32(out, e + 56, positions[i].pos); // positionInFile
+  }
+
+  cursor = dataStart;
+  for (const f of c.files) {
+    out.set(f.data, cursor);
+    cursor += f.data.length;
+  }
+
+  const saltSeed = await generateSaltSeed(out);
+  out.set(saltSeed.subarray(0, 0x14), 0x8); // salt
+  const hmac = await getPsv2Hmac(out, saltSeed);
+  out.set(hmac, 0x1c); // HMAC
+  return out;
+}
+
+export async function writePs2Container(c: Ps2Container): Promise<Uint8Array> {
   switch (c.format) {
     case Ps2ContainerFormat.MaxDrive:
       return writeMax(c);
     case Ps2ContainerFormat.Ems:
       return writeEms(c);
+    case Ps2ContainerFormat.SharkPort:
+    case Ps2ContainerFormat.XPort:
+      return writeSharkPort(c);
+    case Ps2ContainerFormat.CodeBreaker:
+      return writeCodeBreaker(c);
+    case Ps2ContainerFormat.Psv:
+      return writePsv(c);
     default:
       throw new Error("Writing is not supported for this PS2 save format");
   }

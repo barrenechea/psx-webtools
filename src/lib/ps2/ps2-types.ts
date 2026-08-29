@@ -80,13 +80,18 @@ export enum Ps2CardFormats {
 
 /**
  * Single-save export formats. `Sdt` carries the save's user-data file bytes
- * under the scene `.sdt` extension; `MaxDrive` and `Ems` wrap the save's whole
- * file set in a PS2 single-save container under `.psu`.
+ * under the scene `.sdt` extension; the rest wrap the save's whole file set in
+ * a PS2 single-save container. Container writers emit the canonical layout for
+ * each format (`.psu`, `.sps`, `.xps`, `.cbs`, `.psv`).
  */
 export enum Ps2SingleSaveTypes {
   Sdt = 0,
   MaxDrive = 1,
   Ems = 2,
+  SharkPort = 3,
+  XPort = 4,
+  CodeBreaker = 5,
+  Psv = 6,
 }
 
 /** Get Specs flags bit 0: page has spare ECC. Sony 8 MB `0x2B` includes this. */

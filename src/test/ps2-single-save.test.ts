@@ -1,9 +1,11 @@
 import { crc32 } from "@/lib/crc32";
+import { buildIconSys } from "@/lib/ps2/ps2-iconsys";
 import { MODE_DIR, MODE_EXISTS, MODE_FILE } from "@/lib/ps2/ps2-pfs";
 import { PS2SAVE_CBS_RC4S, rc4Crypt } from "@/lib/ps2/ps2-rc4";
 import {
   containerFormatToExtension,
   detectPs2Container,
+  getPsv2Hmac,
   type Ps2Container,
   Ps2ContainerFormat,
   readPs2Container,
@@ -35,6 +37,9 @@ const setU32 = (b: Uint8Array, o: number, v: number): void => {
   b[o + 2] = (x >> 16) & 0xff;
   b[o + 3] = (x >> 24) & 0xff;
 };
+
+const u32At = (b: Uint8Array, o: number): number =>
+  (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
 
 const swap16 = (x: number): number =>
   (((x << 8) & 0xff00) | ((x >> 8) & 0xff)) & 0xffff;
@@ -260,7 +265,7 @@ describe("ps2-single-save", () => {
       { name: "SAVE01.BIN", data: A },
       { name: "PIC.PNG", data: B },
     ];
-    const bytes = writePs2Container(
+    const bytes = await writePs2Container(
       container(Ps2ContainerFormat.MaxDrive, files),
     );
     expect(detectPs2Container(bytes, "x.psu")).toBe(
@@ -293,7 +298,9 @@ describe("ps2-single-save", () => {
       { name: "SAVE01.BIN", data: A },
       { name: "PIC.PNG", data: B },
     ];
-    const bytes = writePs2Container(container(Ps2ContainerFormat.Ems, files));
+    const bytes = await writePs2Container(
+      container(Ps2ContainerFormat.Ems, files),
+    );
     expect(detectPs2Container(bytes, "x.psu")).toBe(Ps2ContainerFormat.Ems);
     const c = await readPs2Container(bytes, "x.psu");
     expect(c.format).toBe(Ps2ContainerFormat.Ems);
@@ -373,6 +380,174 @@ describe("ps2-single-save", () => {
     expect(eq(c.files[1].data, B)).toBe(true);
   });
 
+  it("round-trips a SharkPort (.sps) container", async () => {
+    const files: RawFile[] = [
+      { name: "SAVE01.BIN", data: A },
+      { name: "PIC.PNG", data: B },
+    ];
+    const bytes = await writePs2Container(
+      container(Ps2ContainerFormat.SharkPort, files),
+    );
+    expect(detectPs2Container(bytes, "x.sps")).toBe(
+      Ps2ContainerFormat.SharkPort,
+    );
+    const c = await readPs2Container(bytes, "x.sps");
+    expect(c.format).toBe(Ps2ContainerFormat.SharkPort);
+    expect(c.title).toBe("TESTGAME");
+    expect(c.files).toHaveLength(2);
+    expect(eq(c.files[0].data, A)).toBe(true);
+    expect(eq(c.files[1].data, B)).toBe(true);
+    // The stored mode is byte-swapped; swap16 must recover a file mode.
+    const dirEnd = 37 + enc("TESTGAME").length;
+    const fmode = swap16(
+      bytes[dirEnd + 250 + 78] | (bytes[dirEnd + 250 + 79] << 8),
+    );
+    expect(fmode & MODE_FILE).not.toBe(0);
+    // The file ends with a 4-byte checksum slot (zero is acceptable).
+    expect([...bytes.subarray(bytes.length - 4)]).toEqual([0, 0, 0, 0]);
+  });
+
+  it("round-trips an X-Port (.xps) container sharing the .sps layout", async () => {
+    const files: RawFile[] = [
+      { name: "SAVE01.BIN", data: A },
+      { name: "PIC.PNG", data: B },
+    ];
+    const sps = await writePs2Container(
+      container(Ps2ContainerFormat.SharkPort, files),
+    );
+    const xps = await writePs2Container(
+      container(Ps2ContainerFormat.XPort, files),
+    );
+    expect(eq(sps, xps)).toBe(true);
+    expect(detectPs2Container(xps, "x.xps")).toBe(Ps2ContainerFormat.XPort);
+    const c = await readPs2Container(xps, "x.xps");
+    expect(c.format).toBe(Ps2ContainerFormat.XPort);
+    expect(c.files).toHaveLength(2);
+    expect(eq(c.files[0].data, A)).toBe(true);
+    expect(eq(c.files[1].data, B)).toBe(true);
+  });
+
+  it("encodes CBS/X-Port titles from the icon.sys, not the dir name", async () => {
+    const icon = buildIconSys({ title: "HELLO" });
+    const files: RawFile[] = [
+      { name: "ICON.SYS", data: icon },
+      { name: "SAVE01.BIN", data: A },
+    ];
+
+    // CodeBreaker: title[72]@0x5C is the raw icon.sys title bytes (0xC0), not
+    // the directory name; name[32]@0x14 stays the directory name.
+    const cbs = await writePs2Container(
+      container(Ps2ContainerFormat.CodeBreaker, files),
+    );
+    expect([...cbs.subarray(0x5c, 0x5c + 5)]).toEqual([
+      ...icon.subarray(0xc0, 0xc0 + 5),
+    ]);
+    expect([...cbs.subarray(0x5c, 0x5c + 5)]).not.toEqual([
+      ...enc("TESTGAME").subarray(0, 5),
+    ]);
+    expect([...cbs.subarray(0x14, 0x14 + 8)]).toEqual([...enc("TESTGAME")]);
+
+    // X-Port: directory title_ascii@+114 is the printable ASCII subset; the
+    // file records stay zero at +114.
+    const xps = await writePs2Container(
+      container(Ps2ContainerFormat.XPort, files),
+    );
+    const dirEnd = 37 + enc("TESTGAME").length;
+    expect([...xps.subarray(dirEnd + 114, dirEnd + 114 + 5)]).toEqual([
+      ...enc("HELLO"),
+    ]);
+    const fileTitle = xps.subarray(dirEnd + 250 + 114, dirEnd + 250 + 114 + 64);
+    for (const b of fileTitle) expect(b).toBe(0);
+  });
+
+  it("keeps non-ASCII icon title bytes verbatim in CBS (no UTF-16 & 0x7f)", async () => {
+    const icon = buildIconSys({});
+    // Shift-JIS double-byte sequences with high bits set.
+    const sjis = Uint8Array.from([0x93, 0x5c, 0x96, 0x7b]);
+    icon.set(sjis, 0xc0);
+    const files: RawFile[] = [
+      { name: "ICON.SYS", data: icon },
+      { name: "SAVE01.BIN", data: A },
+    ];
+    const cbs = await writePs2Container(
+      container(Ps2ContainerFormat.CodeBreaker, files),
+    );
+    expect([...cbs.subarray(0x5c, 0x5c + 4)]).toEqual([...sjis]);
+  });
+
+  it("round-trips a CodeBreaker (.cbs) container", async () => {
+    const files: RawFile[] = [
+      { name: "SAVE01.BIN", data: A },
+      { name: "PIC.PNG", data: B },
+    ];
+    const bytes = await writePs2Container(
+      container(Ps2ContainerFormat.CodeBreaker, files),
+    );
+    expect(detectPs2Container(bytes, "x.cbs")).toBe(
+      Ps2ContainerFormat.CodeBreaker,
+    );
+    // Header layout: dataOffset 0x128, compressedSize = whole file,
+    // decompressedSize = the plaintext entry-blob length.
+    expect(u32At(bytes, 8)).toBe(0x128);
+    expect(u32At(bytes, 4)).toBe(0x1f40); // unk1
+    expect(u32At(bytes, 0x10)).toBe(bytes.length);
+    const blobLen =
+      files.length * 64 + files.reduce((a, f) => a + f.data.length, 0);
+    expect(u32At(bytes, 0x0c)).toBe(blobLen);
+    // title[72] lives at 0x5C and must carry the display title, not zeros.
+    expect([...bytes.subarray(0x5c, 0x5c + 8)]).toEqual([...enc("TESTGAME")]);
+    const c = await readPs2Container(bytes, "x.cbs");
+    expect(c.format).toBe(Ps2ContainerFormat.CodeBreaker);
+    expect(c.title).toBe("TESTGAME");
+    expect(c.files).toHaveLength(2);
+    expect(eq(c.files[0].data, A)).toBe(true);
+    expect(eq(c.files[1].data, B)).toBe(true);
+  });
+
+  it("round-trips a PSV type-2 (.psv) container with a non-zero HMAC", async () => {
+    const files: RawFile[] = [
+      { name: "SAVE01.BIN", data: A },
+      { name: "PIC.PNG", data: B },
+    ];
+    const bytes = await writePs2Container(
+      container(Ps2ContainerFormat.Psv, files),
+    );
+    expect(detectPs2Container(bytes, "x.psv")).toBe(Ps2ContainerFormat.Psv);
+    // headerSize at 0x38, saveType at 0x3c, numberOfFiles at 0x64.
+    expect(u32At(bytes, 0x38)).toBe(0x2c);
+    expect(u32At(bytes, 0x3c)).toBe(2);
+    expect(u32At(bytes, 0x64)).toBe(2);
+    let hmac = 0;
+    for (let i = 0x1c; i < 0x30; i++) hmac |= bytes[i];
+    expect(hmac).not.toBe(0);
+    const c = await readPs2Container(bytes, "x.psv");
+    expect(c.format).toBe(Ps2ContainerFormat.Psv);
+    expect(c.title).toBe("TESTGAME");
+    expect(c.files).toHaveLength(2);
+    expect(eq(c.files[0].data, A)).toBe(true);
+    expect(eq(c.files[1].data, B)).toBe(true);
+  });
+
+  it("PSV type-2 HMAC self-resigns from the stored salt", async () => {
+    const files: RawFile[] = [
+      { name: "SAVE01.BIN", data: A },
+      { name: "PIC.PNG", data: B },
+    ];
+    const written = await writePs2Container(
+      container(Ps2ContainerFormat.Psv, files),
+    );
+    const stored = written.subarray(0x1c, 0x30).slice();
+    // Zero the hash field, then recompute the type-2 HMAC from the salt
+    // already at 0x08 over the whole buffer — what psv_resign does on load.
+    // It must reproduce the stored bytes; this catches hashing the buffer
+    // before the salt is written or signing at the wrong offset.
+    const reseeded = written.slice();
+    for (let i = 0x1c; i < 0x30; i++) reseeded[i] = 0;
+    const saltSeed = reseeded.subarray(0x08, 0x1c);
+    const recomputed = await getPsv2Hmac(reseeded, saltSeed);
+    expect([...recomputed]).toEqual([...stored]);
+  });
+
   it("falls back to the extension and rejects unknown formats", () => {
     expect(detectPs2Container(new Uint8Array([1, 2, 3]), "x.dat")).toBe(
       Ps2ContainerFormat.Unknown,
@@ -399,12 +574,12 @@ describe("ps2-single-save", () => {
     expect(containerFormatToExtension(Ps2ContainerFormat.Psv)).toBe(".psv");
   });
 
-  it("refuses to write formats that have no encoder", () => {
-    expect(() =>
-      writePs2Container(container(Ps2ContainerFormat.Psv, [])),
-    ).toThrow();
-    expect(() =>
-      writePs2Container(container(Ps2ContainerFormat.SharkPort, [])),
-    ).toThrow();
+  it("refuses to write formats that have no encoder", async () => {
+    await expect(
+      writePs2Container(container(Ps2ContainerFormat.NPort, [])),
+    ).rejects.toThrow();
+    await expect(
+      writePs2Container(container(Ps2ContainerFormat.Unknown, [])),
+    ).rejects.toThrow();
   });
 });

@@ -5,7 +5,7 @@
 export const ICON_SYS_SIZE = 964;
 /** icon.sys background transparency: 0x00 clear … 0x80 opaque. */
 export const ICON_SYS_TRANSPARENCY_OPAQUE = 0x80;
-const ICON_MAGIC = "PS2D";
+export const ICON_MAGIC = "PS2D";
 
 /** Map the icon.sys transparency field to CSS/WebGL opacity 0..1. */
 export function iconSysBackgroundAlpha(transparency: number): number {

@@ -43,6 +43,27 @@ import {
 } from "./ps2-single-save";
 import type { Ps2DateTime, Ps2FileInfo, Ps2SaveInfo } from "./ps2-types";
 
+/** Container export formats (map 1:1 to the UI's single-save types). */
+export type Ps2SingleSaveFormat =
+  "max" | "ems" | "sharkport" | "xport" | "codebreaker" | "psv";
+
+function toContainerFormat(format: Ps2SingleSaveFormat): Ps2ContainerFormat {
+  switch (format) {
+    case "max":
+      return Ps2ContainerFormat.MaxDrive;
+    case "ems":
+      return Ps2ContainerFormat.Ems;
+    case "sharkport":
+      return Ps2ContainerFormat.SharkPort;
+    case "xport":
+      return Ps2ContainerFormat.XPort;
+    case "codebreaker":
+      return Ps2ContainerFormat.CodeBreaker;
+    case "psv":
+      return Ps2ContainerFormat.Psv;
+  }
+}
+
 // Entry modes as written by the console (verified on real cards).
 const DIR_MODE = 0x8427;
 const FILE_MODE = 0x8497;
@@ -346,18 +367,17 @@ export class PS2MemoryCard {
     return this.download(fileName, data);
   }
 
-  /** Container bytes (MAX or EMS) for a save, or null when it has no files. */
-  public getContainerBytes(
+  /** Container bytes for a save, or null when it has no files. */
+  public async getContainerBytes(
     saveName: string,
-    format: "max" | "ems",
-  ): Uint8Array | null {
+    format: Ps2SingleSaveFormat,
+  ): Promise<Uint8Array | null> {
     const files = this.getSaveFiles(saveName);
     if (files.length === 0) return null;
     const save = this.getSaves().find((s) => s.name === saveName);
     const time = save?.created ?? ZERO_TIME;
     const container: Ps2Container = {
-      format:
-        format === "max" ? Ps2ContainerFormat.MaxDrive : Ps2ContainerFormat.Ems,
+      format: toContainerFormat(format),
       title: saveName,
       created: time,
       modified: save?.modified ?? ZERO_TIME,
@@ -374,9 +394,18 @@ export class PS2MemoryCard {
   public async saveSingleSaveContainer(
     fileName: string,
     saveName: string,
-    format: "max" | "ems",
+    format: Ps2SingleSaveFormat,
   ): Promise<boolean> {
-    const data = this.getContainerBytes(saveName, format);
+    // A container writer can reject (e.g. a CompressionStream failure). Catch
+    // it here — in the card model, not the UI — and report it like a failed
+    // download instead of throwing into the React export handler.
+    let data: Uint8Array | null;
+    try {
+      data = await this.getContainerBytes(saveName, format);
+    } catch (error) {
+      console.error("Failed to build save container:", error);
+      return false;
+    }
     if (data === null) return false;
     return this.download(fileName, data);
   }
