@@ -112,6 +112,22 @@ export function normalizeCardImage(raw: Uint8Array): Uint8Array {
   return out;
 }
 
+/**
+ * Inverse of {@link normalizeCardImage}: drop each 528-byte page's 16-byte
+ * spare, yielding a data-only (512-byte stride) image for no-ECC export.
+ */
+export function stripImageSpares(raw: Uint8Array): Uint8Array {
+  const pages = Math.floor(raw.length / PAGE_SIZE);
+  const out = new Uint8Array(pages * PAGE_DATA_SIZE);
+  for (let p = 0; p < pages; p++) {
+    out.set(
+      raw.subarray(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_DATA_SIZE),
+      p * PAGE_DATA_SIZE,
+    );
+  }
+  return out;
+}
+
 /** Read one cluster's 1024 data bytes (joined data of its two pages). */
 export function readClusterData(
   raw: Uint8Array,

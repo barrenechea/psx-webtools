@@ -18,11 +18,13 @@ import {
   fatSet,
   findFreeCluster,
   format2,
+  normalizeCardImage,
   PAGE_DATA_SIZE,
   PAGE_SIZE,
   parseSuperblock,
   type Ps2Superblock,
   readDirEntry,
+  stripImageSpares,
   writeClusterData,
   writeDirEntry,
 } from "@/lib/ps2/ps2-pfs";
@@ -455,5 +457,44 @@ describe("PS2MemoryCard", () => {
     addSave(raw, sb, { name: "BASLUS-21423GTA30001" });
     const after = PS2MemoryCard.fromRaw(raw).getRawChecksum();
     expect(after).not.toBe(before);
+  });
+});
+
+describe("PS2MemoryCard card image export", () => {
+  const eq = (a: Uint8Array, b: Uint8Array): boolean => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  };
+
+  it("reports the loaded stride and strips spares on demand", () => {
+    const { raw, sb } = blankCard();
+    addSave(raw, sb, { name: "BASLUS-21423GTA30001" });
+    const card = PS2MemoryCard.fromRaw(raw); // 528-stride source
+    expect(card.getLoadedEcc()).toBe(true);
+    const pages = raw.length / PAGE_SIZE;
+    const withEcc = card.getCardImage(true);
+    const noEcc = card.getCardImage(false);
+    expect(withEcc.length).toBe(pages * PAGE_SIZE);
+    expect(noEcc.length).toBe(pages * PAGE_DATA_SIZE);
+    // Stripping then re-inflating reproduces the ECC image exactly.
+    expect(eq(normalizeCardImage(noEcc), withEcc)).toBe(true);
+  });
+
+  it("treats a 512-stride source as no-ECC and round-trips it", () => {
+    const { raw, sb } = blankCard();
+    addSave(raw, sb, { name: "BASLUS-21423GTA30001" });
+    const noEcc = stripImageSpares(raw);
+    const card = PS2MemoryCard.fromRaw(noEcc);
+    expect(card.getLoadedEcc()).toBe(false);
+    expect(eq(card.getCardImage(false), noEcc)).toBe(true);
+    // Re-adding ECC reproduces the original 528 image.
+    expect(eq(card.getCardImage(true), raw)).toBe(true);
+  });
+
+  it("defaults a freshly formatted card to ECC", () => {
+    const card = PS2MemoryCard.format(8192);
+    expect(card.getLoadedEcc()).toBe(true);
+    expect(card.getCardImage(false).length).toBe(8192 * 2 * PAGE_DATA_SIZE);
   });
 });

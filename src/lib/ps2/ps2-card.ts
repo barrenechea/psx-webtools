@@ -32,6 +32,7 @@ import {
   readDirEntry,
   ROOT_CLUSTER,
   SELF_ENTRY,
+  stripImageSpares,
   writeClusterData,
   writeDirEntry,
 } from "./ps2-pfs";
@@ -81,6 +82,7 @@ export class PS2MemoryCard {
   private constructor(
     private raw: Uint8Array,
     private sb: Ps2Superblock,
+    private loadedEcc: boolean,
   ) {
     this.savedState = raw.slice();
   }
@@ -100,7 +102,10 @@ export class PS2MemoryCard {
     if (image.length < sb.clustersPerCard * PAGES_PER_CLUSTER * PAGE_SIZE) {
       throw new Error("PS2 card image is truncated");
     }
-    return new PS2MemoryCard(image, sb);
+    // A 528-stride input carried real ECC spares; a 512-stride input had none
+    // and was inflated, so its original stride was data-only.
+    const loadedEcc = raw.length % PAGE_SIZE === 0;
+    return new PS2MemoryCard(image, sb, loadedEcc);
   }
 
   // Probe helper for open flows: returns null instead of throwing so callers
@@ -133,6 +138,7 @@ export class PS2MemoryCard {
     }
     this.raw = image.slice();
     this.sb = sb;
+    this.loadedEcc = data.length % PAGE_SIZE === 0;
     this.savedState = this.raw.slice();
     this.changedFlag = false;
     this.undoList = [];
@@ -142,6 +148,16 @@ export class PS2MemoryCard {
 
   getSuperblock(): Ps2Superblock {
     return this.sb;
+  }
+
+  /** True when the source image carried 528-byte (ECC) pages, else 512. */
+  getLoadedEcc(): boolean {
+    return this.loadedEcc;
+  }
+
+  /** The image bytes in the requested stride: 528 (ECC) or 512 (spares dropped). */
+  getCardImage(ecc: boolean): Uint8Array {
+    return ecc ? this.raw : stripImageSpares(this.raw);
   }
 
   getRawData(offset = 0, length = this.raw.length - offset): Uint8Array {
@@ -306,8 +322,14 @@ export class PS2MemoryCard {
   // File I/O (downloads)
   // -------------------------------------------------------------------
 
-  public async saveMemoryCard(fileName: string): Promise<boolean> {
-    const ok = this.download(fileName, this.raw);
+  public async saveMemoryCard(
+    fileName: string,
+    ecc?: boolean,
+  ): Promise<boolean> {
+    const ok = this.download(
+      fileName,
+      this.getCardImage(ecc ?? this.loadedEcc),
+    );
     if (ok) {
       this.changedFlag = false;
       this.savedState = this.raw.slice();
@@ -504,6 +526,7 @@ export class PS2MemoryCard {
     const raw = format2(sizeMb * 1024);
     this.raw = raw;
     this.sb = parseSuperblock(raw);
+    this.loadedEcc = true;
     this.undoList = [];
     this.redoList = [];
     this.changedFlag = false;

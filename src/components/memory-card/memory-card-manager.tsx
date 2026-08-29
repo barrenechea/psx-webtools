@@ -824,11 +824,15 @@ export const MemoryCardManager: React.FC = () => {
     }
   };
 
-  const handlePs2SaveConfirm = async (fileName: string) => {
+  const handlePs2SaveConfirm = async (
+    fileName: string,
+    _saveType: Ps2CardFormats,
+    ecc?: boolean,
+  ) => {
     if (selectedCard === null) return;
     const card = ps2Card(selectedCard);
     if (card) {
-      const success = await card.saveMemoryCard(fileName);
+      const success = await card.saveMemoryCard(fileName, ecc);
       if (success) {
         setError(null);
         setMemoryCards([...memoryCards]);
@@ -1357,12 +1361,13 @@ export const MemoryCardManager: React.FC = () => {
       />
       {selectedPs2Card ? (
         <SaveMemoryCardDialog
-          key={`ps2-${selectedCard ?? "no-card"}`}
+          key={`ps2-${selectedCard ?? "no-card"}-${isSaveDialogOpen ? "open" : "closed"}-${selectedPs2Card.getLoadedEcc() ? "ecc" : "noecc"}`}
           isOpen={isSaveDialogOpen}
           onOpenChange={setIsSaveDialogOpen}
           defaultFileName={selectedCardEntry?.name ?? "memory_card"}
           formats={PS2_CARD_FORMATS}
           defaultFormat={Ps2CardFormats.Raw}
+          ecc={{ default: selectedPs2Card.getLoadedEcc() }}
           onSave={handlePs2SaveConfirm}
         />
       ) : (

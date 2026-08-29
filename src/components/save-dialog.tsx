@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +29,9 @@ interface SaveDialogProps<T extends number> {
   defaultFileName: string;
   formats: readonly SaveFormatOption<T>[];
   defaultFormat: T;
-  onSave: (fileName: string, saveType: T) => Promise<void>;
+  onSave: (fileName: string, saveType: T, ecc?: boolean) => Promise<void>;
+  /** When set, show an ECC-spares checkbox initialized to `default`. */
+  ecc?: { default: boolean };
 }
 
 export const SaveDialog = <T extends number>({
@@ -36,6 +41,7 @@ export const SaveDialog = <T extends number>({
   formats,
   defaultFormat,
   onSave,
+  ecc,
 }: SaveDialogProps<T>) => {
   const {
     fileName,
@@ -52,9 +58,10 @@ export const SaveDialog = <T extends number>({
     extensionsFor: (format) =>
       formats.find((option) => option.value === format)?.extensions ?? [],
   });
+  const [eccValue, setEccValue] = useState(ecc?.default ?? false);
 
   const handleSave = () => {
-    void onSave(fileName, saveType);
+    void onSave(fileName, saveType, ecc !== undefined ? eccValue : undefined);
     onOpenChange(false);
   };
 
@@ -112,6 +119,18 @@ export const SaveDialog = <T extends number>({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+          {ecc !== undefined && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="ecc"
+                checked={eccValue}
+                onCheckedChange={(checked) => setEccValue(checked === true)}
+              />
+              <Label htmlFor="ecc" className="font-normal">
+                Include ECC spares (528-byte pages)
+              </Label>
             </div>
           )}
         </div>
