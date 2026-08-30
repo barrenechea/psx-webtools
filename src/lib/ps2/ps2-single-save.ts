@@ -11,6 +11,7 @@ import { psvIv, psvPs2Key } from "./ps2-keys";
 import { lzariCompress, lzariDecompress } from "./ps2-lzari";
 import { MODE_DIR, MODE_EXISTS, MODE_FILE } from "./ps2-pfs";
 import { PS2SAVE_CBS_RC4S, rc4Crypt } from "./ps2-rc4";
+import { encodeDirentName } from "./ps2-sjis";
 import type { Ps2DateTime } from "./ps2-types";
 import { deflateZlib, inflateZlib } from "./ps2-zlib";
 
@@ -102,27 +103,35 @@ function writeTod(b: Uint8Array, o: number, t: Ps2DateTime): void {
   b[o + 7] = (t.year >> 8) & 0xff;
 }
 
-// Null-terminated ASCII name (low 7 bits), bounded by length.
+// Null-terminated name bytes (Latin-1 / SJIS), bounded by length.
 function readName(b: Uint8Array, o: number, length: number): string {
   let s = "";
   for (let i = 0; i < length; i++) {
     const c = b[o + i];
     if (c === 0) break;
-    s += String.fromCharCode(c & 0x7f);
+    s += String.fromCharCode(c);
   }
   return s;
 }
 
-function writeName(b: Uint8Array, o: number, name: string): void {
-  for (let i = 0; i < 32; i++) {
-    b[o + i] = i < name.length ? name.charCodeAt(i) & 0x7f : 0;
+function writeNameBytes(
+  b: Uint8Array,
+  o: number,
+  len: number,
+  name: string,
+): void {
+  const bytes = encodeDirentName(name) ?? new Uint8Array();
+  for (let i = 0; i < len; i++) {
+    b[o + i] = i < bytes.length ? bytes[i] : 0;
   }
 }
 
+function writeName(b: Uint8Array, o: number, name: string): void {
+  writeNameBytes(b, o, 32, name);
+}
+
 function writeNameN(b: Uint8Array, o: number, len: number, name: string): void {
-  for (let i = 0; i < len; i++) {
-    b[o + i] = i < name.length ? name.charCodeAt(i) & 0x7f : 0;
-  }
+  writeNameBytes(b, o, len, name);
 }
 
 function setU32(b: Uint8Array, o: number, v: number): void {

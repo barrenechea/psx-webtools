@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+import { direntNameKey } from "@/lib/ps2/ps2-sjis";
 
 interface Ps2ImportSaveDialogProps {
   isOpen: boolean;
@@ -36,8 +37,8 @@ export const Ps2ImportSaveDialog: React.FC<Ps2ImportSaveDialogProps> = ({
     name.length === 0
       ? "Save name is required"
       : !PS2MemoryCard.isValidName(name)
-        ? "Use letters, numbers and dashes only (A–Z, 0–9, -), max 32 chars"
-        : takenNames.includes(name)
+        ? "1–31 bytes (Shift-JIS); no /; not . or .."
+        : takenNames.some((t) => direntNameKey(t) === direntNameKey(name))
           ? "A save with this name already exists on the card"
           : null;
 
@@ -68,10 +69,10 @@ export const Ps2ImportSaveDialog: React.FC<Ps2ImportSaveDialogProps> = ({
             <Input
               id="ps2ImportName"
               value={name}
-              maxLength={32}
+              maxLength={31}
               placeholder="BASLUS-12345XXXX0001"
               onChange={(e) => {
-                setName(e.target.value.toUpperCase());
+                setName(e.target.value);
                 setError(null);
               }}
             />

@@ -7,7 +7,9 @@ import {
   assembleImagePage,
   ECC_PAGE_DATA_SIZE,
   ECC_PAGE_SIZE,
+  pageSpare,
 } from "./ps2-ecc";
+import { encodeDirentName } from "./ps2-sjis";
 import type { Ps2DateTime } from "./ps2-types";
 
 export const PAGE_SIZE = ECC_PAGE_SIZE; // 528
@@ -18,7 +20,7 @@ export const CLUSTER_DATA_SIZE = PAGES_PER_CLUSTER * PAGE_DATA_SIZE; // 1024
 export const CLUSTERS_PER_BLOCK = PAGES_PER_BLOCK / PAGES_PER_CLUSTER; // 8
 
 export const PS2_MAGIC = "Sony PS2 Memory Card Format ";
-export const PS2_FORMAT_VERSION = "1.1.0.0";
+export const PS2_FORMAT_VERSION = "1.2.0.0";
 
 export const FAT_ALLOCATED_BIT = 0x80000000;
 export const FAT_EOF = 0xffffffff;
@@ -36,9 +38,9 @@ export const ROOT_CLUSTER = 0;
 export const SELF_ENTRY = ".";
 export const PARENT_ENTRY = "..";
 
-// Fixed timestamp written to a fresh root cluster (2000-01-12 06:00:41 JST),
-// matching a real freshly formatted card.
-const FRESH_ROOT_TIME: Ps2DateTime = {
+// Injected timestamp for a deterministic blank image. Live format uses the
+// current clock (`formatCard` / `format` pass `nowJst()`).
+export const FRESH_ROOT_TIME: Ps2DateTime = {
   sec: 41,
   min: 0,
   hour: 6,
@@ -75,6 +77,16 @@ function refreshPageSpare(raw: Uint8Array, pageBase: number): void {
   raw.set(
     assembleImagePage(raw.subarray(pageBase, pageBase + PAGE_DATA_SIZE)),
     pageBase,
+  );
+}
+
+// Compute Hamming spare even when data is all 0xFF (a programmed all-FF
+// page, not NAND-erase). assembleImagePage keeps erased spare for pages
+// that were never written.
+function programPageSpare(raw: Uint8Array, pageBase: number): void {
+  raw.set(
+    pageSpare(raw.subarray(pageBase, pageBase + PAGE_DATA_SIZE)),
+    pageBase + PAGE_DATA_SIZE,
   );
 }
 
@@ -218,12 +230,33 @@ function readString(raw: Uint8Array, start: number, length: number): string {
   return s;
 }
 
+function readDirentName(
+  raw: Uint8Array,
+  start: number,
+  length: number,
+): string {
+  let end = 0;
+  while (end < length && raw[start + end] !== 0) end++;
+  let s = "";
+  for (let i = 0; i < end; i++) s += String.fromCharCode(raw[start + i]);
+  return s;
+}
+
+/** First 27 bytes of the superblock magic (mount ignores the trailing space). */
+function superblockMagicMatches(raw: Uint8Array): boolean {
+  if (raw.length < 27) return false;
+  for (let i = 0; i < 27; i++) {
+    if (raw[i] !== PS2_MAGIC.charCodeAt(i)) return false;
+  }
+  return true;
+}
+
 /** Parse and validate the superblock on page 0. Throws on non-PS2 images. */
 export function parseSuperblock(raw: Uint8Array): Ps2Superblock {
   if (raw.length < PAGE_DATA_SIZE) {
     throw new Error("Not a PS2 memory card image (too small)");
   }
-  if (readString(raw, 0, 28) !== PS2_MAGIC) {
+  if (!superblockMagicMatches(raw)) {
     throw new Error("Not a PS2 memory card image (bad magic)");
   }
   const version = readString(raw, 0x1c, 12);
@@ -312,6 +345,27 @@ export function fatGet(
   const fatLoc = fatClusterLocation(raw, sb, relCluster >> 8);
   if (fatLoc === 0 || fatLoc === FAT_EOF) return 0;
   return readU32AtCluster(raw, fatLoc, relCluster & 0xff);
+}
+
+/**
+ * Clear the allocated bit on each FAT slot in a chain. EOF (0xFFFFFFFF)
+ * becomes 0x7FFFFFFF; a next-link keeps the cluster index without 0x80000000.
+ * `cluster === 0xFFFFFFFF` (empty file, never written) is a no-op.
+ */
+export function releaseFatChain(
+  raw: Uint8Array,
+  sb: Ps2Superblock,
+  firstRel: number,
+): void {
+  if (firstRel === FAT_EOF) return;
+  let cur = firstRel >>> 0;
+  for (;;) {
+    const v = fatGet(raw, sb, cur);
+    if (v === FAT_BAD || (v | 0) >= 0) break;
+    fatSet(raw, sb, cur, (v + FAT_ALLOCATED_BIT) >>> 0);
+    if (v === FAT_EOF) break;
+    cur = v & 0x7fffffff;
+  }
 }
 
 export function fatSet(
@@ -441,8 +495,15 @@ function readTime(raw: Uint8Array, off: number): Ps2DateTime {
   };
 }
 
-function writeTime(raw: Uint8Array, off: number, t: Ps2DateTime): void {
-  raw[off] = 0;
+// Write a dirent clock. Fresh slots zero `resv`; updates leave a non-zero
+// `resv` byte alone (modified-only overlays never rewrite it).
+function writeTime(
+  raw: Uint8Array,
+  off: number,
+  t: Ps2DateTime,
+  keepResv = false,
+): void {
+  if (!keepResv) raw[off] = 0;
   raw[off + 1] = t.sec;
   raw[off + 2] = t.min;
   raw[off + 3] = t.hour;
@@ -470,7 +531,7 @@ export function readDirEntry(
   const mode = u16(0x00);
   const kind = mode & (MODE_FILE | MODE_DIR | MODE_EXISTS);
   return {
-    name: readString(raw, e + 0x40, 32),
+    name: readDirentName(raw, e + 0x40, 32),
     mode,
     exists: (mode & MODE_EXISTS) !== 0,
     isDir: kind === (MODE_DIR | MODE_EXISTS),
@@ -501,66 +562,108 @@ export interface Ps2DirEntryFields {
   attr: number;
 }
 
-/** Write one 512-byte directory entry and refresh its page ECC. */
+export interface Ps2DirEntryPatch {
+  mode?: number;
+  length?: number;
+  cluster?: number;
+  dirEntry?: number;
+  created?: Ps2DateTime;
+  modified?: Ps2DateTime;
+  attr?: number;
+  name?: string;
+}
+
+function writeU16(raw: Uint8Array, off: number, value: number): void {
+  raw[off] = value & 0xff;
+  raw[off + 1] = (value >>> 8) & 0xff;
+}
+
+function writeU32(raw: Uint8Array, off: number, value: number): void {
+  raw[off] = value & 0xff;
+  raw[off + 1] = (value >>> 8) & 0xff;
+  raw[off + 2] = (value >>> 16) & 0xff;
+  raw[off + 3] = (value >>> 24) & 0xff;
+}
+
+function writeNameField(raw: Uint8Array, e: number, name: string): void {
+  const nameBytes = encodeDirentName(name) ?? new Uint8Array();
+  for (let i = 0; i < 32; i++) {
+    raw[e + 0x40 + i] = i < nameBytes.length ? nameBytes[i] : 0;
+  }
+}
+
+/**
+ * Write one 512-byte directory entry and refresh its page ECC.
+ * `fresh` zeros the 512-byte data page first (new clusters / new dirents).
+ * Updates that must keep name / created / unused use `patchDirEntry`.
+ */
 export function writeDirEntry(
   raw: Uint8Array,
   sb: Ps2Superblock,
   relCluster: number,
   slot: 0 | 1,
   f: Ps2DirEntryFields,
+  fresh = false,
 ): void {
   const e = entryOffset(sb, relCluster, slot);
-  raw[e] = f.mode & 0xff;
-  raw[e + 1] = (f.mode >> 8) & 0xff;
-  raw[e + 2] = 0;
-  raw[e + 3] = 0;
-  const len = f.length >>> 0;
-  raw[e + 4] = len & 0xff;
-  raw[e + 5] = (len >> 8) & 0xff;
-  raw[e + 6] = (len >> 16) & 0xff;
-  raw[e + 7] = (len >> 24) & 0xff;
-  writeTime(raw, e + 0x08, f.created);
-  const cl = f.cluster >>> 0;
-  raw[e + 0x10] = cl & 0xff;
-  raw[e + 0x11] = (cl >> 8) & 0xff;
-  raw[e + 0x12] = (cl >> 16) & 0xff;
-  raw[e + 0x13] = (cl >> 24) & 0xff;
-  const de = f.dirEntry >>> 0;
-  raw[e + 0x14] = de & 0xff;
-  raw[e + 0x15] = (de >> 8) & 0xff;
-  raw[e + 0x16] = (de >> 16) & 0xff;
-  raw[e + 0x17] = (de >> 24) & 0xff;
-  writeTime(raw, e + 0x18, f.modified);
-  const at = f.attr >>> 0;
-  raw[e + 0x20] = at & 0xff;
-  raw[e + 0x21] = (at >> 8) & 0xff;
-  raw[e + 0x22] = (at >> 16) & 0xff;
-  raw[e + 0x23] = (at >> 24) & 0xff;
-  raw.fill(0, e + 0x24, e + 0x40);
-  for (let i = 0; i < 32; i++) {
-    raw[e + 0x40 + i] = i < f.name.length ? f.name.charCodeAt(i) & 0x7f : 0;
+  if (fresh) {
+    raw.fill(0, e, e + PAGE_DATA_SIZE);
   }
+  writeU16(raw, e, f.mode);
+  if (fresh) {
+    raw[e + 2] = 0;
+    raw[e + 3] = 0;
+  }
+  writeU32(raw, e + 4, f.length);
+  writeTime(raw, e + 0x08, f.created, !fresh);
+  writeU32(raw, e + 0x10, f.cluster);
+  writeU32(raw, e + 0x14, f.dirEntry);
+  writeTime(raw, e + 0x18, f.modified, !fresh);
+  writeU32(raw, e + 0x20, f.attr);
+  if (fresh) raw.fill(0, e + 0x24, e + 0x40);
+  writeNameField(raw, e, f.name);
   refreshPageSpare(raw, e - (e % PAGE_SIZE));
 }
 
-// Legal names are printable ASCII without `? * /`; an erased cluster reads
-// back as mode 0xFFFF (exists set) with a 0x7F "name", so a sane name is part
-// of the validity check, not just the exists bit.
+/**
+ * Overlay selected fields on an existing 512-byte dirent. Unspecified
+ * fields, unused (+0x02), `resv`, and 0x24–0x3F stay as read.
+ */
+export function patchDirEntry(
+  raw: Uint8Array,
+  sb: Ps2Superblock,
+  relCluster: number,
+  slot: 0 | 1,
+  patch: Ps2DirEntryPatch,
+): void {
+  const e = entryOffset(sb, relCluster, slot);
+  if (patch.mode !== undefined) writeU16(raw, e, patch.mode);
+  if (patch.length !== undefined) writeU32(raw, e + 4, patch.length);
+  if (patch.created !== undefined)
+    writeTime(raw, e + 0x08, patch.created, true);
+  if (patch.cluster !== undefined) writeU32(raw, e + 0x10, patch.cluster);
+  if (patch.dirEntry !== undefined) writeU32(raw, e + 0x14, patch.dirEntry);
+  if (patch.modified !== undefined) {
+    writeTime(raw, e + 0x18, patch.modified, true);
+  }
+  if (patch.attr !== undefined) writeU32(raw, e + 0x20, patch.attr);
+  if (patch.name !== undefined) writeNameField(raw, e, patch.name);
+  refreshPageSpare(raw, e - (e % PAGE_SIZE));
+}
+
+// List filter (not create): empty, control bytes, ASCII `/`, and erased NAND
+// (all-0xFF or all-0x7F) stay invisible. SJIS pairs are allowed.
 function isPlausibleName(name: string): boolean {
   if (name.length === 0) return false;
+  let allFf = true;
+  let all7f = true;
   for (let i = 0; i < name.length; i++) {
-    const c = name.charCodeAt(i);
-    if (
-      c < 0x20 ||
-      c > 0x7e ||
-      name[i] === "?" ||
-      name[i] === "*" ||
-      name[i] === "/"
-    ) {
-      return false;
-    }
+    const c = name.charCodeAt(i) & 0xff;
+    if (c <= 0x1f || c === 0x2f) return false;
+    if (c !== 0xff) allFf = false;
+    if (c !== 0x7f) all7f = false;
   }
-  return true;
+  return !allFf && !all7f;
 }
 
 /**
@@ -596,6 +699,11 @@ export function readDirectory(
 // format2 (blank card builder)
 // ---------------------------------------------------------------------------
 
+function writeU16At(raw: Uint8Array, off: number, value: number): void {
+  raw[off] = value & 0xff;
+  raw[off + 1] = (value >>> 8) & 0xff;
+}
+
 function writeU32At(raw: Uint8Array, off: number, value: number): void {
   raw[off] = value & 0xff;
   raw[off + 1] = (value >>> 8) & 0xff;
@@ -630,12 +738,145 @@ function builderSuperblock(allocOffset: number): Ps2Superblock {
   };
 }
 
+const BAD_BLOCK_SLOTS = 32;
+
+/**
+ * IFC and FAT cluster counts: `fat = ceil(clusters / 256)`,
+ * `ifc = ceil(fat / 256)`. If `ifc > 32`, cap at `ifc = 32` and `fat = 0x2000`.
+ */
+export function ifcFatCounts(clustersPerCard: number): {
+  fat: number;
+  ifc: number;
+} {
+  const n = clustersPerCard >>> 0;
+  let fat = ((((n & 0x3fffffff) * 4 - 1) >>> 0) >>> 10) + 1;
+  const t = (fat * 4 - 1) | 0;
+  let ifc = (t >> 10) + (t < 0 && (t & 0x3ff) !== 0 ? 1 : 0) + 1;
+  if (ifc > 32) {
+    ifc = 32;
+    fat = 0x2000;
+  }
+  return { fat, ifc };
+}
+
+function packBadBlockList(badBlocks?: readonly number[]): number[] {
+  const list = new Array<number>(BAD_BLOCK_SLOTS).fill(0xffffffff);
+  if (badBlocks !== undefined) {
+    const n = Math.min(badBlocks.length, BAD_BLOCK_SLOTS);
+    for (let i = 0; i < n; i++) list[i] = badBlocks[i] >>> 0;
+  }
+  return list;
+}
+
+/** True if `eraseBlock` is in the 32-slot bad-block list. */
+function isListedEraseBlock(
+  list: readonly number[],
+  eraseBlock: number,
+): boolean {
+  for (let i = 0; i < BAD_BLOCK_SLOTS; i++) {
+    if (list[i] === eraseBlock) return true;
+  }
+  return false;
+}
+
+/** True if this absolute cluster sits in a listed erase block. */
+function isListedAbsCluster(
+  list: readonly number[],
+  absCluster: number,
+): boolean {
+  const eraseBlock = Math.floor(
+    (absCluster * PAGES_PER_CLUSTER) / PAGES_PER_BLOCK,
+  );
+  return isListedEraseBlock(list, eraseBlock);
+}
+
+function nextGoodAbs(
+  list: readonly number[],
+  abs: number,
+  clustersPerCard: number,
+): number {
+  while (abs < clustersPerCard && isListedAbsCluster(list, abs)) abs++;
+  if (abs >= clustersPerCard) {
+    throw new Error("format2: no good cluster for IFC/FAT");
+  }
+  return abs;
+}
+
+function pageSpareHasNonFF(raw: Uint8Array, page: number): boolean {
+  const off = page * PAGE_SIZE + PAGE_DATA_SIZE;
+  const end = off + (PAGE_SIZE - PAGE_DATA_SIZE);
+  if (end > raw.length) return false;
+  for (let i = off; i < end; i++) {
+    if (raw[i] !== 0xff) return true;
+  }
+  return false;
+}
+
+/**
+ * Scan erase blocks 1 … n-1 (not 0), at most 14 hits. A block is bad if
+ * page 0 or page 1 has any spare byte ≠ 0xFF. Block 0 is skipped so a
+ * programmed superblock Hamming spare is not treated as a defect.
+ */
+function scanBadEraseBlocks(
+  raw: Uint8Array,
+  clustersPerCard: number,
+): number[] {
+  const list = new Array<number>(BAD_BLOCK_SLOTS).fill(0xffffffff);
+  const blocks = (clustersPerCard * PAGES_PER_CLUSTER) / PAGES_PER_BLOCK;
+  let hits = 0;
+  for (let b = 1; b < blocks && hits < 14; b++) {
+    const page0 = b * PAGES_PER_BLOCK;
+    if (pageSpareHasNonFF(raw, page0) || pageSpareHasNonFF(raw, page0 + 1)) {
+      list[hits++] = b;
+    }
+  }
+  return list;
+}
+
+function readOnDiskBadBlockList(raw: Uint8Array): number[] {
+  const list: number[] = [];
+  for (let i = 0; i < BAD_BLOCK_SLOTS; i++) {
+    const o = 0xd0 + i * 4;
+    list.push(
+      (raw[o] | (raw[o + 1] << 8) | (raw[o + 2] << 16) | (raw[o + 3] << 24)) >>>
+        0,
+    );
+  }
+  return list;
+}
+
+export interface Format2Options {
+  /** Erase-block indices at 0xD0 (skips the spare scan). */
+  badBlocks?: readonly number[];
+  /**
+   * Existing image to reformat. Matching 27-byte magic keeps the on-disk
+   * bad-block list at 0xD0; otherwise spares are scanned. Size must match
+   * the cluster count (528-byte pages).
+   */
+  fromRaw?: Uint8Array;
+}
+
+function parseFormat2Opts(
+  v?: readonly number[] | Format2Options,
+): Format2Options {
+  if (v === undefined) return {};
+  if (Array.isArray(v)) return { badBlocks: v };
+  return v as Format2Options;
+}
+
 /**
  * Build a blank format2 card image (528-byte pages) for the given cluster
  * count (8 MB = 8192). Geometry mirrors a retail Sony card: one reserved
- * block, then IFC, then FAT, then allocatable clusters.
+ * block, then IFC, then FAT, then allocatable clusters. `time` is the
+ * root `.` / `..` clock; omit it for a deterministic test image.
+ * `badBlocks` are erase-block indices written at 0xD0 (inject, skip scan).
+ * Pass `{ fromRaw }` to scan or keep an existing bad-block list.
  */
-export function format2(clustersPerCard: number): Uint8Array {
+export function format2(
+  clustersPerCard: number,
+  time: Ps2DateTime = FRESH_ROOT_TIME,
+  badBlocksOrOpts?: readonly number[] | Format2Options,
+): Uint8Array {
   if (
     clustersPerCard < 64 ||
     clustersPerCard % (PAGES_PER_BLOCK * PAGES_PER_CLUSTER) !== 0
@@ -643,96 +884,186 @@ export function format2(clustersPerCard: number): Uint8Array {
     throw new Error("format2 needs a block-aligned cluster count (>= 64)");
   }
   const pages = clustersPerCard * PAGES_PER_CLUSTER;
+  const opts = parseFormat2Opts(badBlocksOrOpts);
   const raw = new Uint8Array(pages * PAGE_SIZE);
-  raw.fill(0xff); // erased media
+  if (opts.fromRaw !== undefined) {
+    if (opts.fromRaw.length !== raw.length) {
+      throw new Error("format2 fromRaw size does not match cluster count");
+    }
+    raw.set(opts.fromRaw);
+  } else {
+    raw.fill(0xff);
+  }
 
+  const list =
+    opts.badBlocks !== undefined
+      ? packBadBlockList(opts.badBlocks)
+      : superblockMagicMatches(raw)
+        ? readOnDiskBadBlockList(raw)
+        : scanBadEraseBlocks(raw, clustersPerCard);
   const blocks = pages / PAGES_PER_BLOCK;
-  const backupBlock1 = blocks - 1;
-  const backupBlock2 = blocks - 2;
-  const fatClusters = Math.ceil(clustersPerCard / 256);
-  const ifcClusters = Math.ceil(fatClusters / 256);
-  const ifcStart = CLUSTERS_PER_BLOCK;
-  const fatStart = ifcStart + ifcClusters;
-  const allocOffset = fatStart + fatClusters;
-  const allocEnd = backupBlock2 * CLUSTERS_PER_BLOCK - allocOffset;
+  let backupBlock1 = blocks - 1;
+  while (isListedEraseBlock(list, backupBlock1)) backupBlock1--;
+  let backupBlock2 = backupBlock1 - 1;
+  while (isListedEraseBlock(list, backupBlock2)) backupBlock2--;
+
+  const { fat: fatClusters, ifc: ifcClusters } = ifcFatCounts(clustersPerCard);
+  // first_candidate = ppb * pagesize / 1024 (8 on Sony).
+  let abs = Math.floor((PAGES_PER_BLOCK * PAGE_DATA_SIZE) / CLUSTER_DATA_SIZE);
+  const ifcLocs: number[] = [];
+  for (let i = 0; i < ifcClusters; i++) {
+    abs = nextGoodAbs(list, abs, clustersPerCard);
+    ifcLocs.push(abs);
+    abs++;
+  }
+  const fatLocs: number[] = [];
+  for (let j = 0; j < fatClusters; j++) {
+    abs = nextGoodAbs(list, abs, clustersPerCard);
+    fatLocs.push(abs);
+    abs++;
+  }
+
+  // IFC: entry j = absolute cluster of FAT cluster j. Flush programs both
+  // pages; unused slots stay 0xFFFFFFFF with Hamming spare, not NAND-erase.
+  for (let i = 0; i < ifcClusters; i++) {
+    const loc = ifcLocs[i];
+    for (let j = 0; j < 256; j++) {
+      const rel = i * 256 + j;
+      if (rel < fatClusters) writeU32AtCluster(raw, loc, j, fatLocs[rel]);
+    }
+    const base = loc * PAGES_PER_CLUSTER * PAGE_SIZE;
+    programPageSpare(raw, base);
+    programPageSpare(raw, base + PAGE_SIZE);
+  }
+
+  let allocOffset = abs;
+  let allocEnd = backupBlock2 * CLUSTERS_PER_BLOCK - allocOffset;
   if (allocEnd <= 0) {
     throw new Error("format2: card too small for a usable allocation range");
   }
-  const maxAlloc = Math.floor(clustersPerCard / 1000) * 1000 + 1;
+  const maxAllocTarget = Math.floor(clustersPerCard / 1000) * 1000 + 1;
+  let good = 0;
+  let maxAlloc = 0;
+  let walkAbs = abs;
+  for (let i = 0; i < allocEnd; i++) {
+    if (good === maxAllocTarget) {
+      maxAlloc = walkAbs - allocOffset;
+    }
+    const firstGood = good === 0;
+    if (isListedAbsCluster(list, walkAbs)) {
+      writeU32AtCluster(raw, fatLocs[i >> 8], i & 0xff, FAT_BAD);
+    } else {
+      good++;
+      if (firstGood) allocOffset = walkAbs;
+      writeU32AtCluster(raw, fatLocs[i >> 8], i & 0xff, FAT_FREE);
+    }
+    walkAbs++;
+  }
+  if (good < maxAllocTarget) {
+    throw new Error("format2: not enough good clusters");
+  }
+  allocEnd = backupBlock2 * CLUSTERS_PER_BLOCK - allocOffset;
+  // Relative 0 must still be free so the root cluster can occupy it.
+  const fat0 = clusterDataOffset(fatLocs[0], 0);
+  const firstFat =
+    (raw[fat0] |
+      (raw[fat0 + 1] << 8) |
+      (raw[fat0 + 2] << 16) |
+      (raw[fat0 + 3] << 24)) >>>
+    0;
+  if (firstFat !== FAT_FREE) {
+    throw new Error("format2: not enough good clusters");
+  }
 
-  // IFC: entry j = absolute cluster of FAT cluster j.
-  for (let i = 0; i < ifcClusters; i++) {
-    const loc = ifcStart + i;
-    for (let j = 0; j < 256; j++) {
-      const rel = i * 256 + j;
-      if (rel < fatClusters) writeU32AtCluster(raw, loc, j, fatStart + rel);
-    }
-  }
-  // FAT: rel 0 = root end-of-chain, allocatable = free, rest stays erased.
-  for (let j = 0; j < fatClusters; j++) {
-    const loc = fatStart + j;
-    for (let k = 0; k < 256; k++) {
-      const rel = j * 256 + k;
-      if (rel === 0) writeU32AtCluster(raw, loc, k, FAT_EOF);
-      else if (rel < allocEnd) writeU32AtCluster(raw, loc, k, FAT_FREE);
-    }
-  }
-  // Root cluster (relative 0): self + parent entries.
+  // Root cluster (relative 0): self + parent entries. Each page is zeroed
+  // first so unused 0x60–0x1FF is 0, not erase-fill.
   const sb = builderSuperblock(allocOffset);
-  const time = FRESH_ROOT_TIME;
-  writeDirEntry(raw, sb, 0, 0, {
-    name: SELF_ENTRY,
-    mode: 0x8427,
-    length: 2,
-    cluster: 0,
-    dirEntry: 0,
-    created: time,
-    modified: time,
-    attr: 0,
-  });
-  writeDirEntry(raw, sb, 0, 1, {
-    name: PARENT_ENTRY,
-    mode: 0xa426,
-    length: 0,
-    cluster: 0,
-    dirEntry: 0,
-    created: time,
-    modified: time,
-    attr: 0,
-  });
+  writeDirEntry(
+    raw,
+    sb,
+    0,
+    0,
+    {
+      name: SELF_ENTRY,
+      mode: 0x8427,
+      length: 2,
+      cluster: 0,
+      dirEntry: 0,
+      created: time,
+      modified: time,
+      attr: 0,
+    },
+    true,
+  );
+  writeDirEntry(
+    raw,
+    sb,
+    0,
+    1,
+    {
+      name: PARENT_ENTRY,
+      mode: 0xa426,
+      length: 0,
+      cluster: 0,
+      dirEntry: 0,
+      created: time,
+      modified: time,
+      attr: 0,
+    },
+    true,
+  );
+  writeU32AtCluster(raw, fatLocs[0], 0, FAT_EOF);
+  // Both pages of each FAT cluster get Hamming spare after the table is
+  // patched (unused all-FF pages included, not left as NAND-erase).
+  for (const loc of fatLocs) {
+    const base = loc * PAGES_PER_CLUSTER * PAGE_SIZE;
+    programPageSpare(raw, base);
+    programPageSpare(raw, base + PAGE_SIZE);
+  }
 
-  // Superblock (page 0). Core fields to 0xD0, bad_block_list stays 0xFF,
-  // tail (0x180+) stays erased.
+  // Superblock (page 0): start from erase-fill and overlay serialized fields.
+  // True leftovers (0x152–0x153, 0x184+) stay 0xFF. 0x24–0x27 are in-RAM
+  // zeros copied by the 40-byte magic/version write, not erase-fill.
   const sbPage = new Uint8Array(PAGE_SIZE);
   sbPage.fill(0xff);
-  sbPage.fill(0, 0, 0xd0);
   const ascii = new TextEncoder();
   sbPage.set(ascii.encode(PS2_MAGIC), 0x00);
   sbPage.set(ascii.encode(PS2_FORMAT_VERSION), 0x1c);
-  sbPage[0x28] = 0x00;
-  sbPage[0x29] = 0x02; // 512
-  sbPage[0x2a] = PAGES_PER_CLUSTER;
-  sbPage[0x2c] = PAGES_PER_BLOCK;
-  // sbPage[0x2e] stays 0x00; sbPage[0x2f] stays 0xFF -> unused 0xFF00
+  sbPage[0x23] = 0;
+  sbPage.fill(0, 0x24, 0x28);
+  writeU16At(sbPage, 0x28, 512);
+  writeU16At(sbPage, 0x2a, PAGES_PER_CLUSTER);
+  writeU16At(sbPage, 0x2c, PAGES_PER_BLOCK);
+  writeU16At(sbPage, 0x2e, 0xff00);
   writeU32At(sbPage, 0x30, clustersPerCard);
   writeU32At(sbPage, 0x34, allocOffset);
   writeU32At(sbPage, 0x38, allocEnd);
   writeU32At(sbPage, 0x3c, 0);
   writeU32At(sbPage, 0x40, backupBlock1);
   writeU32At(sbPage, 0x44, backupBlock2);
+  writeU32At(sbPage, 0x48, 0);
+  writeU32At(sbPage, 0x4c, 0);
+  sbPage.fill(0, 0x50, 0xd0);
   for (let i = 0; i < ifcClusters; i++) {
-    writeU32At(sbPage, 0x50 + i * 4, ifcStart + i);
+    writeU32At(sbPage, 0x50 + i * 4, ifcLocs[i]);
+  }
+  for (let i = 0; i < BAD_BLOCK_SLOTS; i++) {
+    writeU32At(sbPage, 0xd0 + i * 4, list[i]);
   }
   sbPage[0x150] = 2;
   sbPage[0x151] = 0x2b;
-  // Extended region: unknowns zero, two fields FF, as on a retail card.
-  sbPage.fill(0, 0x154, 0x17c);
   writeU32At(sbPage, 0x154, CLUSTER_DATA_SIZE);
   writeU32At(sbPage, 0x158, 256);
   writeU32At(sbPage, 0x15c, CLUSTERS_PER_BLOCK);
-  sbPage.fill(0xff, 0x160, 0x164); // card form "not initialized"
+  writeU32At(sbPage, 0x160, FAT_EOF);
+  writeU32At(sbPage, 0x164, 0);
+  writeU32At(sbPage, 0x168, 0);
+  writeU32At(sbPage, 0x16c, 0);
   writeU32At(sbPage, 0x170, maxAlloc);
-  sbPage.fill(0xff, 0x17c, 0x180);
+  writeU32At(sbPage, 0x174, FAT_EOF);
+  writeU32At(sbPage, 0x178, FAT_EOF);
+  writeU32At(sbPage, 0x17c, FAT_EOF);
+  writeU32At(sbPage, 0x180, FAT_EOF);
   raw.set(sbPage, 0);
   refreshPageSpare(raw, 0);
   return raw;

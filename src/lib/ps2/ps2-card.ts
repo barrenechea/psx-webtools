@@ -25,11 +25,13 @@ import {
   PAGES_PER_CLUSTER,
   PARENT_ENTRY,
   parseSuperblock,
+  patchDirEntry,
   type Ps2DirEntry,
   type Ps2Superblock,
   readChainBytes,
   readDirectory,
   readDirEntry,
+  releaseFatChain,
   ROOT_CLUSTER,
   SELF_ENTRY,
   stripImageSpares,
@@ -41,6 +43,7 @@ import {
   Ps2ContainerFormat,
   writePs2Container,
 } from "./ps2-single-save";
+import { direntNameKey, encodeDirentName, sameDirentName } from "./ps2-sjis";
 import type { Ps2DateTime, Ps2FileInfo, Ps2SaveInfo } from "./ps2-types";
 
 /** Container export formats (map 1:1 to the UI's single-save types). */
@@ -66,7 +69,11 @@ function toContainerFormat(format: Ps2SingleSaveFormat): Ps2ContainerFormat {
 
 // Entry modes as written by the console (verified on real cards).
 const DIR_MODE = 0x8427;
+// Closed file (exists | rwx | file | closed). Create starts at 0x8417
+// with no data cluster; import writes the post-close dirent with a chain.
 const FILE_MODE = 0x8497;
+/** Nested dir cap: `.` + `..` + 18 files (parent length > 19). */
+const MAX_SAVE_FILES = 18;
 
 const ZERO_TIME: Ps2DateTime = {
   sec: 0,
@@ -140,7 +147,7 @@ export class PS2MemoryCard {
   }
 
   static format(clustersPerCard = 8192): PS2MemoryCard {
-    const raw = format2(clustersPerCard);
+    const raw = format2(clustersPerCard, PS2MemoryCard.nowJst());
     return PS2MemoryCard.fromRaw(raw);
   }
 
@@ -303,7 +310,7 @@ export class PS2MemoryCard {
     ).filter((f) => f.isFile);
     let picked: Ps2DirEntry | null = null;
     for (const file of files) {
-      if (file.name === saveName) {
+      if (sameDirentName(file.name, saveName)) {
         picked = file;
         break;
       }
@@ -433,24 +440,42 @@ export class PS2MemoryCard {
   // -------------------------------------------------------------------
 
   /**
-   * Console-style delete: clear the exists bit of the root entry. The name,
-   * the entry's slot and the save's cluster chain all stay on the card; the
-   * slot becomes reusable for the next save.
+   * Delete a save as a unit: clear exists on inner files, then the directory.
+   * FAT allocated bits are cleared (EOF → 0x7FFFFFFF); names and dirent
+   * slots stay. Nested inner directories are not removed.
    */
   public deleteSave(name: string): boolean {
     const entry = this.getRootDirEntry(name);
     if (entry === null) return false;
-    this.pushHistory([this.entryPage(entry.relCluster, entry.slot)]);
-    writeDirEntry(this.raw, this.sb, entry.relCluster, entry.slot, {
-      name: entry.name,
-      mode: entry.mode & ~MODE_EXISTS,
-      length: entry.length,
-      cluster: entry.cluster,
-      dirEntry: entry.dirEntry,
-      created: entry.created,
-      modified: entry.modified,
-      attr: entry.attr,
-    });
+    const inner = readDirectory(
+      this.raw,
+      this.sb,
+      entry.cluster,
+      entry.length,
+    ).filter(
+      (e) => e.exists && e.name !== SELF_ENTRY && e.name !== PARENT_ENTRY,
+    );
+    if (inner.some((e) => e.isDir)) return false;
+
+    const toClear = [...inner, entry];
+    const touched: number[] = [];
+    for (const e of toClear) {
+      touched.push(this.entryPage(e.relCluster, e.slot));
+      if (e.cluster !== FAT_EOF) {
+        for (const rel of clusterChain(this.raw, this.sb, e.cluster)) {
+          const fatPage = fatEntryPage(this.raw, this.sb, rel);
+          if (fatPage >= 0) touched.push(fatPage);
+        }
+      }
+    }
+    this.pushHistory(touched);
+
+    for (const e of toClear) {
+      patchDirEntry(this.raw, this.sb, e.relCluster, e.slot, {
+        mode: e.mode & ~MODE_EXISTS,
+      });
+      releaseFatChain(this.raw, this.sb, e.cluster);
+    }
     this.changedFlag = true;
     return true;
   }
@@ -472,7 +497,7 @@ export class PS2MemoryCard {
     )) {
       if (!entry.isFile) continue;
       files.push({
-        name: entry.name === sourceName ? newName : entry.name,
+        name: sameDirentName(entry.name, sourceName) ? newName : entry.name,
         mode: entry.mode,
         data: this.readChainBytes(entry),
       });
@@ -552,7 +577,7 @@ export class PS2MemoryCard {
    */
   public formatCard(sizeMb = 8): boolean {
     if (sizeMb < 8 || sizeMb > 128 || sizeMb % 8 !== 0) return false;
-    const raw = format2(sizeMb * 1024);
+    const raw = format2(sizeMb * 1024, PS2MemoryCard.nowJst());
     this.raw = raw;
     this.sb = parseSuperblock(raw);
     this.loadedEcc = true;
@@ -602,8 +627,12 @@ export class PS2MemoryCard {
   // Layout of one created save, planned read-only before any mutation.
   private createSave(name: string, mode: number, files: FileSpec[]): boolean {
     if (!PS2MemoryCard.isValidName(name)) return false;
+    for (const f of files) {
+      if (!PS2MemoryCard.isValidName(f.name)) return false;
+    }
     if (this.getRootDirEntry(name) !== null) return false;
     if (files.length === 0) return false;
+    if (files.length > MAX_SAVE_FILES) return false;
 
     const sb = this.sb;
     const entryCount = 2 + files.length;
@@ -630,6 +659,8 @@ export class PS2MemoryCard {
       }
     }
     const extendsRoot = hostRel === -1;
+    const rootDot = readDirEntry(this.raw, sb, ROOT_CLUSTER, 0);
+    const append = extendsRoot || ordinal >= rootDot.length;
 
     const free = this.collectFree();
     const needed =
@@ -666,6 +697,7 @@ export class PS2MemoryCard {
     dirChain.forEach(markCluster);
     dataChains.forEach((chain) => chain.forEach(markCluster));
     touched.push(this.entryPage(hostRel, hostSlot));
+    touched.push(this.entryPage(ROOT_CLUSTER, 0));
     this.pushHistory(touched);
 
     // File data chains.
@@ -686,6 +718,26 @@ export class PS2MemoryCard {
     }
     this.linkChain(dirChain);
 
+    const writeEmptySlot = (rel: number, slot: 0 | 1) => {
+      writeDirEntry(
+        this.raw,
+        sb,
+        rel,
+        slot,
+        {
+          name: "",
+          mode: 0,
+          length: 0,
+          cluster: 0,
+          dirEntry: 0,
+          created: ZERO_TIME,
+          modified: ZERO_TIME,
+          attr: 0,
+        },
+        true,
+      );
+    };
+
     if (extendsRoot) {
       fatSet(
         this.raw,
@@ -697,40 +749,45 @@ export class PS2MemoryCard {
       // The sibling slot is initialized as an empty entry so every slot in
       // the chain is explicit (erased slots read back as mode 0xFFFF, which
       // would look like a used entry).
-      writeDirEntry(this.raw, sb, newRootRel, 1, {
-        name: "",
-        mode: 0,
-        length: 0,
-        cluster: 0,
-        dirEntry: 0,
-        created: ZERO_TIME,
-        modified: ZERO_TIME,
-        attr: 0,
-      });
+      writeEmptySlot(newRootRel, 1);
     }
 
     // Save directory: "." (dir_entry = our slot in the parent), "..", files.
     const time = PS2MemoryCard.nowJst();
-    writeDirEntry(this.raw, sb, dirChain[0], 0, {
-      name: SELF_ENTRY,
-      mode: DIR_MODE,
-      length: 0,
-      cluster: 0,
-      dirEntry: ordinal,
-      created: time,
-      modified: time,
-      attr: 0,
-    });
-    writeDirEntry(this.raw, sb, dirChain[0], 1, {
-      name: PARENT_ENTRY,
-      mode: DIR_MODE,
-      length: 0,
-      cluster: 0,
-      dirEntry: 0,
-      created: time,
-      modified: time,
-      attr: 0,
-    });
+    writeDirEntry(
+      this.raw,
+      sb,
+      dirChain[0],
+      0,
+      {
+        name: SELF_ENTRY,
+        mode: DIR_MODE,
+        length: 0,
+        cluster: 0,
+        dirEntry: ordinal,
+        created: time,
+        modified: time,
+        attr: 0,
+      },
+      true,
+    );
+    writeDirEntry(
+      this.raw,
+      sb,
+      dirChain[0],
+      1,
+      {
+        name: PARENT_ENTRY,
+        mode: DIR_MODE,
+        length: 0,
+        cluster: 0,
+        dirEntry: 0,
+        created: time,
+        modified: time,
+        attr: 0,
+      },
+      true,
+    );
     for (let i = 0; i < files.length; i++) {
       const pos = 2 + i; // entries after "." and ".."
       writeDirEntry(
@@ -748,19 +805,39 @@ export class PS2MemoryCard {
           modified: time,
           attr: 0,
         },
+        true,
       );
+    }
+    // When the last file occupies slot 0 of a cluster, write the sibling
+    // as an empty (mode 0) entry so it is not an erased 0xFFFF slot.
+    const lastPos = 2 + files.length - 1;
+    if (lastPos % 2 === 0) {
+      writeEmptySlot(dirChain[Math.floor(lastPos / 2)], 1);
     }
 
     // Root entry.
-    writeDirEntry(this.raw, sb, hostRel, hostSlot, {
-      name,
-      mode,
-      length: entryCount,
-      cluster: dirChain[0],
-      dirEntry: 0,
-      created: time,
+    writeDirEntry(
+      this.raw,
+      sb,
+      hostRel,
+      hostSlot,
+      {
+        name,
+        mode,
+        length: entryCount,
+        cluster: dirChain[0],
+        dirEntry: 0,
+        created: time,
+        modified: time,
+        attr: 0,
+      },
+      true,
+    );
+    // Append past the advertised count: bump root `.`.length. Always stamp
+    // `.`.modified. Name, created, unused, and 0x24–0x3F stay.
+    patchDirEntry(this.raw, sb, ROOT_CLUSTER, 0, {
+      ...(append ? { length: rootDot.length + 1 } : {}),
       modified: time,
-      attr: 0,
     });
     this.changedFlag = true;
     return true;
@@ -800,16 +877,15 @@ export class PS2MemoryCard {
     return true;
   }
 
-  // Card names: 1–32 printable ASCII, no `? * /`, not "." or "..".
+  // Card names: 1–31 bytes after SJIS encode, every byte > 0x1f, no `/`,
+  // not "." / "..". Create does not reject ASCII `?` `*`.
   static isValidName(name: string): boolean {
-    if (name.length === 0 || name.length > 32) return false;
-    if (name === SELF_ENTRY || name === PARENT_ENTRY) return false;
-    for (let i = 0; i < name.length; i++) {
-      const code = name.charCodeAt(i);
-      const c = name[i];
-      if (code < 0x20 || code > 0x7e || c === "?" || c === "*" || c === "/") {
-        return false;
-      }
+    const bytes = encodeDirentName(name);
+    if (bytes === null || bytes.length < 1 || bytes.length > 31) return false;
+    const encoded = direntNameKey(name);
+    if (encoded === SELF_ENTRY || encoded === PARENT_ENTRY) return false;
+    for (let i = 0; i < bytes.length; i++) {
+      if (bytes[i] <= 0x1f || bytes[i] === 0x2f) return false;
     }
     return true;
   }
@@ -903,7 +979,7 @@ export class PS2MemoryCard {
 
   private getRootDirEntry(saveName: string): Ps2DirEntry | null {
     for (const entry of readDirectory(this.raw, this.sb, ROOT_CLUSTER)) {
-      if (entry.isDir && entry.name === saveName) {
+      if (entry.isDir && sameDirentName(entry.name, saveName)) {
         return entry;
       }
     }

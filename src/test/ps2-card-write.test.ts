@@ -186,6 +186,9 @@ describe("PS2MemoryCard importSingleSave", () => {
     expect(root.mode).toBe(0x8427);
     expect(root.length).toBe(4);
     expect(root.cluster).toBe(2);
+    const self = readDirEntry(raw, sb, 0, 0);
+    expect(self.length).toBe(3);
+    expect(self.modified).toEqual(root.modified);
     // Save dir (relative 2): "." and ".." exactly as on a real card.
     const dot = readDirEntry(raw, sb, 2, 0);
     expect([dot.name, dot.mode, dot.length, dot.cluster, dot.dirEntry]).toEqual(
@@ -228,16 +231,17 @@ describe("PS2MemoryCard importSingleSave", () => {
     const card = PS2MemoryCard.format(8192);
     const before = card.getRawChecksum();
     for (const name of [
+      "A".repeat(32),
       "A".repeat(33),
       "SAVE/NAME",
-      "SAVE?NAME",
-      "SAVE*NAME",
       ".",
       "..",
       "",
     ]) {
       expect(card.importSingleSave(name, pattern(100))).toBe(false);
     }
+    expect(PS2MemoryCard.isValidName("SAVE?NAME")).toBe(true);
+    expect(PS2MemoryCard.isValidName("SAVE*NAME")).toBe(true);
     expect(card.importSingleSave("VALID-NAME1", new Uint8Array(0))).toBe(false);
     expect(card.getRawChecksum()).toBe(before);
     expect(card.undoCount).toBe(0);
@@ -246,6 +250,35 @@ describe("PS2MemoryCard importSingleSave", () => {
     expect(card.importSingleSave("VALID-NAME1", pattern(100))).toBe(false);
     expect(card.getSaves().map((s) => s.name)).toEqual(["VALID-NAME1"]);
     expect(card.undoCount).toBe(1);
+    expect(card.importSingleSave("A".repeat(31), pattern(50))).toBe(true);
+    expect(PS2MemoryCard.isValidName("=")).toBe(true);
+    expect(PS2MemoryCard.isValidName("あ")).toBe(true);
+    expect(PS2MemoryCard.isValidName("あ".repeat(16))).toBe(false);
+    expect(card.importSingleSave("あ", pattern(80))).toBe(true);
+    const jp = card.getSaves().find((s) => s.name.charCodeAt(0) === 0x82);
+    expect(jp).toBeDefined();
+    expect([...jp!.name].map((c) => c.charCodeAt(0))).toEqual([0x82, 0xa0]);
+  });
+
+  it("rejects more than 18 files in a save directory", () => {
+    const card = PS2MemoryCard.format(8192);
+    const tooMany = Array.from({ length: 18 }, (_, i) => ({
+      name: `FILE${String(i).padStart(2, "0")}.BIN`,
+      data: pattern(8),
+    }));
+    expect(card.importContainer("SAVE-BIG0001", tooMany)).toBe(false);
+    const ok = Array.from({ length: 17 }, (_, i) => ({
+      name: `FILE${String(i).padStart(2, "0")}.BIN`,
+      data: pattern(8),
+    }));
+    expect(card.importContainer("SAVE-OK0001", ok)).toBe(true);
+    expect(card.getSaves()[0].files).toHaveLength(18);
+    expect(
+      card.importContainer("SAVE-SLASH001", [
+        { name: "ok.bin", data: pattern(8) },
+        { name: "bad/name", data: pattern(8) },
+      ]),
+    ).toBe(false);
   });
 
   it("sets PS1/PocketStation/hidden flags", () => {
@@ -263,6 +296,53 @@ describe("PS2MemoryCard importSingleSave", () => {
     const raw = card.getRawData();
     const sb = card.getSuperblock();
     expect(readDirEntry(raw, sb, 1, 0).mode).toBe(0x8427 | 0x2000 | 0x1000);
+  });
+
+  it("increments root length on append and reuses deleted holes", () => {
+    const card = PS2MemoryCard.format(8192);
+    const sb = card.getSuperblock();
+    expect(readDirEntry(card.getRawData(), sb, 0, 0).length).toBe(2);
+
+    card.importSingleSave("SAVE-AAA0001", pattern(100));
+    const afterOne = readDirEntry(card.getRawData(), sb, 0, 0);
+    expect(afterOne.length).toBe(3);
+    expect(afterOne.modified).toEqual(
+      readDirEntry(card.getRawData(), sb, 1, 0).modified,
+    );
+
+    card.importSingleSave("SAVE-BBB0002", pattern(100));
+    expect(readDirEntry(card.getRawData(), sb, 0, 0).length).toBe(4);
+
+    expect(card.deleteSave("SAVE-AAA0001")).toBe(true);
+    expect(readDirEntry(card.getRawData(), sb, 0, 0).length).toBe(4);
+
+    expect(card.importSingleSave("SAVE-CCC0003", pattern(100))).toBe(true);
+    expect(readDirEntry(card.getRawData(), sb, 0, 0).length).toBe(4);
+    expect(card.getSaves().map((s) => s.name)).toEqual([
+      "SAVE-CCC0003",
+      "SAVE-BBB0002",
+    ]);
+  });
+
+  it("keeps name tail, created, and unused when bumping root length", () => {
+    const raw = format2(8192);
+    const sb = parseSuperblock(raw);
+    const e = sb.allocOffset * 2 * PAGE_SIZE;
+    raw[e + 0x08] = 0xab;
+    raw[e + 0x18] = 0xcd;
+    raw.fill(0x11, e + 0x24, e + 0x40);
+    raw[e + 0x42] = 0x99;
+    const card = PS2MemoryCard.fromRaw(raw);
+    expect(card.importSingleSave("SAVE-AAA0001", pattern(100))).toBe(true);
+    const after = card.getRawData();
+    expect(after[e + 0x08]).toBe(0xab);
+    expect(after[e + 0x18]).toBe(0xcd);
+    expect([...after.subarray(e + 0x24, e + 0x40)]).toEqual(
+      Array(0x1c).fill(0x11),
+    );
+    expect(after[e + 0x42]).toBe(0x99);
+    expect(readDirEntry(after, sb, 0, 0).length).toBe(3);
+    expect(readDirEntry(after, sb, 0, 0).name).toBe(".");
   });
 });
 
@@ -292,6 +372,13 @@ describe("PS2MemoryCard importContainer", () => {
     expect([...card.readFile("SAVE-MAX0001", "SAVE01.BIN")]).toEqual([...a]);
     expect([...card.readFile("SAVE-MAX0001", "PIC.PNG")]).toEqual([...b]);
     expect(card.getIconSys("SAVE-MAX0001")?.title).toBe("Container Game");
+    const raw = card.getRawData();
+    const sb = card.getSuperblock();
+    const dirChain = clusterChain(raw, sb, save.dataCluster);
+    expect(dirChain).toHaveLength(3);
+    const sibling = readDirEntry(raw, sb, dirChain[2], 1);
+    expect(sibling.mode).toBe(0);
+    expect(sibling.exists).toBe(false);
   });
 
   it("keeps the container's icon.sys when present", () => {
@@ -380,6 +467,12 @@ describe("PS2MemoryCard deleteSave", () => {
     card.importSingleSave("SAVE-BBB0002", pattern(2000));
     const sb = card.getSuperblock();
     const before = readDirEntry(card.getRawData(), sb, 1, 0);
+    const innerFiles = readDirectory(
+      card.getRawData(),
+      sb,
+      before.cluster,
+      before.length,
+    ).filter((e) => e.isFile);
 
     expect(card.deleteSave("SAVE-AAA0001")).toBe(true);
     const raw = card.getRawData();
@@ -388,10 +481,10 @@ describe("PS2MemoryCard deleteSave", () => {
     expect(entry.mode).toBe(0x427); // 0x8427 with the exists bit cleared
     expect(entry.name).toBe("SAVE-AAA0001");
     expect(entry.cluster).toBe(before.cluster);
-    // The save's clusters stay allocated in their chains.
-    expect(fatGet(raw, sb, before.cluster)).toBe(
-      (FAT_ALLOCATED_BIT | (before.cluster + 1)) >>> 0,
-    );
+    expect(fatGet(raw, sb, before.cluster) & FAT_ALLOCATED_BIT).toBe(0);
+    for (const f of innerFiles) {
+      expect(readDirEntry(raw, sb, f.relCluster, f.slot).exists).toBe(false);
+    }
     expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0002"]);
     expect([...card.readFile("SAVE-BBB0002", "SAVE-BBB0002")]).toEqual([
       ...pattern(2000),
@@ -417,6 +510,49 @@ describe("PS2MemoryCard deleteSave", () => {
     expect(card.redo()).toBe(true);
     expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0002"]);
     everyPageClean(card.getRawData());
+  });
+
+  it("exists-clear keeps name, created, and unused", () => {
+    const card = PS2MemoryCard.format(8192);
+    card.importSingleSave("SAVE-AAA0001", pattern(1000));
+    const sb = card.getSuperblock();
+    const raw = card.getRawData();
+    const entry = readDirEntry(raw, sb, 1, 0);
+    const e =
+      ((sb.allocOffset + entry.relCluster) * 2 + entry.slot) * PAGE_SIZE;
+    raw[e + 0x08] = 0xab;
+    raw.fill(0x22, e + 0x24, e + 0x40);
+    raw[e + 0x40 + 13] = 0x77;
+    const inner = readDirectory(raw, sb, entry.cluster, entry.length).filter(
+      (f) => f.isFile,
+    );
+    for (const f of inner) {
+      const off = ((sb.allocOffset + f.relCluster) * 2 + f.slot) * PAGE_SIZE;
+      raw[off + 0x08] = 0xab;
+      raw.fill(0x33, off + 0x24, off + 0x40);
+    }
+    card.loadFromRawData(raw);
+    expect(card.deleteSave("SAVE-AAA0001")).toBe(true);
+    const after = card.getRawData();
+    const gone = readDirEntry(after, sb, entry.relCluster, entry.slot);
+    expect(gone.exists).toBe(false);
+    expect(gone.name).toBe("SAVE-AAA0001");
+    expect(after[e + 0x08]).toBe(0xab);
+    expect([...after.subarray(e + 0x24, e + 0x40)]).toEqual(
+      Array(0x1c).fill(0x22),
+    );
+    expect(after[e + 0x40 + 13]).toBe(0x77);
+    expect(fatGet(after, sb, entry.cluster) & FAT_ALLOCATED_BIT).toBe(0);
+    for (const f of inner) {
+      const fe = readDirEntry(after, sb, f.relCluster, f.slot);
+      expect(fe.exists).toBe(false);
+      expect(fe.name).toBe(f.name);
+      const off = ((sb.allocOffset + f.relCluster) * 2 + f.slot) * PAGE_SIZE;
+      expect(after[off + 0x08]).toBe(0xab);
+      expect([...after.subarray(off + 0x24, off + 0x40)]).toEqual(
+        Array(0x1c).fill(0x33),
+      );
+    }
   });
 });
 
@@ -451,6 +587,7 @@ describe("PS2MemoryCard copySave", () => {
     expect(copy.name).toBe("SAVE-CCC0003");
     expect(copy.mode).toBe(0x8427 | 0x2000 | 0x1000);
     expect(readDirEntry(raw, sb, copy.cluster, 0).dirEntry).toBe(3);
+    expect(readDirEntry(raw, sb, 0, 0).length).toBe(4);
     // File modes carried over: icon.sys plain, data file PS1.
     const copyFiles = readDirectory(raw, sb, copy.cluster).filter(
       (f) => f.isFile,

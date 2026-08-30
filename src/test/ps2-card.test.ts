@@ -358,6 +358,21 @@ describe("PS2MemoryCard", () => {
     expect(parseIconSys(icon).title).toBe("GTA VCS");
   });
 
+  it("lists Shift-JIS save names planted through writeDirEntry", () => {
+    const { raw, sb } = blankCard();
+    const sjis = String.fromCharCode(0x82, 0xa0);
+    addSave(raw, sb, {
+      name: sjis,
+      files: [{ name: sjis, data: pattern(100) }],
+    });
+    const saves = PS2MemoryCard.fromRaw(raw).getSaves();
+    expect(saves).toHaveLength(1);
+    expect([...saves[0].name].map((c) => c.charCodeAt(0))).toEqual([
+      0x82, 0xa0,
+    ]);
+    expect(saves[0].files.map((f) => f.name)).toContain(sjis);
+  });
+
   it("round-trips all four background corners (uint32 channels)", () => {
     const corners: Ps2IconCorner[] = [
       { r: 128, g: 0, b: 0, a: 0 },
@@ -467,6 +482,18 @@ describe("PS2MemoryCard card image export", () => {
     return true;
   };
 
+  const eqDataPages = (a: Uint8Array, b: Uint8Array): boolean => {
+    if (a.length !== b.length) return false;
+    const pages = a.length / PAGE_SIZE;
+    for (let p = 0; p < pages; p++) {
+      const off = p * PAGE_SIZE;
+      for (let i = 0; i < PAGE_DATA_SIZE; i++) {
+        if (a[off + i] !== b[off + i]) return false;
+      }
+    }
+    return true;
+  };
+
   it("reports the loaded stride and strips spares on demand", () => {
     const { raw, sb } = blankCard();
     addSave(raw, sb, { name: "BASLUS-21423GTA30001" });
@@ -477,19 +504,28 @@ describe("PS2MemoryCard card image export", () => {
     const noEcc = card.getCardImage(false);
     expect(withEcc.length).toBe(pages * PAGE_SIZE);
     expect(noEcc.length).toBe(pages * PAGE_DATA_SIZE);
-    // Stripping then re-inflating reproduces the ECC image exactly.
-    expect(eq(normalizeCardImage(noEcc), withEcc)).toBe(true);
+    expect(eq(withEcc, raw)).toBe(true);
+    // 512-stride cannot tell a programmed all-FF IFC page (Hamming spare)
+    // from NAND-erase; inflate uses erased spare for all-FF data.
+    const inflated = normalizeCardImage(noEcc);
+    expect(eqDataPages(inflated, withEcc)).toBe(true);
+    const ifcPage1 = (sb.ifcList[0] * 2 + 1) * PAGE_SIZE;
+    expect(
+      eq(
+        inflated.subarray(ifcPage1, ifcPage1 + PAGE_SIZE),
+        withEcc.subarray(ifcPage1, ifcPage1 + PAGE_SIZE),
+      ),
+    ).toBe(false);
   });
 
-  it("treats a 512-stride source as no-ECC and round-trips it", () => {
+  it("treats a 512-stride source as no-ECC and round-trips data", () => {
     const { raw, sb } = blankCard();
     addSave(raw, sb, { name: "BASLUS-21423GTA30001" });
     const noEcc = stripImageSpares(raw);
     const card = PS2MemoryCard.fromRaw(noEcc);
     expect(card.getLoadedEcc()).toBe(false);
     expect(eq(card.getCardImage(false), noEcc)).toBe(true);
-    // Re-adding ECC reproduces the original 528 image.
-    expect(eq(card.getCardImage(true), raw)).toBe(true);
+    expect(eqDataPages(card.getCardImage(true), raw)).toBe(true);
   });
 
   it("defaults a freshly formatted card to ECC", () => {

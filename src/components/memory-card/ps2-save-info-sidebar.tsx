@@ -13,6 +13,7 @@ import {
 import { useGameData } from "@/hooks/use-game-data";
 import type { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import { ps2SaveProductCode, ps2SaveRegion } from "@/lib/ps2/ps2-dirname";
+import { displayDirentName } from "@/lib/ps2/ps2-sjis";
 import type { Ps2DateTime } from "@/lib/ps2/ps2-types";
 import {
   type GamePlatform,
@@ -117,7 +118,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
               <div className="min-w-0">
                 <h4 className="truncate text-sm font-semibold">{save.title}</h4>
                 <p className="text-muted-foreground truncate font-mono text-xs">
-                  {save.name}
+                  {displayDirentName(save.name)}
                 </p>
               </div>
             </div>

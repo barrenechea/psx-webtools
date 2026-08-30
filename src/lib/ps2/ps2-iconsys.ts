@@ -2,6 +2,8 @@
 // save directory (always a single 964-byte cluster file) and carries the title
 // the console shows, plus icon file names and colors.
 
+import { encodeIconTitle } from "./ps2-sjis";
+
 export const ICON_SYS_SIZE = 964;
 /** icon.sys background transparency: 0x00 clear … 0x80 opaque. */
 export const ICON_SYS_TRANSPARENCY_OPAQUE = 0x80;
@@ -71,10 +73,7 @@ function readTitle(data: Uint8Array): string {
 }
 
 function writeTitle(data: Uint8Array, title: string): void {
-  const raw = new TextEncoder().encode(title);
-  for (let i = 0; i < 64; i++) {
-    data[0xc0 + i] = i < raw.length ? raw[i] : 0;
-  }
+  data.set(encodeIconTitle(title), 0xc0);
 }
 
 /** Parse a 964-byte icon.sys. Throws if the magic does not match. */

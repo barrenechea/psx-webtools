@@ -2,20 +2,29 @@
 // to the geometry of a real 8 MB Sony card; the root-directory mirrors
 // reproduce the save lists of two real cards (names, chains, entry counts).
 
-import { checkPage } from "@/lib/ps2/ps2-ecc";
+import { PS2_CONQUEST_MAGIC } from "@/lib/ps2/ps2-conquest";
+import { checkPage, ECC_ALL_FF_CODE } from "@/lib/ps2/ps2-ecc";
 import {
   CLUSTER_DATA_SIZE,
   clusterChain,
+  clusterDataOffset,
+  CLUSTERS_PER_BLOCK,
   FAT_ALLOCATED_BIT,
+  FAT_BAD,
   FAT_EOF,
   FAT_FREE,
   fatGet,
   fatSet,
   findFreeCluster,
   format2,
+  FRESH_ROOT_TIME,
+  ifcFatCounts,
+  PAGE_DATA_SIZE,
   PAGE_SIZE,
+  PAGES_PER_BLOCK,
   PARENT_ENTRY,
   parseSuperblock,
+  patchDirEntry,
   PS2_FORMAT_VERSION,
   type Ps2Superblock,
   readChainBytes,
@@ -45,6 +54,16 @@ interface Image {
 function blankCard(clusters = 8192): Image {
   const raw = format2(clusters);
   return { raw, sb: parseSuperblock(raw) };
+}
+
+function u32At(raw: Uint8Array, off: number): number {
+  return (
+    (raw[off] |
+      (raw[off + 1] << 8) |
+      (raw[off + 2] << 16) |
+      (raw[off + 3] << 24)) >>>
+    0
+  );
 }
 
 function everyPageClean(raw: Uint8Array): void {
@@ -117,6 +136,24 @@ describe("format2 geometry", () => {
     expect(sb.maxAllocatableClusters).toBe(8001);
   });
 
+  it("emits a 1.2.0.0 superblock with virgin leftovers", () => {
+    const { raw, sb } = blankCard();
+    expect(sb.version).toBe("1.2.0.0");
+    expect(sb.cardForm).toBe(FAT_EOF);
+    expect(raw[0x23]).toBe(0);
+    expect([...raw.subarray(0x24, 0x28)]).toEqual([0, 0, 0, 0]);
+    expect(raw[0x2e] | (raw[0x2f] << 8)).toBe(0xff00);
+    expect([...raw.subarray(0x152, 0x154)]).toEqual([0xff, 0xff]);
+    expect([...raw.subarray(0x174, 0x184)]).toEqual(Array(16).fill(0xff));
+    const rootPage0 = sb.allocOffset * 2 * PAGE_SIZE;
+    const rootPage1 = (sb.allocOffset * 2 + 1) * PAGE_SIZE;
+    for (const base of [rootPage0, rootPage1]) {
+      for (let i = 0x60; i < PAGE_DATA_SIZE; i++) {
+        expect(raw[base + i]).toBe(0);
+      }
+    }
+  });
+
   it("leaves the allocation range free and the tail erased", () => {
     const { raw, sb } = blankCard();
     expect(fatGet(raw, sb, 0)).toBe(FAT_EOF);
@@ -145,6 +182,22 @@ describe("format2 geometry", () => {
     expect(entries[1].mode).toBe(0xa426);
   });
 
+  it("programs unused IFC page 1 with Hamming spare", () => {
+    const { raw, sb } = blankCard();
+    const page1 = (sb.ifcList[0] * 2 + 1) * PAGE_SIZE;
+    const data = raw.subarray(page1, page1 + PAGE_DATA_SIZE);
+    const spare = raw.subarray(page1 + PAGE_DATA_SIZE, page1 + PAGE_SIZE);
+    expect([...data]).toEqual(Array(PAGE_DATA_SIZE).fill(0xff));
+    expect(checkPage(raw.subarray(page1, page1 + PAGE_SIZE))).toBe("valid");
+    expect([...spare.subarray(0, 12)]).toEqual([
+      ...ECC_ALL_FF_CODE,
+      ...ECC_ALL_FF_CODE,
+      ...ECC_ALL_FF_CODE,
+      ...ECC_ALL_FF_CODE,
+    ]);
+    expect([...spare.subarray(12, 16)]).toEqual([0, 0, 0, 0]);
+  });
+
   it("keeps every page ECC-clean", () => {
     everyPageClean(blankCard().raw);
   });
@@ -166,6 +219,110 @@ describe("format2 geometry", () => {
   it("rejects unaligned cluster counts", () => {
     expect(() => format2(8191)).toThrow();
     expect(() => format2(8)).toThrow();
+  });
+
+  it("caps IFC/FAT counts without building an image", () => {
+    expect(ifcFatCounts(8192)).toEqual({ fat: 32, ifc: 1 });
+    expect(ifcFatCounts(131072)).toEqual({ fat: 512, ifc: 2 });
+    // fat = 8193, ifc = 33 before the cap.
+    expect(ifcFatCounts(2_097_153)).toEqual({ fat: 0x2000, ifc: 32 });
+  });
+
+  it("walks backup blocks down past an injected last-block bad", () => {
+    const raw = format2(64, FRESH_ROOT_TIME, [7]);
+    const sb = parseSuperblock(raw);
+    expect(sb.backupBlock1).toBe(6);
+    expect(sb.backupBlock2).toBe(5);
+    expect(sb.ifcList[0]).toBe(8);
+    expect(sb.allocOffset).toBe(10);
+    expect(sb.allocEnd).toBe(5 * CLUSTERS_PER_BLOCK - 10);
+    expect(sb.badBlockList[0]).toBe(7);
+    expect(sb.badBlockList[1]).toBe(0xffffffff);
+    expect(fatGet(raw, sb, 0)).toBe(FAT_EOF);
+    for (let rel = 1; rel < sb.allocEnd; rel++) {
+      expect(fatGet(raw, sb, rel)).toBe(FAT_FREE);
+    }
+    everyPageClean(raw);
+  });
+
+  it("skips a bad erase block covering first_candidate", () => {
+    const skipped = parseSuperblock(format2(64, FRESH_ROOT_TIME, [1]));
+    expect(skipped.ifcList[0]).not.toBe(8);
+    expect(skipped.ifcList[0]).toBe(16);
+    expect(skipped.allocOffset).toBe(18);
+    expect(skipped.allocEnd).toBe(6 * CLUSTERS_PER_BLOCK - 18);
+
+    // Block 4 sits in the allocatable window after FAT (0xFFFFFFFD).
+    const raw = format2(64, FRESH_ROOT_TIME, [1, 4]);
+    const sb = parseSuperblock(raw);
+    expect(sb.ifcList[0]).toBe(16);
+    const fat0 = u32At(raw, clusterDataOffset(sb.ifcList[0], 0));
+    expect(fat0).toBe(17);
+    expect(sb.allocOffset).toBe(18);
+    expect(sb.badBlockList[0]).toBe(1);
+    expect(sb.badBlockList[1]).toBe(4);
+    expect(fatGet(raw, sb, 0)).toBe(FAT_EOF);
+    let sawBlock4 = false;
+    for (let rel = 0; rel < sb.allocEnd; rel++) {
+      const abs = sb.allocOffset + rel;
+      const erase = Math.floor((abs * sb.pagesPerCluster) / sb.pagesPerBlock);
+      if (erase === 1 || erase === 4) {
+        expect(fatGet(raw, sb, rel)).toBe(FAT_BAD);
+        if (erase === 4) sawBlock4 = true;
+      } else if (rel > 0) {
+        expect(fatGet(raw, sb, rel)).toBe(FAT_FREE);
+      }
+    }
+    expect(sawBlock4).toBe(true);
+    everyPageClean(raw);
+  });
+
+  it("programs unused FAT page 1 with Hamming spare", () => {
+    const { raw, sb } = blankCard(64);
+    const fatLoc = u32At(raw, clusterDataOffset(sb.ifcList[0], 0));
+    const page1 = (fatLoc * 2 + 1) * PAGE_SIZE;
+    const data = raw.subarray(page1, page1 + PAGE_DATA_SIZE);
+    const spare = raw.subarray(page1 + PAGE_DATA_SIZE, page1 + PAGE_SIZE);
+    expect([...data]).toEqual(Array(PAGE_DATA_SIZE).fill(0xff));
+    expect(checkPage(raw.subarray(page1, page1 + PAGE_SIZE))).toBe("valid");
+    expect([...spare.subarray(0, 12)]).toEqual([
+      ...ECC_ALL_FF_CODE,
+      ...ECC_ALL_FF_CODE,
+      ...ECC_ALL_FF_CODE,
+      ...ECC_ALL_FF_CODE,
+    ]);
+    expect([...spare.subarray(12, 16)]).toEqual([0, 0, 0, 0]);
+  });
+
+  it("scans a planted non-FF spare on unformatted media", () => {
+    const erased = new Uint8Array(64 * 2 * PAGE_SIZE).fill(0xff);
+    const page0 = 7 * PAGES_PER_BLOCK;
+    erased[page0 * PAGE_SIZE + PAGE_DATA_SIZE] = 0x00;
+    const raw = format2(64, FRESH_ROOT_TIME, { fromRaw: erased });
+    const sb = parseSuperblock(raw);
+    expect(sb.badBlockList[0]).toBe(7);
+    expect(sb.badBlockList[1]).toBe(0xffffffff);
+    expect(sb.backupBlock1).toBe(6);
+    expect(sb.backupBlock2).toBe(5);
+  });
+
+  it("keeps the existing bad-block list on reformat", () => {
+    const first = format2(64, FRESH_ROOT_TIME, [3]);
+    expect(parseSuperblock(first).badBlockList[0]).toBe(3);
+    const raw = format2(64, FRESH_ROOT_TIME, { fromRaw: first });
+    const sb = parseSuperblock(raw);
+    expect(sb.badBlockList[0]).toBe(3);
+    let saw = false;
+    for (let rel = 0; rel < sb.allocEnd; rel++) {
+      const erase = Math.floor(
+        ((sb.allocOffset + rel) * sb.pagesPerCluster) / sb.pagesPerBlock,
+      );
+      if (erase === 3) {
+        expect(fatGet(raw, sb, rel)).toBe(FAT_BAD);
+        saw = true;
+      }
+    }
+    expect(saw).toBe(true);
   });
 });
 
@@ -284,6 +441,71 @@ describe("directory entries", () => {
     // untouched; dir-entry writes above do not change the FAT.)
     const erased = rel + 1;
     expect(readDirectory(raw, sb, erased)).toEqual([]);
+    dirEntry(raw, sb, erased, 0, {
+      name: String.fromCharCode(...Array(32).fill(0x7f)),
+      mode: 0xffff,
+      length: 0,
+      cluster: 0,
+      dirEntry: 0,
+    });
+    expect(readDirectory(raw, sb, erased)).toEqual([]);
+  });
+
+  it("round-trips Shift-JIS dirent names", () => {
+    const { raw, sb } = blankCard();
+    const rel = findFreeCluster(raw, sb)!;
+    const sjis = String.fromCharCode(0x82, 0xa0, 0x82, 0xa2);
+    dirEntry(raw, sb, rel, 0, {
+      name: sjis,
+      mode: 0x8427,
+      length: 1,
+      cluster: 9,
+      dirEntry: 0,
+    });
+    const unicode = "あ";
+    dirEntry(raw, sb, rel, 1, {
+      name: unicode,
+      mode: 0x8427,
+      length: 1,
+      cluster: 10,
+      dirEntry: 1,
+    });
+    const a = readDirEntry(raw, sb, rel, 0);
+    const b = readDirEntry(raw, sb, rel, 1);
+    expect([...a.name].map((c) => c.charCodeAt(0))).toEqual([
+      0x82, 0xa0, 0x82, 0xa2,
+    ]);
+    expect([...b.name].map((c) => c.charCodeAt(0))).toEqual([0x82, 0xa0]);
+    expect(readDirectory(raw, sb, rel).map((e) => e.name)).toEqual([
+      a.name,
+      b.name,
+    ]);
+  });
+
+  it("overlays modified without writing resv", () => {
+    const { raw, sb } = blankCard();
+    const e = sb.allocOffset * 2 * PAGE_SIZE;
+    raw[e + 0x08] = 0xab;
+    raw[e + 0x18] = 0xcd;
+    raw.fill(0x11, e + 0x24, e + 0x40);
+    raw[e + 0x42] = 0x99;
+    const created = [...raw.subarray(e + 0x08, e + 0x10)];
+    patchDirEntry(raw, sb, ROOT_CLUSTER, 0, {
+      length: readDirEntry(raw, sb, ROOT_CLUSTER, 0).length + 1,
+      modified: { ...T, sec: 50 },
+    });
+    expect(raw[e + 0x08]).toBe(0xab);
+    expect(raw[e + 0x18]).toBe(0xcd);
+    expect([...raw.subarray(e + 0x08, e + 0x10)]).toEqual(created);
+    expect([...raw.subarray(e + 0x24, e + 0x40)]).toEqual(
+      Array(0x1c).fill(0x11),
+    );
+    expect(raw[e + 0x40]).toBe(".".charCodeAt(0));
+    expect(raw[e + 0x42]).toBe(0x99);
+    const dot = readDirEntry(raw, sb, ROOT_CLUSTER, 0);
+    expect(dot.modified.sec).toBe(50);
+    expect(dot.length).toBe(3);
+    expect(dot.name).toBe(".");
   });
 });
 
@@ -300,6 +522,35 @@ describe("superblock validation", () => {
     const badType = new Uint8Array(raw.subarray(0, PAGE_SIZE));
     badType[0x150] = 3;
     expect(() => parseSuperblock(badType)).toThrow(/type/i);
+  });
+
+  it("compares 27 magic bytes and ignores byte 27", () => {
+    const { raw } = blankCard();
+    expect(raw[27]).toBe(0x20);
+    expect(parseSuperblock(raw).version).toBe(PS2_FORMAT_VERSION);
+
+    const nulTail = new Uint8Array(raw.subarray(0, PAGE_SIZE));
+    nulTail[27] = 0x00;
+    expect(parseSuperblock(nulTail).version).toBe(PS2_FORMAT_VERSION);
+    const ffTail = new Uint8Array(raw.subarray(0, PAGE_SIZE));
+    ffTail[27] = 0xff;
+    expect(parseSuperblock(ffTail).version).toBe(PS2_FORMAT_VERSION);
+
+    const bad26 = new Uint8Array(raw.subarray(0, PAGE_SIZE));
+    bad26[26] = 0x00;
+    expect(() => parseSuperblock(bad26)).toThrow(/magic/i);
+
+    const conquest = new Uint8Array(raw.subarray(0, PAGE_SIZE));
+    conquest.set(new TextEncoder().encode(PS2_CONQUEST_MAGIC), 0);
+    expect(() => parseSuperblock(conquest)).toThrow(/magic/i);
+  });
+
+  it("still mounts a 1.1.0.0 superblock", () => {
+    const { raw } = blankCard();
+    const v11 = new Uint8Array(raw.subarray(0, PAGE_SIZE));
+    v11.set(new TextEncoder().encode("1.1.0.0"), 0x1c);
+    v11[0x23] = 0;
+    expect(parseSuperblock(v11).version).toBe("1.1.0.0");
   });
 
   it("tolerates a zeroed extended region (older cards)", () => {

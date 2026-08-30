@@ -7,6 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { displayDirentName } from "@/lib/ps2/ps2-sjis";
 import type { Ps2DateTime, Ps2SaveInfo } from "@/lib/ps2/ps2-types";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +55,7 @@ const Ps2SaveRow: React.FC<{
           {save.title}
         </h3>
         <p className="text-muted-foreground truncate font-mono text-xs">
-          {save.name}
+          {displayDirentName(save.name)}
         </p>
       </div>
       <div className="ml-2 flex flex-col items-end gap-1">
