@@ -620,7 +620,10 @@ export class PS3MemCardAdaptor extends HardwareInterface {
     if (auth.status !== "ok") {
       return { status: "error", message: auth.message, step: auth.step };
     }
-    // Auth reset the card; re-sync the terminator and re-Get Specs.
+    // Auth reset the card; re-sync the terminator and re-Get Specs. A card that
+    // still refuses after a successful handshake used a key set that does not
+    // match it; the `auth` step makes the caller drop the key set and re-prompt
+    // instead of failing the read/write outright.
     await this.ps2SyncTerminator();
     result = await this.ps2GetSpecs();
     if (result.status === "needs-auth") {
@@ -628,6 +631,7 @@ export class PS3MemCardAdaptor extends HardwareInterface {
         status: "error",
         message:
           "Authentication succeeded but the card still requires MagicGate authentication.",
+        step: "auth",
       };
     }
     return result;

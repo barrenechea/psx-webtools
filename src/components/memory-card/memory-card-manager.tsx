@@ -540,13 +540,6 @@ export const MemoryCardManager: React.FC = () => {
     })();
   };
 
-  // Wipe the persisted keyset but stay in the dialog (keeping the loaded file)
-  // so a needs-auth user can load another file and pick a section without
-  // re-triggering the read/write.
-  const handleMgKeyClear = () => {
-    setStoredMgKeyset(null);
-  };
-
   const handleMgKeyClose = (open: boolean) => {
     if (!open) {
       // Only report a cancel while an operation is still waiting on a keyset;
@@ -1498,7 +1491,6 @@ export const MemoryCardManager: React.FC = () => {
         onOpenChange={handleMgKeyClose}
         storedSection={storedSection}
         onSelect={handleMgKeySelect}
-        onClear={handleMgKeyClear}
       />
       <EditHeaderDialog
         key={`header-${dialogSlot ?? "none"}`}
