@@ -58,7 +58,7 @@ export const SaveSingleSaveDialog = <T extends number>({
             Choose a file name and format for this single save.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="singleSaveFileName">File name</Label>
             <Input

@@ -40,7 +40,7 @@ export const EditCommentDialog: React.FC<EditCommentDialogProps> = ({
             Comments are only supported by GME files.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <Textarea
             value={comment}
             rows={4}

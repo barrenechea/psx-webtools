@@ -107,7 +107,7 @@ export const PocketStationDialog: React.FC<PocketStationDialogProps> = ({
             Read the serial, dump the BIOS, or push the PC clock.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"

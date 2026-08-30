@@ -49,7 +49,7 @@ export const FormatCardDialog: React.FC<FormatCardDialogProps> = ({
               : "Erase the memory card in the connected device into an empty, formatted state. This cannot be undone."}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           {isPs2 ? (
             <div className="grid gap-2">
               <Label>Format type</Label>

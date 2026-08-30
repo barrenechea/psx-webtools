@@ -63,7 +63,7 @@ export const Ps2ImportSaveDialog: React.FC<Ps2ImportSaveDialogProps> = ({
             their files.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="ps2ImportName">Save name</Label>
             <Input

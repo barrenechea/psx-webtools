@@ -50,7 +50,7 @@ export const Ps2NewCardDialog: React.FC<Ps2NewCardDialogProps> = ({
             machine; save it to download a card image file.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="ps2CardSize">Card size</Label>
             <Select

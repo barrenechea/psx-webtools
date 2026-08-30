@@ -87,7 +87,7 @@ export const PS1CardLinkConnectDialog: React.FC<
             Select the memory card slot to read from or write to.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="grid gap-2">
             <Label>Memory card slot</Label>
             <Select

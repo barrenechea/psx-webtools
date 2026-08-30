@@ -100,7 +100,7 @@ export const MemcarduinoConnectDialog: React.FC<
             MemCARDuino.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <Select value={deviceType} onValueChange={setDeviceType}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select device type" />

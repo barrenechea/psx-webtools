@@ -74,7 +74,7 @@ export const SaveDialog = <T extends number>({
             Choose a file name and format for your save data.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="fileName">File name</Label>
             <Input

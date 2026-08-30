@@ -60,7 +60,7 @@ export const Ps1SaveInfoDialog: React.FC<Ps1SaveInfoDialogProps> = ({
         <DialogTitle>Save Information</DialogTitle>
         <DialogDescription>Details for the selected save.</DialogDescription>
       </DialogHeader>
-      <div className="grid gap-4 py-4">
+      <div className="grid gap-4">
         <div className="flex items-center gap-4">
           <div className="bg-muted flex size-16 shrink-0 items-center justify-center rounded-md">
             <PS1BlockIcon

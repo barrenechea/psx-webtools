@@ -41,7 +41,7 @@ export const WriteCardDialog: React.FC<WriteCardDialogProps> = ({
           cannot be undone.
         </DialogDescription>
       </DialogHeader>
-      <div className="grid gap-4 py-4">
+      <div className="grid gap-4">
         <div>
           <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
             Raw CRC-32

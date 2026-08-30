@@ -60,7 +60,7 @@ export const EditHeaderDialog: React.FC<EditHeaderDialogProps> = ({
             Change the product code, identifier and region for this save.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="productCode">Product code</Label>
             <Input
