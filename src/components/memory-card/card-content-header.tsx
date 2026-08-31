@@ -50,7 +50,11 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
           CRC-32 {checksum}
         </TooltipTrigger>
         <TooltipContent>
-          <p>GME comments are not included.</p>
+          <p>
+            {kind === "ps2"
+              ? "ECC spares are not included."
+              : "GME comments are not included."}
+          </p>
         </TooltipContent>
       </Tooltip>
     </div>

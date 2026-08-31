@@ -201,7 +201,9 @@ describe("PS2MemoryCard", () => {
     expect(card.getSaves()).toEqual([]);
     expect(card.getSuperblock().allocOffset).toBe(41);
     expect(card.getRawData().length).toBe(8192 * 2 * PAGE_SIZE);
-    expect(card.getRawChecksum()).toBe(formatCrc32(crc32(card.getRawData())));
+    expect(card.getRawChecksum()).toBe(
+      formatCrc32(crc32(stripImageSpares(card.getRawData()))),
+    );
   });
 
   it("fromRaw() rejects malformed images", () => {

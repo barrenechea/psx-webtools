@@ -2,7 +2,7 @@
 // plus the console-style write side (delete, copy, single-save import) with
 // page-granular undo/redo.
 
-import { crc32, formatCrc32 } from "../crc32";
+import { crc32Update, formatCrc32 } from "../crc32";
 import type { Ps2IconModel } from "./ps2-icon";
 import { parsePs2Icon } from "./ps2-icon";
 import type { Ps2IconCorner, Ps2IconSys } from "./ps2-iconsys";
@@ -21,6 +21,7 @@ import {
   MODE_PDA,
   MODE_PSX,
   normalizeCardImage,
+  PAGE_DATA_SIZE,
   PAGE_SIZE,
   PAGES_PER_CLUSTER,
   PARENT_ENTRY,
@@ -83,6 +84,18 @@ const ZERO_TIME: Ps2DateTime = {
   month: 0,
   year: 0,
 };
+
+// Data-only CRC-32: the 512 data bytes of each 528-byte page, skipping the
+// 16-byte spare/ECC. Hashing the pages in place (no full-card copy) keeps the
+// content fingerprint stable across ECC and dump stride.
+function dataOnlyCrc32(raw: Uint8Array): number {
+  const pages = Math.floor(raw.length / PAGE_SIZE);
+  let state = 0xffffffff;
+  for (let p = 0; p < pages; p++) {
+    state = crc32Update(state, raw, p * PAGE_SIZE, PAGE_DATA_SIZE);
+  }
+  return (state ^ 0xffffffff) >>> 0;
+}
 
 // One undo step: the affected 528-byte pages and their pre-change contents.
 interface PageSnapshot {
@@ -192,8 +205,13 @@ export class PS2MemoryCard {
     return this.raw.slice(offset, offset + length);
   }
 
+  /**
+   * Data-only CRC-32 (every page's 512 data bytes, spares/ECC excluded), so a
+   * card written to hardware and read back compares equal to its source image
+   * regardless of ECC.
+   */
   getRawChecksum(): string {
-    return formatCrc32(crc32(this.raw));
+    return formatCrc32(dataOnlyCrc32(this.raw));
   }
 
   public get changed(): boolean {
