@@ -33,6 +33,10 @@ const VENDOR_ID = 0x054c;
 const PRODUCT_ID = 0x02ea;
 const READ_EP = 1;
 const WRITE_EP = 2;
+// Card-presence interrupt: 1-byte tokens (01/02/03) edge-triggered on insert
+// and remove. The firmware probes the slot while idle, so the host only needs
+// to drain this endpoint — never poll a card-type command for presence.
+const INT_EP = 3;
 
 const READ_COMMAND_LENGTH = 144;
 const WRITE_COMMAND_LENGTH = 142;
@@ -47,8 +51,14 @@ const MAX_RETRIES = 5;
 // https://stackoverflow.com/questions/49994122
 const IN_TRANSFER_SIZE = 256;
 
-// Card-type probe: 0xAA 0x40 -> the device answers 0x55 0x01 for a PS1 card.
+// Card-type probe: 0xAA 0x40 -> the device answers 0x55 <type>.
 const CMD_GET_CARD_TYPE = new Uint8Array([0xaa, 0x40]);
+
+// PocketStation Get ID, sent over the raw-SIO channel after the type probe
+// classifies the slot as 0x01 (PS1 or PocketStation). A PocketStation answers
+// with ID 0x02 at MISO[2]; a plain PS1 card does not.
+const CMD_POCKET_ID = new Uint8Array([0x81, 0x58, 0x00, 0x00, 0x00]);
+const POCKET_ID_VALUE = 0x02;
 
 // Build a zeroed "AA 42" command buffer. Layout: [AA][42][len-4][00][81][op],
 // then per-command fields (frame number @8/9, payload, checksum). The concrete
@@ -152,6 +162,8 @@ export class PS3MemCardAdaptor extends HardwareInterface {
   // Last successful MagicGate SessionKey (8 B). Never logged; cleared when a
   // handshake re-runs, fails, or the device is dropped.
   private sessionKey: Uint8Array | null = null;
+  // Drives the interrupt listener; stops the transferIn loop on stop()/error.
+  private cardEventListening = false;
 
   private readFrameCommand = makeCommand(READ_COMMAND_LENGTH, 0x52);
   private writeFrameCommand = makeCommand(WRITE_COMMAND_LENGTH, 0x57);
@@ -196,10 +208,13 @@ export class PS3MemCardAdaptor extends HardwareInterface {
       await this.device.open();
       await this.device.selectConfiguration(1);
       await this.device.claimInterface(0);
+      this.cardEventListening = true;
+      void this.listenCardEvents();
 
       onStatusUpdate("PS3 MC Adaptor connected.");
       return null; // Success
     } catch (error) {
+      this.cardEventListening = false;
       this.removeDisconnectHandler();
       if (this.device) await this.device.close().catch(() => undefined);
       this.device = null;
@@ -208,6 +223,11 @@ export class PS3MemCardAdaptor extends HardwareInterface {
   }
 
   override async stop(): Promise<void> {
+    // Stop the listener and drop the callback before closing so a card event
+    // cannot be dispatched while the device is torn down; the pending
+    // transferIn is rejected by close() and the loop exits.
+    this.cardEventListening = false;
+    this.onCardEvent = null;
     if (this.device) {
       this.removeDisconnectHandler();
       await this.device.close().catch(() => undefined);
@@ -237,37 +257,89 @@ export class PS3MemCardAdaptor extends HardwareInterface {
     this.disconnectHandler = null;
   }
 
-  // Probe the card slot. The adaptor can be connected without a card, so the
-  // read/write paths call this before operating. The reply is `55 <type>`:
-  // 00 empty, 01 PS1/PocketStation, 02 PS2. Returns null when the adaptor is
-  // not connected; "unknown" when the slot cannot be classified.
-  async ps2ProbeCardType(): Promise<CardProbeResult | null> {
+  private async listenCardEvents(): Promise<void> {
+    while (this.cardEventListening && this.device) {
+      let response: USBInTransferResult;
+      try {
+        response = await this.device.transferIn(INT_EP, 1);
+      } catch {
+        // A rejected transferIn means the device closed or was unplugged.
+        break;
+      }
+      // A resolved non-ok status is a transient failure; re-arm the 1-byte URB
+      // (libmcadpt resubmits it) rather than dropping the listener. stop() and
+      // an unplug (a rejected transferIn) still end the loop.
+      if (response.status !== "ok") continue;
+      if (!this.cardEventListening) break;
+      const data = readResponse(response);
+      if (!data) continue;
+      const byte = data[0];
+      if (byte === 0x01 || byte === 0x02 || byte === 0x03) {
+        this.onCardEvent?.(byte);
+      }
+    }
+  }
+
+  // One `AA 40` type read. Returns the raw slot type (00/01/02) or null when the
+  // reply is not a valid card-type: wrong magic, a short/missing reply, or a type
+  // byte of 03 or higher (libmcadpt treats those as a failure).
+  private async ps2ProbeSlotType(): Promise<number | null> {
     if (!this.device) return null;
     try {
       await this.device.transferOut(WRITE_EP, CMD_GET_CARD_TYPE);
       const data = await transferInMessage(this.device, 2);
-      if (!data || data.length < 2 || data[0] !== 0x55) {
-        return "unknown";
-      }
-      switch (data[1]) {
-        case 0x00:
-          return "empty";
-        case 0x01:
-          return "ps1";
-        case 0x02:
-          return "ps2";
-        default:
-          return "unknown";
-      }
+      if (!data || data.length < 2 || data[0] !== 0x55) return null;
+      const type = data[1];
+      if (type !== 0x00 && type !== 0x01 && type !== 0x02) return null;
+      return type;
     } catch {
-      return "unknown";
+      return null;
     }
+  }
+
+  // Probe the card slot the way libmcadpt does: `AA 40` three times, all three
+  // must agree on a valid type (00/01/02) or the slot is unclassifiable. Type 01
+  // then gets the PocketStation Get ID (`81 58`) once; 00 is empty, 02 PS2. The
+  // adaptor can be connected without a card, so the read/write paths call this
+  // before operating. It is classification only — it never dumps the card.
+  // Returns null when the adaptor is not connected; "unknown" when the slot
+  // cannot be classified.
+  async ps2ProbeCardType(): Promise<CardProbeResult | null> {
+    if (!this.device) return null;
+    const first = await this.ps2ProbeSlotType();
+    if (first === null) return "unknown";
+    for (let i = 1; i < 3; i++) {
+      const again = await this.ps2ProbeSlotType();
+      if (again === null || again !== first) return "unknown";
+    }
+    switch (first) {
+      case 0x00:
+        return "empty";
+      case 0x01:
+        return await this.ps2ProbePocketStation();
+      case 0x02:
+        return "ps2";
+      default:
+        return "unknown";
+    }
+  }
+
+  // The type probe reports 0x01 for both a PS1 card and a PocketStation. Send
+  // the PocketStation Get ID (81 58) over the raw-SIO channel and require
+  // MISO[2] == 0x02 to call it a PocketStation; anything else (including no
+  // reply) is a PS1 card. Never sent for empty / PS2 / unknown (type 0x03).
+  private async ps2ProbePocketStation(): Promise<CardProbeResult> {
+    const miso = await this.ps2Sio2(CMD_POCKET_ID);
+    if (miso && miso[2] === POCKET_ID_VALUE) return "pocketstation";
+    return "ps1";
   }
 
   override async checkCard(): Promise<CardCheck> {
     switch (await this.ps2ProbeCardType()) {
       case "ps1":
         return { present: true, kind: "ps1" };
+      case "pocketstation":
+        return { present: true, kind: "pocketstation" };
       case "ps2":
         return { present: true, kind: "ps2" };
       case "empty":

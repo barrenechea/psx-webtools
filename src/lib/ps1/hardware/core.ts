@@ -31,8 +31,13 @@ export enum SupportedFeatures {
   PocketStation = 1 << 2,
 }
 
-// Card family currently in a device's slot.
-export type SlotCardKind = "ps1" | "ps2";
+// Card family currently in a device's slot. "pocketstation" is a PS1-compatible
+// slot (same PS1 frame path) detected via the PocketStation ID command.
+export type SlotCardKind = "ps1" | "ps2" | "pocketstation";
+
+// Card-presence edges the PS3 MC Adaptor reports on interrupt IN `0x83`:
+// `01` is a PS1 insert, `02` is a remove, and `03` is a PS2 insert.
+export type CardEvent = 0x01 | 0x02 | 0x03;
 
 // Result of checking the memory-card slot. `present` means a usable card is
 // ready, with `kind` naming the family the slot probe classified (only
@@ -50,6 +55,11 @@ export abstract class HardwareInterface {
   // app registers it before start(); only transports that can detect removal
   // (WebUSB) call it.
   onDisconnected: (() => void) | null = null;
+
+  // Called for each card-presence edge on interrupt IN `0x83` (insert/remove).
+  // The app registers it before start(); only the PS3 MC Adaptor, which runs an
+  // interrupt listener, invokes it.
+  onCardEvent: ((ev: CardEvent) => void) | null = null;
 
   private _type: Types;
   private _mode: Modes;

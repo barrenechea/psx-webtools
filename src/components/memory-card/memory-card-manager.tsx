@@ -23,6 +23,7 @@ import {
 } from "@/hooks/use-game-data";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import type { SaveFormatOption } from "@/hooks/use-save-file-form";
+import type { CardEvent, SlotCardKind } from "@/lib/ps1/hardware/core";
 import PS1MemoryCard, {
   CardExtensions,
   CardTypes,
@@ -82,11 +83,31 @@ import { Ps2MgKeyDialog } from "./ps2-mg-key-dialog";
 import { Ps2NewCardDialog } from "./ps2-new-card-dialog";
 import { Ps2SaveInfoSidebar } from "./ps2-save-info-sidebar";
 import { Ps2SaveList } from "./ps2-save-list";
+import { SlotCardPreview } from "./slot-card-preview";
 import { isPs2Card, type MemoryCard } from "./types";
 import { WriteCardDialog } from "./write-card-dialog";
 
 let lastCardId = 0;
 const nextCardId = (): number => ++lastCardId;
+
+// Runs an async operation with a shared "in flight" flag set for its duration.
+// `onSettled` runs once the flag clears, whether the op succeeded or threw, so a
+// remembered insert is classified even when a failed op releases the guard. Also
+// serializes the slot-preview classify against Read/Write/Format so an `AA 40` Probe
+// (which the firmware clocks as SIO) cannot land mid-MagicGate.
+async function withBusy<T>(
+  flag: { current: boolean },
+  op: () => Promise<T>,
+  onSettled?: () => void,
+): Promise<T> {
+  flag.current = true;
+  try {
+    return await op();
+  } finally {
+    flag.current = false;
+    onSettled?.();
+  }
+}
 
 // The read, write, or format awaiting a MagicGate keyset, so the key dialog can
 // retry the exact operation once a section is picked (or on a repeated failure).
@@ -310,6 +331,10 @@ export const MemoryCardManager: React.FC = () => {
   // The slot kind probed when the format dialog opens, so it can offer the right
   // options (PS2 is a full NAND erase, no quick/full).
   const [formatCardKind, setFormatCardKind] = useState<"ps1" | "ps2">("ps1");
+  // Card family detected in the device slot via the 0x83 interrupt edges;
+  // drives the slot preview. Null when the slot is empty or not yet probed
+  // (and always null on non-probing devices).
+  const [detectedCard, setDetectedCard] = useState<SlotCardKind | null>(null);
   const [isMgKeyDialogOpen, setIsMgKeyDialogOpen] = useState(false);
   // The read/write awaiting a keyset, kept in a ref (not state) so the close
   // path always sees the latest value and a successful pick clears it before
@@ -318,6 +343,43 @@ export const MemoryCardManager: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const singleSaveFileInputRef = useRef<HTMLInputElement>(null);
   const ps2ImportFileInputRef = useRef<HTMLInputElement>(null);
+  // The slot preview is driven by two classify sources, neither a timer nor a dump: the
+  // 0x83 interrupt edges while connected (insert 0x01/0x03 re-classifies the
+  // slot, remove 0x02 clears it), plus one classify when the PS3 MCA connection
+  // goes live — the firmware can queue a 01/03 during `start()` before
+  // `isConnected` is true, and that edge would otherwise be dropped. The
+  // classify is guarded so it never overlaps another classify or a bulk
+  // read/write/format (an `AA 40` Probe injected mid-MagicGate would break
+  // authentication). `useHardwareConnection` keeps the latest handler closure,
+  // so no local ref shim is needed.
+  const probingRef = useRef(false);
+  const bulkOpInFlightRef = useRef(false);
+  const probeSlotRef = useRef<() => void>(() => {});
+  // Bumped on every remove (0x02). A classify captures the value at its start
+  // and applies its result only if it still matches, so a 0x02 that lands
+  // mid-classify cannot be undone by the stale result restoring the preview.
+  const classifyGenRef = useRef(0);
+  // Set when an insert (0x01/0x03) arrives while a classify or bulk op holds the
+  // guard; the firmware won't resend that one-shot edge, so the classify is run
+  // once when the guard clears. A remove clears it (the preview is already empty).
+  const pendingInsertRef = useRef(false);
+
+  // Hotplug edge handler, passed straight into useDeviceManager (the connection
+  // hook stores it in a ref updated every render, so it always sees fresh state).
+  const handleCardEvent = (ev: CardEvent) => {
+    if (ev === 0x02) {
+      // Remove: invalidate any in-flight classify (so its stale result can't
+      // restore the preview), drop any remembered insert, and clear the preview.
+      classifyGenRef.current += 1;
+      pendingInsertRef.current = false;
+      setDetectedCard(null);
+      return;
+    }
+    // Insert (0x01 PS1 / 0x03 PS2). The byte is not the card family; re-classify
+    // with 3x `AA 40` (+ `81 58` for a type-01 slot). `probeSlot` remembers the
+    // insert if a classify or bulk op is holding the guard.
+    probeSlotRef.current();
+  };
 
   // Live keyset restored from the persisted entry. A missing or corrupt entry
   // restores to null, so it degrades to the normal "no keyset" prompt instead
@@ -361,7 +423,7 @@ export const MemoryCardManager: React.FC = () => {
     readPocketStationSerial,
     dumpPocketStationBIOS,
     setPocketStationTime,
-  } = useDeviceManager();
+  } = useDeviceManager(handleCardEvent);
 
   usePrefetchGameData([
     ...gameDataTargetsFromSaves(
@@ -399,6 +461,11 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handlePS3MCAConnect = async () => {
+    // Clear the preview on purpose; the connect-time classify (and later 0x83
+    // edges) fill it in. Also drop any insert remembered from a previous
+    // connection.
+    setDetectedCard(null);
+    pendingInsertRef.current = false;
     try {
       await connectPS3MCA();
     } catch (err) {
@@ -437,6 +504,7 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handleDisconnect = async () => {
+    setDetectedCard(null);
     try {
       await disconnectDevice();
     } catch (err) {
@@ -471,26 +539,39 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const performRead = async (keyset?: Ps2MgKeyset) => {
-    const card = await readCard(fixCorrupted, keyset ?? mgKeyset ?? undefined);
-    const deviceLabel = connectedDevice ?? "Device";
-    const newMemoryCard: MemoryCard = {
-      id: nextCardId(),
-      name: `${deviceLabel} Read`,
-      type: "device",
-      source: firmwareVersion
-        ? `${deviceLabel} v${firmwareVersion}`
-        : deviceLabel,
-      card,
-    };
-    setMemoryCards((prev) => [...prev, newMemoryCard]);
-    setSelectedCard(newMemoryCard.id);
+    await withBusy(
+      bulkOpInFlightRef,
+      async () => {
+        const card = await readCard(
+          fixCorrupted,
+          keyset ?? mgKeyset ?? undefined,
+        );
+        const deviceLabel = connectedDevice ?? "Device";
+        const newMemoryCard: MemoryCard = {
+          id: nextCardId(),
+          name: `${deviceLabel} Read`,
+          type: "device",
+          source: firmwareVersion
+            ? `${deviceLabel} v${firmwareVersion}`
+            : deviceLabel,
+          card,
+        };
+        setMemoryCards((prev) => [...prev, newMemoryCard]);
+        setSelectedCard(newMemoryCard.id);
+      },
+      flushPendingClassify,
+    );
   };
 
   const performWrite = async (
     card: PS1MemoryCard | PS2MemoryCard,
     keyset?: Ps2MgKeyset,
   ) => {
-    await writeCard(card, verifyAfterWrite, keyset ?? mgKeyset ?? undefined);
+    await withBusy(
+      bulkOpInFlightRef,
+      () => writeCard(card, verifyAfterWrite, keyset ?? mgKeyset ?? undefined),
+      flushPendingClassify,
+    );
   };
 
   const handleReadFromDevice = async () => {
@@ -501,6 +582,60 @@ export const MemoryCardManager: React.FC = () => {
       handleMgAuthError(err, { kind: "read" });
     }
   };
+
+  // Runs a classify for a remembered insert (set while guarded) and clears the
+  // flag. Called when a classify finishes and when a bulk op (withBusy) clears
+  // its guard, so a one-shot insert edge is never dropped.
+  const flushPendingClassify = () => {
+    if (pendingInsertRef.current) {
+      pendingInsertRef.current = false;
+      probeSlotRef.current();
+    }
+  };
+
+  // Re-classifies the slot for the preview (3x `AA 40`, plus `81 58` for a type-01
+  // slot). Guarded so it never overlaps another classify or a bulk op; an insert
+  // arriving while one of those guards holds is remembered and classified once
+  // the guard clears (an insert with no connection is dropped — there is no card
+  // to classify). The result applies only if the remove-generation is still
+  // current, so a 0x02 that lands mid-classify cannot restore the preview from that
+  // stale classify's result.
+  const probeSlot = () => {
+    if (!isConnected) return;
+    if (probingRef.current || bulkOpInFlightRef.current) {
+      pendingInsertRef.current = true;
+      return;
+    }
+    probingRef.current = true;
+    const gen = classifyGenRef.current;
+    void (async () => {
+      const kind = await checkCard().catch(() => null);
+      if (classifyGenRef.current === gen) setDetectedCard(kind);
+      // Release the guard on both the apply and the stale path so it cannot
+      // stick, then classify a remembered insert now that the pipe is free.
+      probingRef.current = false;
+      flushPendingClassify();
+    })();
+  };
+
+  // The handler and flush paths call through `probeSlotRef` (never a captured
+  // closure), so the ref must point at the latest classify. Assigned in an
+  // effect (not during render) so the compiler can reason about the ref.
+  useEffect(() => {
+    probeSlotRef.current = probeSlot;
+  });
+
+  // On connect, the firmware's idle watch can queue a one-shot 01/03 the moment
+  // `transferIn` is armed — before `isConnected` is true, so that edge's classify
+  // can be dropped (the ref still held the isConnected===false closure). Classify
+  // once the connection is live; the ref holds the isConnected===true closure
+  // because this effect runs after the assignment one. Gated to PS3 MC Adaptor so
+  // other devices do not set the preview.
+  useEffect(() => {
+    if (isConnected && connectedDevice === "PS3 MC Adaptor") {
+      probeSlotRef.current();
+    }
+  }, [isConnected, connectedDevice]);
 
   const handleWriteToDevice = () => {
     if (selectedCard === null) return;
@@ -575,11 +710,16 @@ export const MemoryCardManager: React.FC = () => {
   // Build and write the blank card, then put the formatted PS2 card in the list
   // so the sidebar is not a stale save list while the slot reads empty.
   const performFormat = async (quick: boolean, keyset?: Ps2MgKeyset) => {
-    const blank = await formatCard(quick, keyset ?? mgKeyset ?? undefined);
+    const blank = await withBusy(
+      bulkOpInFlightRef,
+      () => formatCard(quick, keyset ?? mgKeyset ?? undefined),
+      flushPendingClassify,
+    );
     if (blank) addFormattedPs2Card(blank);
   };
 
-  // Probe the slot so the format dialog can hide quick/full for a PS2 card.
+  // Probe the slot so the format dialog can hide quick/full for a PS2 card. A
+  // PocketStation is PS1-compatible, so it offers the PS1 quick/full options.
   const handleFormatClick = async () => {
     setError(null);
     const kind = await checkCard();
@@ -587,7 +727,7 @@ export const MemoryCardManager: React.FC = () => {
       setError("No memory card detected. Insert a card and try again.");
       return;
     }
-    setFormatCardKind(kind);
+    setFormatCardKind(kind === "pocketstation" ? "ps1" : kind);
     setIsFormatDialogOpen(true);
   };
 
@@ -1428,6 +1568,7 @@ export const MemoryCardManager: React.FC = () => {
           </div>
         </div>
       </DragDropWrapper>
+      <SlotCardPreview kind={detectedCard} />
       <MemcarduinoConnectDialog
         isOpen={isConnectDialogOpen}
         onOpenChange={setIsConnectDialogOpen}

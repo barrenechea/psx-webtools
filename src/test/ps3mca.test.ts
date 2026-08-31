@@ -56,6 +56,16 @@ function ps2Reply(miso: Uint8Array): Uint8Array {
   return r;
 }
 
+// A PocketStation Get ID (81 58) raw-SIO reply. The ID sits at MISO[2]: a
+// PocketStation reports 0x02, a plain PS1 card reports something else.
+function pocketIdReply(isPocket: boolean): Uint8Array {
+  const miso = new Uint8Array(5);
+  miso[0] = 0x81;
+  miso[1] = 0x58;
+  miso[2] = isPocket ? 0x02 : 0x00;
+  return ps2Reply(miso);
+}
+
 // Enqueue Get Terminator (0x28) ready + Set Terminator (0x27) 0x5A ack.
 function enqueueTerminator(usb: ScriptedUsb): void {
   const get = new Uint8Array(5);
@@ -480,29 +490,49 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(a.type).toBe(Types.PS3MCA);
   });
 
-  it("N18 card-type probe: AA 40 command, 55 02 reply classifies a PS2 card", async () => {
+  it("N18 card-type probe: three AA 40s (all 55 02) classify a PS2 card, no dump", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(new Uint8Array([0x55, 0x02]));
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x02]));
 
     expect(await a.ps2ProbeCardType()).toBe("ps2");
 
-    expect(usb.writes.length).toBe(1);
-    const w = usb.writes[0];
-    expect(w.length).toBe(2);
-    expect(w[0]).toBe(0xaa);
-    expect(w[1]).toBe(0x40);
+    // Exactly three AA 40 type reads, each the 2-byte AA 40 command; no
+    // frame/page dump (0x52/0x57) or PS2 page I/O is issued.
+    expect(usb.writes.length).toBe(3);
+    for (const w of usb.writes) {
+      expect(w.length).toBe(2);
+      expect(w[0]).toBe(0xaa);
+      expect(w[1]).toBe(0x40);
+    }
   });
 
-  it("N19 the probe classifies empty, PS1, and unclassifiable replies", async () => {
+  // Classification results only (the 3x AA 40 / 81 58 write pattern is asserted
+  // in N18 and N19a). A stable type needs three agreeing AA 40 replies; a
+  // mismatch or an invalid first reply is unclassifiable and stops early.
+  it("N19 the probe classifies empty, PS1, PocketStation, and unclassifiable replies", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(new Uint8Array([0x55, 0x00]));
+
+    // Empty: three stable AA 40 replies of type 00.
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x00]));
     expect(await a.ps2ProbeCardType()).toBe("empty");
 
-    usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    // Type 01 is PS1 or PocketStation; 81 58 (N19a) disambiguates.
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    usb.enqueueIn(pocketIdReply(false));
     expect(await a.ps2ProbeCardType()).toBe("ps1");
 
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    usb.enqueueIn(pocketIdReply(true));
+    expect(await a.ps2ProbeCardType()).toBe("pocketstation");
+
+    // Mismatched AA 40 replies are unclassifiable.
+    usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    usb.enqueueIn(new Uint8Array([0x55, 0x02]));
+    expect(await a.ps2ProbeCardType()).toBe("unknown");
+
+    // Type 03 is invalid on AA 40 and fails on the first read.
     usb.enqueueIn(new Uint8Array([0x55, 0x03]));
     expect(await a.ps2ProbeCardType()).toBe("unknown");
 
@@ -514,6 +544,29 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
 
     // no reply at all
     expect(await a.ps2ProbeCardType()).toBe("unknown");
+  });
+
+  it("N19a a type-01 slot is classified with 3x AA 40 + one 81 58, no dump", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    usb.enqueueIn(pocketIdReply(false));
+
+    expect(await a.ps2ProbeCardType()).toBe("ps1");
+
+    // Three 2-byte AA 40 reads, then one AA 42 n=5 (81 58) PocketStation Get ID.
+    expect(usb.writes.length).toBe(4);
+    for (let i = 0; i < 3; i++) {
+      expect(usb.writes[i].length).toBe(2);
+      expect(usb.writes[i][0]).toBe(0xaa);
+      expect(usb.writes[i][1]).toBe(0x40);
+    }
+    const pocket = usb.writes[3];
+    expect(pocket.length).toBe(9);
+    expect(pocket[4]).toBe(0x81);
+    expect(pocket[5]).toBe(0x58);
+    // Classification only: no frame/page dump (0x52/0x57) anywhere in the writes.
+    expect(usb.writes.every((w) => w[1] !== 0x52 && w[1] !== 0x57)).toBe(true);
   });
 
   it("N20 a USB failure during the probe classifies as unknown", async () => {
@@ -533,19 +586,28 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
   it("N22 checkCard reports the probed card kind", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(new Uint8Array([0x55, 0x02]));
-
+    // Each checkCard probes with three agreeing AA 40 replies.
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x02]));
     expect(await a.checkCard()).toEqual({ present: true, kind: "ps2" });
 
-    usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    usb.enqueueIn(pocketIdReply(false));
     expect(await a.checkCard()).toEqual({ present: true, kind: "ps1" });
 
-    usb.enqueueIn(new Uint8Array([0x55, 0x00]));
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
+    usb.enqueueIn(pocketIdReply(true));
+    expect(await a.checkCard()).toEqual({
+      present: true,
+      kind: "pocketstation",
+    });
+
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x00]));
     expect(await a.checkCard()).toEqual({
       present: false,
       message: "No memory card detected. Insert a card and try again.",
     });
 
+    // Type 03 is invalid on AA 40: the probe fails on the first read.
     usb.enqueueIn(new Uint8Array([0x55, 0x03]));
     expect(await a.checkCard()).toEqual({
       present: false,
@@ -903,5 +965,42 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(cmds).not.toContain(0x21);
     expect(cmds).not.toContain(0x82);
     expect(cmds).not.toContain(0x22);
+  });
+
+  it("N43 start() arms interrupt IN on endpoint 3 and dispatches insert/remove", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = makeScriptedUsb();
+    const events: number[] = [];
+    a.onCardEvent = (ev) => events.push(ev);
+
+    const nav = navigator as unknown as { usb?: unknown };
+    const prevUsb = nav.usb;
+    nav.usb = usb.usb;
+    try {
+      expect(await a.start("ps3mca", 0, [], () => {})).toBeNull();
+
+      // Armed: at least one 1-byte transferIn on endpoint 3 after claim.
+      expect(usb.inTransfers.some((t) => t.ep === 3 && t.length === 1)).toBe(
+        true,
+      );
+
+      const tick = () => new Promise((r) => setTimeout(r, 0));
+      usb.enqueueInt(0x03);
+      await tick();
+      usb.enqueueInt(0x01);
+      await tick();
+      usb.enqueueInt(0x02);
+      await tick();
+
+      expect(events).toContain(0x03);
+      expect(events).toContain(0x01);
+      expect(events).toContain(0x02);
+      // The listener only drains endpoint 3; it never issues a bulk command
+      // (no AA 40 probe) to detect the card.
+      expect(usb.writes).toEqual([]);
+    } finally {
+      await a.stop();
+      nav.usb = prevUsb;
+    }
   });
 });

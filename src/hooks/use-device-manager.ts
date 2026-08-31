@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useHardwareConnection } from "@/hooks/use-hardware";
+import type { CardEvent, SlotCardKind } from "@/lib/ps1/hardware/core";
 import { DexDrive } from "@/lib/ps1/hardware/dexdrive";
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
 import { PS1CardLink } from "@/lib/ps1/hardware/ps1cardlink";
@@ -17,7 +18,7 @@ import type { Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
  * card, picking the write target) stay in the caller, so this hook stays
  * decoupled from the card list.
  */
-export function useDeviceManager() {
+export function useDeviceManager(onCardEvent?: (ev: CardEvent) => void) {
   const { showDialog, updateDialog, hideDialog } = useLoadingDialog();
   const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
   const {
@@ -30,7 +31,7 @@ export function useDeviceManager() {
     writeMemoryCard,
     formatMemoryCard,
     firmwareVersion,
-  } = useHardwareConnection(() => setConnectedDevice(null));
+  } = useHardwareConnection(() => setConnectedDevice(null), onCardEvent);
 
   const getMemcarduinoSignalsConfig = (
     deviceType: string,
@@ -228,9 +229,10 @@ export function useDeviceManager() {
     setTimeout(hideDialog, 1000);
   };
 
-  // Probe the slot's card kind for the format dialog. Returns null when no
-  // device is connected or no card is present; the caller reports that.
-  const checkCard = async (): Promise<"ps1" | "ps2" | null> => {
+  // Probe the slot's card kind for the format dialog and the detected-card
+  // preview. Returns null when no device is connected or no card is present; the
+  // caller reports that.
+  const checkCard = async (): Promise<SlotCardKind | null> => {
     if (!device) return null;
     const result = await device.checkCard();
     if (!result.present) return null;

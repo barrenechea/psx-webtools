@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { crc32, formatCrc32 } from "@/lib/crc32";
-import type { HardwareInterface } from "@/lib/ps1/hardware/core";
+import type { CardEvent, HardwareInterface } from "@/lib/ps1/hardware/core";
 import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
@@ -18,7 +18,10 @@ export interface HardwareStartConfig {
 // Manages a single hardware connection (MemCARDuino, Unirom, ...). The
 // concrete device is created by the caller and passed in, so this hook stays
 // device-agnostic and the connect dialogs can each own their own hardware.
-export function useHardwareConnection(onDeviceDisconnected?: () => void) {
+export function useHardwareConnection(
+  onDeviceDisconnected?: () => void,
+  onCardEvent?: (ev: CardEvent) => void,
+) {
   const [device, setDevice] = useState<HardwareInterface | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +31,17 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
   useEffect(() => {
     onDeviceDisconnectedRef.current = onDeviceDisconnected;
   });
+
+  // Latest card-event handler, so connect() can stash one stable callback on
+  // the hardware that always forwards to the current closure.
+  const onCardEventRef = useRef(onCardEvent);
+  useEffect(() => {
+    onCardEventRef.current = onCardEvent;
+  });
+
+  const handleCardEvent = (ev: CardEvent) => {
+    onCardEventRef.current?.(ev);
+  };
 
   // OS-reported unplug: drop the connection without calling stop() (the
   // device is already gone) and let the caller clear its own UI state.
@@ -45,6 +59,7 @@ export function useHardwareConnection(onDeviceDisconnected?: () => void) {
     onStatusUpdate: (status: string) => void,
   ) => {
     hardware.onDisconnected = handleDeviceDisconnected;
+    hardware.onCardEvent = handleCardEvent;
 
     let result: string | null;
 

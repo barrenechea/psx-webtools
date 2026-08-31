@@ -98,28 +98,60 @@ export type ScriptedUsbIn = { status: string; data?: Uint8Array };
 export type ScriptedUsb = {
   /** Every transferOut payload, copied, in order. */
   writes: Uint8Array[];
-  /** Queue a transferIn reply; the next transferIn dequeues it. */
+  /** Every transferIn call (endpoint + requested length), in order. */
+  inTransfers: { ep: number; length: number }[];
+  /** Queue a bulk (non-interrupt) transferIn reply; next transferIn dequeues. */
   enqueueIn(data: Uint8Array): void;
+  /** Queue a 1-byte interrupt (endpoint 3) token to be dispatched. */
+  enqueueInt(byte: number): void;
   /** Make transferOut throw (models a USB write failure). */
   failWrites(value: boolean): void;
   /** Force every transferIn to report this status (default "ok"). */
   setInStatus(status: string): void;
   device: {
+    open(): Promise<void>;
+    selectConfiguration(_config: number): Promise<void>;
+    claimInterface(_index: number): Promise<void>;
+    close(): Promise<void>;
     transferOut(
       ep: number,
       data: Uint8Array,
     ): Promise<{ bytesWritten: number }>;
     transferIn(ep: number, length: number): Promise<ScriptedUsbIn>;
   };
+  /** A navigator.usb stub whose requestDevice() returns `device`. */
+  usb: {
+    requestDevice(_opts?: unknown): Promise<ScriptedUsb["device"]>;
+    addEventListener(_type: string, _listener: unknown): void;
+    removeEventListener(_type: string, _listener: unknown): void;
+  };
 };
 
 export function makeScriptedUsb(): ScriptedUsb {
   const writes: Uint8Array[] = [];
+  const inTransfers: { ep: number; length: number }[] = [];
   const inQueue: Uint8Array[] = [];
+  // Separate, edge-triggered interrupt pipe for endpoint 3: one queued token at
+  // a time, else the transferIn blocks (NAK) until a token or close arrives.
+  const intQueue: number[] = [];
+  let intPending: {
+    resolve: (r: ScriptedUsbIn) => void;
+    reject: (e: Error) => void;
+  } | null = null;
   let writeError = false;
   let inStatus = "ok";
 
-  const device = {
+  const device: ScriptedUsb["device"] = {
+    async open(): Promise<void> {},
+    async selectConfiguration(_config: number): Promise<void> {},
+    async claimInterface(_index: number): Promise<void> {},
+    async close(): Promise<void> {
+      if (intPending) {
+        const p = intPending;
+        intPending = null;
+        p.reject(new Error("device closed"));
+      }
+    },
     async transferOut(
       _ep: number,
       data: Uint8Array,
@@ -128,7 +160,17 @@ export function makeScriptedUsb(): ScriptedUsb {
       writes.push(new Uint8Array(data));
       return { bytesWritten: data.length };
     },
-    async transferIn(): Promise<ScriptedUsbIn> {
+    async transferIn(ep: number, length: number): Promise<ScriptedUsbIn> {
+      inTransfers.push({ ep, length });
+      if (ep === 3) {
+        if (intQueue.length > 0) {
+          const byte = intQueue.shift() as number;
+          return { status: inStatus, data: new Uint8Array([byte]) };
+        }
+        return new Promise<ScriptedUsbIn>((resolve, reject) => {
+          intPending = { resolve, reject };
+        });
+      }
       const next = inQueue.length > 0 ? inQueue.shift() : new Uint8Array(0);
       return { status: inStatus, data: next };
     },
@@ -136,8 +178,18 @@ export function makeScriptedUsb(): ScriptedUsb {
 
   return {
     writes,
+    inTransfers,
     enqueueIn(data) {
       inQueue.push(data);
+    },
+    enqueueInt(byte) {
+      if (intPending) {
+        const p = intPending;
+        intPending = null;
+        p.resolve({ status: inStatus, data: new Uint8Array([byte]) });
+      } else {
+        intQueue.push(byte);
+      }
     },
     failWrites(value) {
       writeError = value;
@@ -146,5 +198,12 @@ export function makeScriptedUsb(): ScriptedUsb {
       inStatus = status;
     },
     device,
+    usb: {
+      async requestDevice(_opts?: unknown): Promise<ScriptedUsb["device"]> {
+        return device;
+      },
+      addEventListener(_type: string, _listener: unknown) {},
+      removeEventListener(_type: string, _listener: unknown) {},
+    },
   };
 }

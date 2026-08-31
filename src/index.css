@@ -92,6 +92,58 @@
       transform: rotate(-0.5deg);
     }
   }
+
+  --animate-card-insert: card-insert 3.4s ease-out forwards;
+  --animate-card-insert-veil: card-insert-veil 3.4s ease-out forwards;
+  --animate-card-insert-reduce: card-insert-reduce 2s linear forwards;
+
+  @keyframes card-insert {
+    0% {
+      opacity: 0;
+      filter: blur(8px);
+      transform: translate3d(0, 1.75rem, 0) scale(0.88);
+    }
+    14% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    72% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      filter: blur(2px);
+      transform: translate3d(0, -0.7rem, 0) scale(0.96);
+    }
+  }
+
+  @keyframes card-insert-veil {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes card-insert-reduce {
+    0%,
+    65% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
 }
 
 :root {
