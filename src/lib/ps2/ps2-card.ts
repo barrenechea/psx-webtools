@@ -111,6 +111,14 @@ export interface Ps2ImportOptions {
   bgColors?: Ps2IconCorner[];
 }
 
+// A save captured for the temp buffer: its dir mode plus every file (name,
+// mode and bytes), so it can be re-created in the same or another card.
+export interface Ps2SaveSnapshot {
+  name: string;
+  mode: number;
+  files: FileSpec[];
+}
+
 interface FileSpec {
   name: string;
   mode: number;
@@ -504,23 +512,69 @@ export class PS2MemoryCard {
    * keeping the "data file carries the save name" convention.
    */
   public copySave(sourceName: string, newName: string): boolean {
-    const source = this.getRootDirEntry(sourceName);
-    if (source === null) return false;
+    const snap = this.snapshotSave(sourceName);
+    if (snap === null) return false;
+    return this.createSave(
+      newName,
+      snap.mode,
+      snap.files.map((f) => ({
+        name: sameDirentName(f.name, sourceName) ? newName : f.name,
+        mode: f.mode,
+        data: f.data,
+      })),
+    );
+  }
+
+  /**
+   * Capture a save (dir mode + every file with its mode and bytes) so it can
+   * be re-created elsewhere, e.g. moved to another card via the temp buffer.
+   */
+  public snapshotSave(name: string): Ps2SaveSnapshot | null {
+    const entry = this.getRootDirEntry(name);
+    if (entry === null) return null;
     const files: FileSpec[] = [];
-    for (const entry of readDirectory(
+    for (const e of readDirectory(
       this.raw,
       this.sb,
-      source.cluster,
-      source.length,
+      entry.cluster,
+      entry.length,
     )) {
-      if (!entry.isFile) continue;
-      files.push({
-        name: sameDirentName(entry.name, sourceName) ? newName : entry.name,
-        mode: entry.mode,
-        data: this.readChainBytes(entry),
-      });
+      if (!e.isFile) continue;
+      files.push({ name: e.name, mode: e.mode, data: this.readChainBytes(e) });
     }
-    return this.createSave(newName, source.mode, files);
+    if (files.length === 0) return null;
+    return { name, mode: entry.mode, files };
+  }
+
+  /** Re-create a snapshotted save under its original name. */
+  public insertSave(snapshot: Ps2SaveSnapshot): boolean {
+    return this.createSave(snapshot.name, snapshot.mode, snapshot.files);
+  }
+
+  /**
+   * Replace the save named `snapshot.name` with `snapshot`, or insert it when
+   * that name is free. The existing save is only deleted once the replacement
+   * is confirmed to fit, so a failure never leaves a half-cleared card.
+   */
+  public replaceSave(snapshot: Ps2SaveSnapshot): boolean {
+    if (this.getRootDirEntry(snapshot.name) === null) {
+      return this.insertSave(snapshot);
+    }
+    if (this.collectFree().length < this.saveClusters(snapshot.files) + 1) {
+      return false;
+    }
+    this.deleteSave(snapshot.name);
+    return this.insertSave(snapshot);
+  }
+
+  // Clusters a save needs (one dir entry per two files + one per data chunk).
+  private saveClusters(files: { data: Uint8Array }[]): number {
+    const dirCount = Math.ceil((2 + files.length) / 2);
+    let dataClusters = 0;
+    for (const f of files) {
+      dataClusters += Math.max(1, Math.ceil(f.data.length / CLUSTER_DATA_SIZE));
+    }
+    return dirCount + dataClusters;
   }
 
   /** Create a new save holding one user-data file named after the save. */

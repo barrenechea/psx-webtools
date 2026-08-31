@@ -158,9 +158,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
               <CopyIcon className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {isPs2 ? "Copy save" : "Copy to buffer"}
-          </TooltipContent>
+          <TooltipContent side="bottom">Copy to buffer</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -168,7 +166,11 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
               variant="ghost"
               size="icon"
               onClick={onMove}
-              disabled={isPs2 || selectedSlot === null || !isDeletable}
+              disabled={
+                isPs2
+                  ? selectedPs2Save === null
+                  : selectedSlot === null || !isDeletable
+              }
               aria-label="Move to buffer"
             >
               <ArrowRightIcon className="size-4" />
@@ -183,7 +185,9 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
               size="icon"
               onClick={onPaste}
               disabled={
-                isPs2 || selectedSlot === null || !hasCopiedSave || !isSlotEmpty
+                isPs2
+                  ? selectedCard === null || !hasCopiedSave
+                  : selectedSlot === null || !hasCopiedSave || !isSlotEmpty
               }
               aria-label="Paste from buffer"
             >

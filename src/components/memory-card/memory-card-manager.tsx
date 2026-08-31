@@ -36,7 +36,11 @@ import PS1MemoryCard, {
   type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
-import { PS2MemoryCard, type Ps2SingleSaveFormat } from "@/lib/ps2/ps2-card";
+import {
+  PS2MemoryCard,
+  type Ps2SaveSnapshot,
+  type Ps2SingleSaveFormat,
+} from "@/lib/ps2/ps2-card";
 import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
 import {
@@ -55,6 +59,7 @@ import {
   PS2_RAW_EXTENSIONS,
   PS2_SINGLE_SAVE_EXTENSIONS,
   Ps2CardFormats,
+  type Ps2SaveInfo,
   Ps2SingleSaveTypes,
 } from "@/lib/ps2/ps2-types";
 
@@ -203,18 +208,6 @@ const PS2_EXPORT_CONTAINER_FORMAT: Partial<
   [Ps2SingleSaveTypes.Psv]: "psv",
 };
 
-// PS2 copy naming: keep the prefix and increment the trailing 4-digit index
-// (BASLUS-21590GTA40001 -> ...0002), like the console auto-numbers saves.
-const nextPs2SaveName = (existingNames: string[], source: string): string => {
-  const hasIndex = /^\d{4}$/.test(source.slice(-4));
-  const prefix = hasIndex ? source.slice(0, -4) : source;
-  const start = hasIndex ? parseInt(source.slice(-4), 10) : 0;
-  for (let i = start + 1; ; i++) {
-    const candidate = `${prefix}${String(i).padStart(4, "0")}`;
-    if (!existingNames.includes(candidate)) return candidate;
-  }
-};
-
 export const MemoryCardManager: React.FC = () => {
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<number | null>(null);
@@ -241,6 +234,12 @@ export const MemoryCardManager: React.FC = () => {
     palette: IconPalette;
     frameCount: number;
   } | null>(null);
+  // PS2 temp buffer: the captured save (info for the header preview + a
+  // snapshot for re-creation). Mutually exclusive with the PS1 buffer.
+  const [copiedPs2, setCopiedPs2] = useState<{
+    info: Ps2SaveInfo;
+    snapshot: Ps2SaveSnapshot;
+  } | null>(null);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [isSingleSaveDialogOpen, setIsSingleSaveDialogOpen] = useState(false);
   const [isHeaderDialogOpen, setIsHeaderDialogOpen] = useState(false);
@@ -252,6 +251,10 @@ export const MemoryCardManager: React.FC = () => {
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<number | null>(null);
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  // Card id awaiting a "replace existing save?" confirmation (PS2 paste).
+  const [pendingPs2Replace, setPendingPs2Replace] = useState<number | null>(
+    null,
+  );
   const [isCompareDialogOpen, setIsCompareDialogOpen] = useState(false);
   const [compareData, setCompareData] = useState<{
     save1Name: string;
@@ -1113,25 +1116,30 @@ export const MemoryCardManager: React.FC = () => {
   const handleCopyMove = (action: "copy" | "move") => {
     if (selectedCard !== null) {
       const ps2 = ps2Card(selectedCard);
-      // PS2 copy clones the save dir under the next free auto-numbered name;
-      // PS2 has no temp buffer, so Move is disabled in the toolbar.
-      if (ps2 && action === "copy" && selectedPs2Save !== null) {
-        const newName = nextPs2SaveName(
-          ps2.getSaves().map((s) => s.name),
-          selectedPs2Save,
-        );
-        const rowBefore = ps2.undoCount;
-        if (ps2.copySave(selectedPs2Save, newName)) {
-          appendHistoryLabel(
-            selectedCard,
-            rowBefore,
-            `Save copied to ${newName}`,
-          );
-          setSelectedPs2Save(newName);
-          setMemoryCards([...memoryCards]);
-        } else {
+      // PS2 copy/move stage the save in the temp buffer (no in-card duplicate);
+      // move also deletes it from this card so it can be pasted into another.
+      if (ps2 && selectedPs2Save !== null) {
+        const name = selectedPs2Save;
+        const info = ps2.getSaves().find((s) => s.name === name) ?? null;
+        const snapshot = ps2.snapshotSave(name);
+        if (info === null || snapshot === null) {
           setError("Failed to copy save");
+          return;
         }
+        if (action === "move") {
+          const rowBefore = ps2.undoCount;
+          if (!ps2.deleteSave(name)) {
+            setError("Failed to move save");
+            return;
+          }
+          appendHistoryLabel(selectedCard, rowBefore, "Save moved");
+          setSelectedPs2Save(null);
+          setMemoryCards([...memoryCards]);
+        }
+        setCopiedPs2({ info, snapshot });
+        setCopiedSaveBytes(null);
+        setCopiedSlots([]);
+        setCopiedIcon(null);
         return;
       }
     }
@@ -1163,6 +1171,27 @@ export const MemoryCardManager: React.FC = () => {
   };
 
   const handlePaste = () => {
+    const ps2 = selectedCard !== null ? ps2Card(selectedCard) : undefined;
+    if (ps2 && copiedPs2 !== null) {
+      const cardId = selectedCard;
+      if (cardId === null) return;
+      const name = copiedPs2.snapshot.name;
+      if (ps2.getSaves().some((s) => s.name === name)) {
+        // A same-named save exists in the target card: confirm before
+        // replacing it (never silently auto-duplicate).
+        setPendingPs2Replace(cardId);
+        return;
+      }
+      const rowBefore = ps2.undoCount;
+      if (ps2.insertSave(copiedPs2.snapshot)) {
+        appendHistoryLabel(cardId, rowBefore, "Save pasted");
+        setSelectedPs2Save(name);
+        setMemoryCards([...memoryCards]);
+      } else {
+        setError("Not enough free space to paste save");
+      }
+      return;
+    }
     if (
       selectedCard !== null &&
       selectedSlot !== null &&
@@ -1183,6 +1212,26 @@ export const MemoryCardManager: React.FC = () => {
         }
       }
     }
+  };
+
+  const handleConfirmPs2Replace = () => {
+    const cardId = pendingPs2Replace;
+    setPendingPs2Replace(null);
+    if (cardId === null || copiedPs2 === null) return;
+    const ps2 = ps2Card(cardId);
+    if (ps2 === undefined) return;
+    const name = copiedPs2.snapshot.name;
+    const rowBefore = ps2.undoCount;
+    if (ps2.replaceSave(copiedPs2.snapshot)) {
+      // replaceSave is delete + insert (two undo steps); label both so the
+      // history rows stay in sync with the card's undo count.
+      appendHistoryLabel(cardId, rowBefore, `Removed ${name}`);
+      appendHistoryLabel(cardId, rowBefore + 1, `Pasted ${name}`);
+      setSelectedPs2Save(name);
+    } else {
+      setError("Not enough free space to replace save");
+    }
+    setMemoryCards([...memoryCards]);
   };
 
   const handleSlotClick = (index: number) => {
@@ -1221,6 +1270,13 @@ export const MemoryCardManager: React.FC = () => {
     : [];
   const historyIndex = selectedCardEntry?.card.undoCount ?? 0;
 
+  // The temp buffer holds one save of one kind; paste only applies when the
+  // buffer's kind matches the selected card's kind (a PS1 save cannot go into
+  // a PS2 card and vice versa).
+  const selectedKind = selectedCardEntry?.card.kind ?? "ps1";
+  const hasCopiedSave =
+    selectedKind === "ps2" ? copiedPs2 !== null : copiedSaveBytes !== null;
+
   const eraseChain =
     dialogSlot !== null &&
     selectedCardEntry &&
@@ -1244,7 +1300,7 @@ export const MemoryCardManager: React.FC = () => {
               selectedPs2Save={selectedPs2Save}
               selectedCard={selectedCard}
               cardKind={selectedCardEntry?.card.kind ?? "ps1"}
-              hasCopiedSave={copiedSaveBytes !== null}
+              hasCopiedSave={hasCopiedSave}
               isSlotEmpty={isSlotEmpty}
               isDeletable={isDeletable}
               canUndo={(selectedCardEntry?.card.undoCount ?? 0) > 0}
@@ -1307,6 +1363,11 @@ export const MemoryCardManager: React.FC = () => {
                           selectedCardEntry.card.kind === "ps2"
                             ? null
                             : copiedIcon
+                        }
+                        copiedPs2={
+                          selectedCardEntry.card.kind === "ps2"
+                            ? (copiedPs2?.info ?? null)
+                            : null
                         }
                       />
                       {selectedCardEntry.card.kind === "ps2" ? (
@@ -1552,6 +1613,29 @@ export const MemoryCardManager: React.FC = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleRemoveSaveConfirm}>
               Erase
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={pendingPs2Replace !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingPs2Replace(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace save?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A save named “{copiedPs2?.snapshot.name}” already exists in this
+              card. Replacing it deletes the existing save first; you can undo
+              this from the toolbar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPs2Replace}>
+              Replace
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

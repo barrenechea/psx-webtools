@@ -743,3 +743,83 @@ describe("PS2MemoryCard loadFromRawData", () => {
     expect(card.undoCount).toBe(0);
   });
 });
+
+describe("PS2MemoryCard temp-buffer snapshot/insert/replace", () => {
+  it("snapshotSave captures the dir mode and every file", () => {
+    const card = PS2MemoryCard.format(8192);
+    const data = pattern(1500);
+    card.importSingleSave("SAVE-AAA0001", data, {
+      title: "T",
+      hidden: true,
+      ps1: true,
+    });
+    expect(card.snapshotSave("NOPE")).toBeNull();
+
+    const snap = card.snapshotSave("SAVE-AAA0001");
+    expect(snap).not.toBeNull();
+    expect(snap!.name).toBe("SAVE-AAA0001");
+    expect(snap!.mode).toBe(0x8427 | 0x2000 | 0x1000); // dir | hidden | ps1
+    expect(snap!.files.map((f) => f.name).sort()).toEqual([
+      "SAVE-AAA0001",
+      "icon.sys",
+    ]);
+    const dataFile = snap!.files.find((f) => f.name === "SAVE-AAA0001");
+    expect([...(dataFile?.data ?? [])]).toEqual([...data]);
+  });
+
+  it("insertSave re-creates a snapshot and refuses a name collision", () => {
+    const src = PS2MemoryCard.format(8192);
+    const data = pattern(1200, 4);
+    src.importSingleSave("SAVE-AAA0001", data, { title: "T", hidden: true });
+
+    const dst = PS2MemoryCard.format(8192);
+    expect(dst.insertSave(src.snapshotSave("SAVE-AAA0001")!)).toBe(true);
+    const saves = dst.getSaves();
+    expect(saves.map((s) => s.name)).toEqual(["SAVE-AAA0001"]);
+    expect(saves[0].hidden).toBe(true);
+    expect([...dst.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...data,
+    ]);
+    // Same name is now taken: the snapshot must not be inserted twice.
+    expect(dst.insertSave(src.snapshotSave("SAVE-AAA0001")!)).toBe(false);
+    expect(dst.getSaves().length).toBe(1);
+  });
+
+  it("replaceSave swaps an existing same-name save and is undoable", () => {
+    const card = PS2MemoryCard.format(8192);
+    const before = pattern(900, 1);
+    const after = pattern(900, 2);
+    card.importSingleSave("SAVE-AAA0001", before, { title: "old" });
+    const src = PS2MemoryCard.format(8192);
+    src.importSingleSave("SAVE-AAA0001", after, { title: "new", hidden: true });
+
+    const undoBefore = card.undoCount;
+    expect(card.replaceSave(src.snapshotSave("SAVE-AAA0001")!)).toBe(true);
+    expect([...card.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...after,
+    ]);
+    expect(card.getSaves()[0].hidden).toBe(true);
+    // replaceSave is delete + insert: two undo steps.
+    expect(card.undoCount).toBe(undoBefore + 2);
+    expect(card.undo()).toBe(true); // revert insert -> no save present
+    expect(card.getSaves().map((s) => s.name)).toEqual([]);
+    expect(card.undo()).toBe(true); // revert delete -> original restored
+    expect([...card.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...before,
+    ]);
+    expect(card.redo()).toBe(true);
+    everyPageClean(card.getRawData());
+  });
+
+  it("replaceSave inserts when the name is free", () => {
+    const card = PS2MemoryCard.format(8192);
+    const src = PS2MemoryCard.format(8192);
+    const data = pattern(400, 7);
+    src.importSingleSave("SAVE-BBB0001", data);
+    expect(card.replaceSave(src.snapshotSave("SAVE-BBB0001")!)).toBe(true);
+    expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0001"]);
+    expect([...card.readFile("SAVE-BBB0001", "SAVE-BBB0001")]).toEqual([
+      ...data,
+    ]);
+  });
+});
