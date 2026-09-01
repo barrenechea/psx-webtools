@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { decodePocketStationMonoIcon } from "@/lib/ps1/pocketstation";
 
 interface PocketStationMonoIconProps {
@@ -9,20 +10,24 @@ interface PocketStationMonoIconProps {
 const PocketStationMonoIcon: React.FC<PocketStationMonoIconProps> = ({
   frames,
 }) => {
+  const prefersReducedMotion = usePrefersReducedMotion();
   const frameCount = Math.floor(frames.length / 128);
   const [currentFrame, setCurrentFrame] = useState(0);
+  const animate = frameCount > 1 && !prefersReducedMotion;
 
   useEffect(() => {
-    if (frameCount > 1) {
-      const interval = setInterval(
-        () => setCurrentFrame((prev) => (prev + 1) % frameCount),
-        200,
-      );
-      return () => clearInterval(interval);
+    if (!animate) {
+      return;
     }
-  }, [frameCount]);
+    const interval = setInterval(
+      () => setCurrentFrame((prev) => (prev + 1) % frameCount),
+      200,
+    );
+    return () => clearInterval(interval);
+  }, [animate, frameCount]);
 
-  const frame = frames.subarray(currentFrame * 128, (currentFrame + 1) * 128);
+  const frameIndex = animate ? currentFrame : 0;
+  const frame = frames.subarray(frameIndex * 128, (frameIndex + 1) * 128);
   const pixels = decodePocketStationMonoIcon(frame);
 
   return (

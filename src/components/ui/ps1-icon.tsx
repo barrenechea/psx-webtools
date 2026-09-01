@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import type { IconPalette, SlotIconData } from "@/lib/ps1-memory-card";
 
 interface PS1BlockIconProps {
@@ -13,22 +14,25 @@ const PS1BlockIcon: React.FC<PS1BlockIconProps> = ({
   iconPalette,
   iconFrameCount,
 }) => {
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [currentFrame, setCurrentFrame] = useState(0);
+  const animate = iconFrameCount > 1 && !prefersReducedMotion;
 
   useEffect(() => {
-    if (iconFrameCount > 1) {
-      const interval = setInterval(() => {
-        setCurrentFrame((prev) => (prev + 1) % iconFrameCount);
-      }, 200); // Change frame every 200ms
-
-      return () => clearInterval(interval);
+    if (!animate) {
+      return;
     }
-  }, [iconFrameCount]);
+    const interval = setInterval(() => {
+      setCurrentFrame((prev) => (prev + 1) % iconFrameCount);
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, [animate, iconFrameCount]);
 
   return (
     <div className="mr-2 size-8 shrink-0">
       <svg width="32" height="32" viewBox="0 0 16 16">
-        {iconData[currentFrame].map((colorIndex, i) => {
+        {iconData[animate ? currentFrame : 0].map((colorIndex, i) => {
           const [r, g, b, a] = iconPalette[colorIndex] || [0, 0, 0, 0];
           return (
             <rect

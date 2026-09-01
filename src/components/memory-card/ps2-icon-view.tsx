@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { ICON_TEXTURE_SIZE, type Ps2IconModel } from "@/lib/ps2/ps2-icon";
 import {
   PS2_ICON_CAMERA_FOV,
@@ -402,6 +403,7 @@ export const Ps2IconView: React.FC<Ps2IconViewProps> = ({
   className,
   animate = false,
 }) => {
+  const prefersReducedMotion = usePrefersReducedMotion();
   const corners: Rgba[] = [0, 1, 2, 3].map(
     (i) => save.background[i] ?? [0, 0, 0, 0],
   );
@@ -426,7 +428,8 @@ export const Ps2IconView: React.FC<Ps2IconViewProps> = ({
 
   const model = iconModel ?? stockModel;
   const lighting = iconLightingOrBiosDefault(iconLighting);
-  const shouldAnimate = ps2IconShouldAnimate(animate, model);
+  const shouldAnimate =
+    !prefersReducedMotion && ps2IconShouldAnimate(animate, model);
 
   useEffect(() => {
     const canvas = canvasRef.current;

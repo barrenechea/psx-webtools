@@ -34,7 +34,7 @@ export const Route = createRootRoute({
         <AppSidebar />
         <SidebarInset className="relative min-h-0 overflow-hidden">
           <SidebarTrigger className="absolute top-2 left-2 z-20 md:hidden" />
-          <div className="animate-background-shine bg-gradient-shine dark:bg-gradient-shine-dark absolute inset-0 bg-[length:400%]" />
+          <div className="animate-background-shine bg-gradient-shine dark:bg-gradient-shine-dark absolute inset-0 bg-[length:400%] motion-reduce:animate-none" />
           <div className="relative z-10 h-full overflow-auto">
             <Outlet />
           </div>
