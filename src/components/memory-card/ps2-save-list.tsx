@@ -68,11 +68,13 @@ const Ps2SaveRow: React.FC<{
           {formatSize(save.totalSize)}
         </p>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <p className="text-muted-foreground text-xs">
-              {formatDate(save.modified)}
-            </p>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <p {...props} className="text-muted-foreground text-xs">
+                {formatDate(save.modified)}
+              </p>
+            )}
+          />
           <TooltipContent>
             <p>Modified (JST)</p>
           </TooltipContent>
@@ -96,7 +98,7 @@ export const Ps2SaveList: React.FC<Ps2SaveListProps> = ({
     );
   }
   return (
-    <ScrollArea className="bg-card/60 grow overflow-hidden" type="always">
+    <ScrollArea className="bg-card/60 grow overflow-hidden">
       <div className="min-h-full p-4">
         {saves.map((save, index) => (
           <Ps2SaveRow

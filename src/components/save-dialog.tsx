@@ -86,8 +86,14 @@ export const SaveDialog = <T extends number>({
           <div className="grid gap-2">
             <Label htmlFor="format">Save format</Label>
             <Select
+              items={formats.map((option) => ({
+                value: option.value.toString(),
+                label: option.label,
+              }))}
               value={saveType.toString()}
-              onValueChange={(value) => setFormat(parseInt(value) as T)}
+              onValueChange={(value) => {
+                if (value != null) setFormat(parseInt(value) as T);
+              }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select format" />
@@ -107,7 +113,12 @@ export const SaveDialog = <T extends number>({
           {hasExtensionPicker && (
             <div className="grid gap-2">
               <Label htmlFor="rawExtension">File extension</Label>
-              <Select value={subExtension} onValueChange={setExtension}>
+              <Select
+                value={subExtension}
+                onValueChange={(value) => {
+                  if (value != null) setExtension(value);
+                }}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select extension" />
                 </SelectTrigger>

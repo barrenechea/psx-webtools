@@ -83,7 +83,12 @@ export const EditHeaderDialog: React.FC<EditHeaderDialogProps> = ({
           </div>
           <div className="grid gap-2">
             <Label htmlFor="region">Region</Label>
-            <Select value={region} onValueChange={setRegion}>
+            <Select
+              value={region}
+              onValueChange={(value) => {
+                if (value != null) setRegion(value);
+              }}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select region" />
               </SelectTrigger>

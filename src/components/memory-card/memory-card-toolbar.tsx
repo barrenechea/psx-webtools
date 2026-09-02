@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -90,170 +91,202 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
       </h1>
       <div className="flex space-x-2">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onUndo}
-              disabled={!canUndo}
-              aria-label="Undo"
-            >
-              <Undo2Icon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onUndo}
+                disabled={!canUndo}
+                aria-label="Undo"
+              >
+                <Undo2Icon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Undo</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onRedo}
-              disabled={!canRedo}
-              aria-label="Redo"
-            >
-              <Redo2Icon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onRedo}
+                disabled={!canRedo}
+                aria-label="Redo"
+              >
+                <Redo2Icon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Redo</TooltipContent>
         </Tooltip>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={selectedCard === null}
-              aria-label="History"
-            >
-              <HistoryIcon className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-64" align="start" side="bottom">
-            <DropdownMenuLabel>History</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {history.map((label, i) => (
-              <DropdownMenuItem
-                key={i}
-                onSelect={() => onJumpToHistory(i)}
-                className={cn(
-                  "justify-between",
-                  i === historyIndex && "bg-accent font-medium",
-                )}
+          <DropdownMenuTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                disabled={selectedCard === null}
+                aria-label="History"
               >
-                <span className="truncate">{label}</span>
-                {i === historyIndex && <CheckIcon className="size-4" />}
-              </DropdownMenuItem>
-            ))}
+                <HistoryIcon className="size-4" />
+              </Button>
+            )}
+          />
+          <DropdownMenuContent className="w-64" align="start" side="bottom">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>History</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {history.map((label, i) => (
+                <DropdownMenuItem
+                  key={i}
+                  onClick={() => onJumpToHistory(i)}
+                  className={cn(
+                    "justify-between",
+                    i === historyIndex && "bg-accent font-medium",
+                  )}
+                >
+                  <span className="truncate">{label}</span>
+                  {i === historyIndex && <CheckIcon className="size-4" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onCopy}
-              disabled={!targetSelected}
-              aria-label="Copy to buffer"
-            >
-              <CopyIcon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onCopy}
+                disabled={!targetSelected}
+                aria-label="Copy to buffer"
+              >
+                <CopyIcon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Copy to buffer</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onMove}
-              disabled={
-                isPs2
-                  ? selectedPs2Save === null
-                  : selectedSlot === null || !isDeletable
-              }
-              aria-label="Move to buffer"
-            >
-              <ArrowRightIcon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onMove}
+                disabled={
+                  isPs2
+                    ? selectedPs2Save === null
+                    : selectedSlot === null || !isDeletable
+                }
+                aria-label="Move to buffer"
+              >
+                <ArrowRightIcon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Move to buffer</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onPaste}
-              disabled={
-                isPs2
-                  ? selectedCard === null || !hasCopiedSave
-                  : selectedSlot === null || !hasCopiedSave || !isSlotEmpty
-              }
-              aria-label="Paste from buffer"
-            >
-              <ClipboardPasteIcon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onPaste}
+                disabled={
+                  isPs2
+                    ? selectedCard === null || !hasCopiedSave
+                    : selectedSlot === null || !hasCopiedSave || !isSlotEmpty
+                }
+                aria-label="Paste from buffer"
+              >
+                <ClipboardPasteIcon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Paste from buffer</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onDelete}
-              disabled={!targetSelected}
-              aria-label="Delete save"
-            >
-              <TrashIcon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onDelete}
+                disabled={!targetSelected}
+                aria-label="Delete save"
+              >
+                <TrashIcon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Delete save</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onSave}
-              disabled={selectedCard === null}
-              aria-label="Save memory card"
-            >
-              <SaveIcon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onSave}
+                disabled={selectedCard === null}
+                aria-label="Save memory card"
+              >
+                <SaveIcon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Save memory card</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onExport}
-              disabled={!targetSelected}
-              aria-label="Export save"
-            >
-              <DownloadIcon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onExport}
+                disabled={!targetSelected}
+                aria-label="Export save"
+              >
+                <DownloadIcon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Export save</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onImport}
-              disabled={
-                isPs2
-                  ? selectedCard === null
-                  : selectedSlot === null || !isSlotEmpty
-              }
-              aria-label="Import save"
-            >
-              <UploadIcon className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                onClick={onImport}
+                disabled={
+                  isPs2
+                    ? selectedCard === null
+                    : selectedSlot === null || !isSlotEmpty
+                }
+                aria-label="Import save"
+              >
+                <UploadIcon className="size-4" />
+              </Button>
+            )}
+          />
           <TooltipContent side="bottom">Import save</TooltipContent>
         </Tooltip>
       </div>

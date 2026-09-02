@@ -19,6 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const MEMORY_CARD_SLOT_ITEMS = [
+  { value: "0", label: "Slot 1" },
+  { value: "1", label: "Slot 2" },
+];
+
 interface UniromConnectDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -93,15 +98,21 @@ export const UniromConnectDialog: React.FC<UniromConnectDialogProps> = ({
           <div className="grid gap-2">
             <Label>Memory card slot</Label>
             <Select
+              items={MEMORY_CARD_SLOT_ITEMS}
               value={String(cardSlot)}
-              onValueChange={(value) => setCardSlot(Number(value))}
+              onValueChange={(value) => {
+                if (value != null) setCardSlot(Number(value));
+              }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select memory card slot" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="0">Slot 1</SelectItem>
-                <SelectItem value="1">Slot 2</SelectItem>
+                {MEMORY_CARD_SLOT_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

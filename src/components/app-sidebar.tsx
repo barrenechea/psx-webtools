@@ -44,15 +44,16 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              asChild
               tooltip="PSX WebTools"
               className="[&_svg]:size-8"
-            >
-              <Link to="/" onClick={() => setOpenMobile(false)}>
-                <PSLogo />
-                <span className="truncate font-semibold">PSX WebTools</span>
-              </Link>
-            </SidebarMenuButton>
+              onClick={() => setOpenMobile(false)}
+              render={(props) => (
+                <Link to="/" {...props}>
+                  <PSLogo />
+                  <span className="truncate font-semibold">PSX WebTools</span>
+                </Link>
+              )}
+            />
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarTrigger />
@@ -64,15 +65,16 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.to}>
                   <SidebarMenuButton
-                    asChild
                     isActive={!!matchRoute({ to: item.to })}
                     tooltip={item.label}
-                  >
-                    <Link to={item.to} onClick={() => setOpenMobile(false)}>
-                      <item.icon />
-                      <span>{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
+                    onClick={() => setOpenMobile(false)}
+                    render={(props) => (
+                      <Link to={item.to} {...props}>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </Link>
+                    )}
+                  />
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>

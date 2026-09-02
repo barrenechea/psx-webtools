@@ -44,28 +44,39 @@ function Index() {
             <div className="space-y-4">
               <h2 className="text-2xl font-semibold">Get Started:</h2>
               <div className="flex space-x-4">
-                <Button asChild>
-                  <Link to="/memcarduino-flasher">
-                    Open MemCARDuino Flasher
-                    <ArrowRightIcon className="size-4" />
-                  </Link>
-                </Button>
-                <Button asChild>
-                  <Link to="/memory-card-manager">
-                    Open Memory Card Manager
-                    <ArrowRightIcon className="size-4" />
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <a
-                    href="https://github.com/barrenechea/psx-webtools"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <GHLogo className="size-4" />
-                    View on GitHub
-                  </a>
-                </Button>
+                <Button
+                  nativeButton={false}
+                  render={(props) => (
+                    <Link to="/memcarduino-flasher" {...props}>
+                      Open MemCARDuino Flasher
+                      <ArrowRightIcon className="size-4" />
+                    </Link>
+                  )}
+                />
+                <Button
+                  nativeButton={false}
+                  render={(props) => (
+                    <Link to="/memory-card-manager" {...props}>
+                      Open Memory Card Manager
+                      <ArrowRightIcon className="size-4" />
+                    </Link>
+                  )}
+                />
+                <Button
+                  variant="outline"
+                  nativeButton={false}
+                  render={(props) => (
+                    <a
+                      href="https://github.com/barrenechea/psx-webtools"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      {...props}
+                    >
+                      <GHLogo className="size-4" />
+                      View on GitHub
+                    </a>
+                  )}
+                />
               </div>
             </div>
 

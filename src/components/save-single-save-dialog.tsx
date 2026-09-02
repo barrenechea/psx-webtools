@@ -70,8 +70,14 @@ export const SaveSingleSaveDialog = <T extends number>({
           <div className="grid gap-2">
             <Label htmlFor="singleSaveFormat">Save format</Label>
             <Select
+              items={formats.map((option) => ({
+                value: option.value.toString(),
+                label: option.label,
+              }))}
               value={saveType.toString()}
-              onValueChange={(value) => setFormat(parseInt(value) as T)}
+              onValueChange={(value) => {
+                if (value != null) setFormat(parseInt(value) as T);
+              }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select format" />

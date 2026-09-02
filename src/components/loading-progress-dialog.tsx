@@ -28,18 +28,20 @@ export const LoadingProgressDialog: React.FC<LoadingProgressDialogProps> = ({
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
         </AlertDialogHeader>
-        <AlertDialogDescription asChild>
-          <div>
-            <div className="mb-2">{status}</div>
-            <Progress
-              className="w-full"
-              value={progress !== undefined ? progress * 100 : undefined}
-            />
-            {additionalInfo && (
-              <div className="mt-2 text-right">{additionalInfo}</div>
-            )}
-          </div>
-        </AlertDialogDescription>
+        <AlertDialogDescription
+          render={(props) => (
+            <div {...props}>
+              <div className="mb-2">{status}</div>
+              <Progress
+                className="w-full"
+                value={progress !== undefined ? progress * 100 : null}
+              />
+              {additionalInfo && (
+                <div className="mt-2 text-right">{additionalInfo}</div>
+              )}
+            </div>
+          )}
+        />
       </AlertDialogContent>
     </AlertDialog>
   );

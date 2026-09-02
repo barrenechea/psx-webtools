@@ -126,7 +126,7 @@ export function MemcarduinoFlasher() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="grow overflow-hidden" type="auto">
+            <ScrollArea className="grow overflow-hidden">
               <div className="space-y-6 p-6">
                 <div className="space-y-2">
                   <label htmlFor="board-select" className="text-sm font-medium">
@@ -134,11 +134,12 @@ export function MemcarduinoFlasher() {
                   </label>
                   <Select
                     value={selectedBoard?.name}
-                    onValueChange={(value) =>
+                    onValueChange={(value) => {
+                      if (value == null) return;
                       setSelectedBoard(
                         arduinoBoards.find((b) => b.name === value) ?? null,
-                      )
-                    }
+                      );
+                    }}
                   >
                     <SelectTrigger id="board-select" className="mt-2 w-full">
                       <SelectValue placeholder="Choose a board" />
@@ -160,8 +161,14 @@ export function MemcarduinoFlasher() {
                     Select MemCARDuino Version
                   </label>
                   <Select
+                    items={memcarduinoVersions.map((version) => ({
+                      value: version.value,
+                      label: version.name,
+                    }))}
                     value={selectedVersion}
-                    onValueChange={setSelectedVersion}
+                    onValueChange={(value) => {
+                      if (value != null) setSelectedVersion(value);
+                    }}
                   >
                     <SelectTrigger id="version-select" className="mt-2 w-full">
                       <SelectValue placeholder="Choose a version" />

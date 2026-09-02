@@ -21,6 +21,10 @@ import {
 // New cards are offered only in the standard retail sizes; cards of other
 // valid geometries can still be loaded from a file or a device.
 const PS2_CARD_SIZES_MB = [8, 16, 32, 64, 128];
+const PS2_CARD_SIZE_ITEMS = PS2_CARD_SIZES_MB.map((size) => ({
+  value: size.toString(),
+  label: `${size} MB`,
+}));
 
 interface Ps2NewCardDialogProps {
   isOpen: boolean;
@@ -54,16 +58,19 @@ export const Ps2NewCardDialog: React.FC<Ps2NewCardDialogProps> = ({
           <div className="grid gap-2">
             <Label htmlFor="ps2CardSize">Card size</Label>
             <Select
+              items={PS2_CARD_SIZE_ITEMS}
               value={sizeMb.toString()}
-              onValueChange={(value) => setSizeMb(parseInt(value))}
+              onValueChange={(value) => {
+                if (value != null) setSizeMb(parseInt(value));
+              }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select size" />
               </SelectTrigger>
               <SelectContent>
-                {PS2_CARD_SIZES_MB.map((size) => (
-                  <SelectItem key={size} value={size.toString()}>
-                    {size} MB
+                {PS2_CARD_SIZE_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>

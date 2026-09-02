@@ -34,9 +34,13 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
     case SlotTypes.DeletedEndLink:
       return (
         <Tooltip>
-          <TooltipTrigger>
-            <Badge variant="destructive">Deleted</Badge>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Badge variant="destructive" {...props}>
+                Deleted
+              </Badge>
+            )}
+          />
           <TooltipContent>
             <p>This save has been deleted but can be recovered</p>
           </TooltipContent>
@@ -45,9 +49,13 @@ const getSlotTypeBadge = (slotType: SlotTypes) => {
     case SlotTypes.Corrupted:
       return (
         <Tooltip>
-          <TooltipTrigger>
-            <Badge variant="outline">Corrupted</Badge>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <Badge variant="outline" {...props}>
+                Corrupted
+              </Badge>
+            )}
+          />
           <TooltipContent>
             <p>This save data is corrupted and may not be readable</p>
           </TooltipContent>
@@ -109,26 +117,38 @@ export const Ps1Slot: React.FC<Ps1SlotProps> = ({
               {!isLink && (
                 <>
                   <Tooltip>
-                    <TooltipTrigger>
-                      <Badge variant="secondary">{slot.identifier}</Badge>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={(props) => (
+                        <Badge variant="secondary" {...props}>
+                          {slot.identifier}
+                        </Badge>
+                      )}
+                    />
                     <TooltipContent>
                       <p>Save identifier</p>
                     </TooltipContent>
                   </Tooltip>
                   <Tooltip>
-                    <TooltipTrigger>
-                      <Badge variant="secondary">{slot.region}</Badge>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={(props) => (
+                        <Badge variant="secondary" {...props}>
+                          {slot.region}
+                        </Badge>
+                      )}
+                    />
                     <TooltipContent>
                       <p>Game region</p>
                     </TooltipContent>
                   </Tooltip>
                   {isSoftware && (
                     <Tooltip>
-                      <TooltipTrigger>
-                        <Badge variant="outline">Software</Badge>
-                      </TooltipTrigger>
+                      <TooltipTrigger
+                        render={(props) => (
+                          <Badge variant="outline" {...props}>
+                            Software
+                          </Badge>
+                        )}
+                      />
                       <TooltipContent>
                         <p>PocketStation software save</p>
                       </TooltipContent>

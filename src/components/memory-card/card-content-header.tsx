@@ -89,18 +89,20 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
         </Tooltip>
       </div>
       <Tooltip>
-        <TooltipTrigger>
-          <div className="flex items-center">
-            {bufferedIcon ? (
-              <div className="group relative">
-                <div className="animate-tilt absolute -inset-0.5 rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200 motion-reduce:animate-none motion-reduce:transition-none" />
-                <div className="relative size-8">{bufferedIcon}</div>
-              </div>
-            ) : (
-              <div className="border-muted-foreground size-8 rounded-sm border-2 border-dashed" />
-            )}
-          </div>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={(props) => (
+            <div {...props} className="flex items-center">
+              {bufferedIcon ? (
+                <div className="group relative">
+                  <div className="animate-tilt absolute -inset-0.5 rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200 motion-reduce:animate-none motion-reduce:transition-none" />
+                  <div className="relative size-8">{bufferedIcon}</div>
+                </div>
+              ) : (
+                <div className="border-muted-foreground size-8 rounded-sm border-2 border-dashed" />
+              )}
+            </div>
+          )}
+        />
         <TooltipContent>
           <p>Temporary Buffer</p>
         </TooltipContent>

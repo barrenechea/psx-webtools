@@ -53,12 +53,15 @@ export const CardListItem: React.FC<CardListItemProps> = ({
       </Badge>
       {changed && (
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              aria-label="Unsaved changes"
-              className="ml-auto size-2 shrink-0 rounded-full bg-amber-500"
-            />
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={(props) => (
+              <span
+                {...props}
+                aria-label="Unsaved changes"
+                className="ml-auto size-2 shrink-0 rounded-full bg-amber-500"
+              />
+            )}
+          />
           <TooltipContent>Unsaved changes</TooltipContent>
         </Tooltip>
       )}

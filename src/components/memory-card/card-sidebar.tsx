@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -77,7 +78,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onFormat,
 }) => (
   <div className="border-border bg-muted/80 flex w-64 flex-col border-r">
-    <ScrollArea className="grow overflow-hidden" type="auto">
+    <ScrollArea className="grow overflow-hidden">
       <div className="p-2">
         {cards.map((card) => (
           <CardListItem
@@ -103,32 +104,33 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
         onChange={onFileChange}
       />
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="hover:bg-card/80 w-full justify-start"
-          >
-            <FolderOpenIcon className="mr-2 size-4" />
-            Open...
-          </Button>
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger
+          render={(props) => (
+            <Button
+              {...props}
+              variant="ghost"
+              className="hover:bg-card/80 w-full justify-start"
+            >
+              <FolderOpenIcon className="mr-2 size-4" />
+              Open...
+            </Button>
+          )}
+        />
         <DropdownMenuContent side="right" className="w-56">
-          <DropdownMenuItem onSelect={onNewCard}>
+          <DropdownMenuItem onClick={onNewCard}>
             <FilePlusIcon />
             New PS1 card
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onNewPs2Card}>
+          <DropdownMenuItem onClick={onNewPs2Card}>
             <FilePlusIcon />
             New PS2 card
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onSelect={(event) => {
-              // Keep the menu open so the native file picker can
-              // open from within this user gesture.
-              event.preventDefault();
-              onOpenFile();
-            }}
+            // Keep the menu open so the native file picker can
+            // open from within this user gesture.
+            closeOnClick={false}
+            onClick={onOpenFile}
           >
             <FileIcon />
             Open from file
@@ -139,45 +141,46 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
               Connect a device
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-48">
-              <DropdownMenuLabel>
-                <div className="flex items-center">
-                  <UsbIcon className="mr-2 size-4" />
-                  USB Devices
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuItem onSelect={onConnectPS3MCA}>
-                PS3 MC Adaptor
-              </DropdownMenuItem>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>
+                  <div className="flex items-center">
+                    <UsbIcon className="mr-2 size-4" />
+                    USB Devices
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuItem onClick={onConnectPS3MCA}>
+                  PS3 MC Adaptor
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>
-                <div className="flex items-center">
-                  <CpuIcon className="mr-2 size-4" />
-                  Serial Devices
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuItem onSelect={onConnectDexDrive}>
-                DexDrive
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onConnectMemcarduino}>
-                MemCARDuino
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onConnectPS1CardLink}>
-                PS1CardLink
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onConnectUnirom}>
-                Unirom
-              </DropdownMenuItem>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>
+                  <div className="flex items-center">
+                    <CpuIcon className="mr-2 size-4" />
+                    Serial Devices
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuItem onClick={onConnectDexDrive}>
+                  DexDrive
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onConnectMemcarduino}>
+                  MemCARDuino
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onConnectPS1CardLink}>
+                  PS1CardLink
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onConnectUnirom}>
+                  Unirom
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSeparator />
           <DropdownMenuCheckboxItem
             checked={fixCorrupted}
             onCheckedChange={(checked) => onFixCorruptedChange(checked)}
-            onSelect={(event) => {
-              // Keep the menu open; this is a setting, not a
-              // navigational action.
-              event.preventDefault();
-            }}
+            // Keep the menu open; this is a setting, not a navigational action.
+            closeOnClick={false}
           >
             Try to fix corrupted cards
           </DropdownMenuCheckboxItem>

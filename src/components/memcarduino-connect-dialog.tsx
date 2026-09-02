@@ -41,6 +41,21 @@ const DEFAULT_SETTINGS: SavedSettings = {
   saveSettings: false,
 };
 
+const DEVICE_TYPE_ITEMS = [
+  { value: "esp8266_esp32", label: "ESP8266 / ESP32" },
+  { value: "rpi_pico", label: "Raspberry Pi Pico" },
+  { value: "arduino_nano", label: "Arduino Nano" },
+  {
+    value: "arduino_leonardo_micro",
+    label: "Arduino Leonardo or Micro",
+  },
+];
+
+const CONNECTION_MODE_ITEMS = [
+  { value: "fast", label: "Fast Mode (115200 baud)" },
+  { value: "legacy", label: "Legacy Mode (38400 baud)" },
+];
+
 const loadSavedSettings = (): SavedSettings => {
   if (typeof window === "undefined") {
     return DEFAULT_SETTINGS;
@@ -101,27 +116,41 @@ export const MemcarduinoConnectDialog: React.FC<
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
-          <Select value={deviceType} onValueChange={setDeviceType}>
+          <Select
+            items={DEVICE_TYPE_ITEMS}
+            value={deviceType}
+            onValueChange={(value) => {
+              if (value != null) setDeviceType(value);
+            }}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select device type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="esp8266_esp32">ESP8266 / ESP32</SelectItem>
-              <SelectItem value="rpi_pico">Raspberry Pi Pico</SelectItem>
-              <SelectItem value="arduino_nano">Arduino Nano</SelectItem>
-              <SelectItem value="arduino_leonardo_micro">
-                Arduino Leonardo or Micro
-              </SelectItem>
+              {DEVICE_TYPE_ITEMS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select value={connectionMode} onValueChange={setConnectionMode}>
+          <Select
+            items={CONNECTION_MODE_ITEMS}
+            value={connectionMode}
+            onValueChange={(value) => {
+              if (value != null) setConnectionMode(value);
+            }}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select connection mode" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="fast">Fast Mode (115200 baud)</SelectItem>
-              <SelectItem value="legacy">Legacy Mode (38400 baud)</SelectItem>
+              {CONNECTION_MODE_ITEMS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

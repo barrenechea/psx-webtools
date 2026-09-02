@@ -124,11 +124,13 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
           <div className="flex flex-row items-center space-x-1">
             <p className="font-semibold">Game Details</p>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <InfoIcon className="text-muted-foreground size-3" />
-                </Button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={(props) => (
+                  <Button {...props} variant="ghost" size="icon">
+                    <InfoIcon className="text-muted-foreground size-3" />
+                  </Button>
+                )}
+              />
               <TooltipContent>
                 <p>Game details provided by The PlayStation DataCenter</p>
               </TooltipContent>

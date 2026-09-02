@@ -29,7 +29,7 @@ const TanStackRouterDevtools = import.meta.env.PROD
 
 export const Route = createRootRoute({
   component: () => (
-    <TooltipProvider delayDuration={100}>
+    <TooltipProvider delay={100}>
       <SidebarProvider className="h-svh overflow-hidden">
         <AppSidebar />
         <SidebarInset className="relative min-h-0 overflow-hidden">
