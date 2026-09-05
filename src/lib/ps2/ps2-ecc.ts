@@ -84,9 +84,9 @@ function isAllFF(data: Uint8Array): boolean {
 
 /**
  * Concatenate 512 data bytes with a 16-byte spare into a 528-byte image page.
- * MCMAN keeps those in separate buffers; .ps2 / mymc dumps store them back to
- * back. A missing spare (no-ECC card, or a data-only file) is filled with the
- * Hamming code, except an all-0xFF data page keeps the erased all-0xFF spare.
+ * .ps2 / mymc dumps store data and spare back to back. A missing spare
+ * (no-ECC card, or a data-only file) is filled with the Hamming code, except
+ * an all-0xFF data page keeps the erased all-0xFF spare.
  */
 export function assembleImagePage(
   data: Uint8Array,
@@ -141,4 +141,93 @@ export function checkPage(page: Uint8Array): PageEccStatus {
     }
   }
   return "valid";
+}
+
+export type ChunkCorrectResult = 0 | -1 | -2 | -3;
+
+/**
+ * 1-bit correct for one 128-byte chunk (Sony spare Hamming). Mutates `data`
+ * on a 1-bit data error. 0 = match, -1 = corrected data bit, -2 = 1-bit in
+ * the stored code (data is fine), -3 = uncorrectable.
+ *
+ * The syndrome `(xor1^xor2)==0x7f && nibble-xor==0x7` encodes the byte
+ * index in xor2. Correct `data[xor2]` like mymc. Not used on the CECHZM1
+ * USB path (`AA 52` is a raw memcpy in libmcadpt).
+ */
+export function correctChunk(
+  data: Uint8Array,
+  ecc: Uint8Array,
+): ChunkCorrectResult {
+  if (data.length < ECC_CHUNK_SIZE || ecc.length < ECC_CODE_SIZE) {
+    throw new Error("correctChunk needs 128 data bytes and a 3-byte code");
+  }
+  const computed = calcEcc(data);
+  const xor0 = ecc[0] ^ computed[0];
+  const xor1 = ecc[1] ^ computed[1];
+  const xor2 = ecc[2] ^ computed[2];
+  if (xor0 === 0 && xor1 === 0 && xor2 === 0) {
+    return 0;
+  }
+  const xor3 = xor1 ^ xor2;
+  const xor4 = (xor0 & 0x0f) ^ (xor0 >> 4);
+  if (xor3 === 0x7f && xor4 === 0x07) {
+    if (xor2 >= ECC_CHUNK_SIZE) {
+      return -3;
+    }
+    data[xor2] ^= 1 << (xor0 >> 4);
+    return -1;
+  }
+  let bits = 0;
+  let x = xor3;
+  for (let i = 0; i < 8; i++) {
+    bits += x & 1;
+    x >>= 1;
+  }
+  x = xor4;
+  for (let i = 0; i < 4; i++) {
+    bits += x & 1;
+    x >>= 1;
+  }
+  return bits === 1 ? -2 : -3;
+}
+
+export type CorrectPageStatus = "ok" | "erased" | "corrected" | "fail";
+
+/**
+ * Optional spare Hamming (no I/O). Last spare byte == `eraseByte` skips
+ * (NAND erase). Otherwise 1-bit-correct each chunk.
+ *
+ * Do not call this from the CECHZM1 USB path (`AA 52` is a raw 528-byte
+ * memcpy in libmcadpt). vmclib generates spare on write (`pageSpare`);
+ * it does not run this on read.
+ */
+export function correctPage(
+  page: Uint8Array,
+  eraseByte = 0xff,
+): { status: CorrectPageStatus; page: Uint8Array } {
+  if (page.length < ECC_PAGE_SIZE) {
+    throw new Error("correctPage needs a 528-byte page");
+  }
+  const out = page.slice();
+  const spare = out.subarray(ECC_PAGE_DATA_SIZE, ECC_PAGE_SIZE);
+  if (spare[ECC_PAGE_SPARE_SIZE - 1] === eraseByte) {
+    return { status: "erased", page: out };
+  }
+  let worst: ChunkCorrectResult = 0;
+  for (let c = 0; c < 4; c++) {
+    const r = correctChunk(
+      out.subarray(c * ECC_CHUNK_SIZE, (c + 1) * ECC_CHUNK_SIZE),
+      spare.subarray(c * ECC_CODE_SIZE, (c + 1) * ECC_CODE_SIZE),
+    );
+    if (r < worst) {
+      worst = r;
+    }
+  }
+  if (worst === 0) {
+    return { status: "ok", page: out };
+  }
+  if (worst >= -2) {
+    return { status: "corrected", page: out };
+  }
+  return { status: "fail", page: page.slice() };
 }

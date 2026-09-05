@@ -6,6 +6,8 @@ import {
   assembleImagePage,
   calcEcc,
   checkPage,
+  correctChunk,
+  correctPage,
   ECC_ALL_FF_CODE,
   ECC_CHUNK_SIZE,
   ECC_PAGE_DATA_SIZE,
@@ -119,5 +121,54 @@ describe("ps2-ecc", () => {
       new Uint8Array(ECC_PAGE_DATA_SIZE).fill(0xff),
     );
     expect(checkPage(erased)).toBe("erased");
+  });
+
+  it("correctChunk: restores a single data bit and ignores a single spare bit", () => {
+    const chunk = fromHex(REAL_CHUNK0);
+    const code = calcEcc(chunk);
+    expect(correctChunk(chunk.slice(), code)).toBe(0);
+
+    const dataFlip = chunk.slice();
+    dataFlip[10] ^= 0x01;
+    expect(correctChunk(dataFlip, code)).toBe(-1);
+    expect([...dataFlip]).toEqual([...chunk]);
+
+    const spareFlip = code.slice();
+    spareFlip[1] ^= 0x40;
+    const unchanged = chunk.slice();
+    expect(correctChunk(unchanged, spareFlip)).toBe(-2);
+    expect([...unchanged]).toEqual([...chunk]);
+
+    const twoBits = chunk.slice();
+    twoBits[10] ^= 0x01;
+    twoBits[11] ^= 0x01;
+    expect(correctChunk(twoBits, code)).toBe(-3);
+  });
+
+  it("correctPage: last-spare-byte erase skip and 1-bit data fix", () => {
+    expect(correctPage(new Uint8Array(ECC_PAGE_SIZE).fill(0xff)).status).toBe(
+      "erased",
+    );
+
+    const page = new Uint8Array(ECC_PAGE_SIZE);
+    for (let i = 0; i < ECC_PAGE_DATA_SIZE; i++) page[i] = (i * 13) & 0xff;
+    page.set(
+      pageSpare(page.subarray(0, ECC_PAGE_DATA_SIZE)),
+      ECC_PAGE_DATA_SIZE,
+    );
+    expect(correctPage(page).status).toBe("ok");
+
+    const flipped = page.slice();
+    flipped[5] ^= 0x01;
+    const fixed = correctPage(flipped);
+    expect(fixed.status).toBe("corrected");
+    expect([...fixed.page.subarray(0, ECC_PAGE_DATA_SIZE)]).toEqual([
+      ...page.subarray(0, ECC_PAGE_DATA_SIZE),
+    ]);
+
+    const two = page.slice();
+    two[5] ^= 0x01;
+    two[6] ^= 0x01;
+    expect(correctPage(two).status).toBe("fail");
   });
 });

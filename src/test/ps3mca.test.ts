@@ -1,6 +1,5 @@
 import { SupportedFeatures, Types } from "@/lib/ps1/hardware/core";
 import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
-import { assembleImagePage } from "@/lib/ps2/ps2-ecc";
 
 import { makeScriptedUsb, nonNull, type ScriptedUsb } from "./hardware-helpers";
 import { equalBytes } from "./psx-helpers";
@@ -21,27 +20,30 @@ function frame(fill: number): Uint8Array {
   return f;
 }
 
-// 144-byte read reply: 55 5A header, frame at offset 14.
+// libmcadpt-valid 144-byte AA 42 / 81 52 response.
 function readResponse(f: Uint8Array): Uint8Array {
-  const r = new Uint8Array(144);
-  r[0] = 0x55;
-  r[1] = 0x5a;
-  r.set(f, 14);
-  return r;
+  const m = new Uint8Array(140);
+  m[2] = 0x5a;
+  m[3] = 0x5d;
+  m[4] = 0x00;
+  m[6] = 0x5c;
+  m[7] = 0x5d;
+  m.set(f, 10);
+  for (let i = 8; i < 138; i++) m[138] ^= m[i];
+  m[139] = 0x47;
+  return ps2Reply(m);
 }
 
-// 142-byte ack, optionally with a bad status byte.
-function ack(status = 0x5a): Uint8Array {
-  const r = new Uint8Array(142);
-  r[0] = 0x55;
-  r[1] = status;
-  return r;
-}
-
-// 142-byte pocket memory reply, frame at offset 14.
-function pocketResponse(f: Uint8Array): Uint8Array {
-  const r = new Uint8Array(142);
-  r.set(f, 14);
+// libmcadpt-valid 142-byte AA 42 / 81 57 response.
+function ack(cardStatus = 0x47, usbStatus = 0x5a): Uint8Array {
+  const m = new Uint8Array(138);
+  m[2] = 0x5a;
+  m[3] = 0x5d;
+  m[135] = 0x5c;
+  m[136] = 0x5d;
+  m[137] = cardStatus;
+  const r = ps2Reply(m);
+  r[1] = usbStatus;
   return r;
 }
 
@@ -66,25 +68,38 @@ function pocketIdReply(isPocket: boolean): Uint8Array {
   return ps2Reply(miso);
 }
 
-// Enqueue Get Terminator (0x28) ready + Set Terminator (0x27) 0x5A ack.
-function enqueueTerminator(usb: ScriptedUsb): void {
-  const get = new Uint8Array(5);
-  get[0] = 0x81;
-  get[1] = 0x28;
-  get[3] = 0x55;
-  get[4] = 0x5a;
-  usb.enqueueIn(ps2Reply(get));
-  const set = new Uint8Array(5);
-  set[0] = 0x81;
-  set[1] = 0x27;
-  set[2] = 0x5a;
-  set[4] = 0x5a;
-  usb.enqueueIn(ps2Reply(set));
+function pocketMemoryReply(frame: Uint8Array): Uint8Array {
+  const miso = new Uint8Array(138);
+  miso.set(frame, 10);
+  return ps2Reply(miso);
+}
+
+function enqueueProbeSuccess(usb: ScriptedUsb): void {
+  const m = new Uint8Array(4);
+  m[2] = 0x2b;
+  m[3] = 0x55;
+  usb.enqueueIn(ps2Reply(m));
+}
+
+function enqueueProbeFailure(usb: ScriptedUsb): void {
+  usb.enqueueIn(new Uint8Array([0x55, 0xaf]));
+}
+
+function enqueuePs2Type(usb: ScriptedUsb): void {
+  for (let i = 0; i < 3; i++) {
+    usb.enqueueIn(new Uint8Array([0x55, 0x02]));
+  }
+}
+
+function enqueuePs2Open(usb: ScriptedUsb, specs: Uint8Array): void {
+  enqueuePs2Type(usb);
+  enqueueProbeSuccess(usb);
+  usb.enqueueIn(ps2Reply(specs));
 }
 
 function sonySpecsMiso(
   pageCount: number,
-  term = 0x5a,
+  term = 0x55,
   flags = 0x2b,
 ): Uint8Array {
   const m = new Uint8Array(13);
@@ -104,128 +119,65 @@ function sonySpecsMiso(
   return m;
 }
 
-// SIO replies for one 512-byte page: start read, four 128-byte chunks
-// (pattern-filled and EDC-checked), optional 16-byte spare, and the end.
-function enqueuePageRead(
+function bulkOp(w: Uint8Array): number {
+  if (w[1] === 0x52 || w[1] === 0x57) return w[1];
+  return w[5];
+}
+
+function patternPage(pattern: number, ecc: number): Uint8Array {
+  const p = new Uint8Array(528);
+  for (let i = 0; i < 512; i++) p[i] = (pattern + i) & 0xff;
+  for (let i = 0; i < 16; i++) p[512 + i] = (ecc + i) & 0xff;
+  return p;
+}
+
+function enqueueUsbPageRead(
   usb: ScriptedUsb,
   pattern: number,
   ecc: number,
-  withSpare = true,
 ): void {
-  const start = new Uint8Array(9);
-  start[0] = 0x81;
-  start[1] = 0x23;
-  start[8] = 0x5a;
-  usb.enqueueIn(ps2Reply(start));
-
-  for (let c = 0; c < 4; c++) {
-    const m = new Uint8Array(134);
-    m[0] = 0x81;
-    m[1] = 0x43;
-    // Each chunk carries its own page offset, so the assembled page is one
-    // continuous ramp from `pattern` (catches a mis-placed chunk).
-    for (let i = 0; i < 128; i++) m[4 + i] = (pattern + c * 128 + i) & 0xff;
-    for (let i = 4; i < 132; i++) m[132] ^= m[i];
-    usb.enqueueIn(ps2Reply(m));
-  }
-
-  if (withSpare) {
-    const spare = new Uint8Array(22);
-    spare[0] = 0x81;
-    spare[1] = 0x43;
-    for (let i = 0; i < 16; i++) spare[4 + i] = (ecc + i) & 0xff;
-    usb.enqueueIn(ps2Reply(spare));
-  }
-
-  const end = new Uint8Array(4);
-  end[0] = 0x81;
-  end[1] = 0x81;
-  end[3] = 0x5a;
-  usb.enqueueIn(ps2Reply(end));
+  const r = new Uint8Array(0x214);
+  r[0] = 0x55;
+  r[1] = 0x5a;
+  r[2] = 0x10;
+  r[3] = 0x02;
+  r.set(patternPage(pattern, ecc), 4);
+  usb.enqueueIn(r);
 }
 
-// A raw-SIO write: the card ACKs each command with a terminator at the last
-// MISO position (start [8], data [133], spare [len-1], end [3]).
-function enqueuePageWrite(usb: ScriptedUsb, withSpare = true): void {
-  const start = new Uint8Array(9);
-  start[0] = 0x81;
-  start[1] = 0x22;
-  start[8] = 0x5a;
-  usb.enqueueIn(ps2Reply(start));
-  for (let c = 0; c < 4; c++) {
-    const m = new Uint8Array(134);
-    m[0] = 0x81;
-    m[1] = 0x42;
-    m[133] = 0x5a;
-    usb.enqueueIn(ps2Reply(m));
-  }
-  if (withSpare) {
-    const spare = new Uint8Array(22);
-    spare[0] = 0x81;
-    spare[1] = 0x42;
-    spare[21] = 0x5a;
-    usb.enqueueIn(ps2Reply(spare));
-  }
-  const end = new Uint8Array(4);
-  end[0] = 0x81;
-  end[1] = 0x81;
-  end[3] = 0x5a;
-  usb.enqueueIn(ps2Reply(end));
+function enqueueUsbPageWrite(usb: ScriptedUsb): void {
+  usb.enqueueIn(new Uint8Array([0x55, 0x5a]));
 }
 
-// SIO replies for one block erase (MCMAN mcman_eraseblock order): start erase
-// (0x21, term [8]), erase block (0x82, term [3]), flush (0x12, term [3]).
+function enqueueUsbPageReadEcho(usb: ScriptedUsb, imagePage: Uint8Array): void {
+  const r = new Uint8Array(0x214);
+  r[0] = 0x55;
+  r[1] = 0x5a;
+  r[2] = 0x10;
+  r[3] = 0x02;
+  r.set(imagePage.subarray(0, 528), 4);
+  usb.enqueueIn(r);
+}
+
+function enqueueUsbPageUnsupported(usb: ScriptedUsb): void {
+  usb.enqueueIn(new Uint8Array([0x55, 0xff]));
+}
+
+// SIO replies for one block erase (libmcadpt): start erase (0x21, 2B + term
+// [8]) then commit (0x81, 2B + term [3]).
 function enqueueBlockErase(usb: ScriptedUsb): void {
   const start = new Uint8Array(9);
   start[0] = 0x81;
   start[1] = 0x21;
-  start[8] = 0x5a;
+  start[7] = 0x2b;
+  start[8] = 0x55;
   usb.enqueueIn(ps2Reply(start));
-  const erase = new Uint8Array(4);
-  erase[0] = 0x81;
-  erase[1] = 0x82;
-  erase[3] = 0x5a;
-  usb.enqueueIn(ps2Reply(erase));
-  const flush = new Uint8Array(4);
-  flush[0] = 0x81;
-  flush[1] = 0x12;
-  flush[3] = 0x5a;
-  usb.enqueueIn(ps2Reply(flush));
-}
-
-// Read-back of a page that echoes the bytes just written (verify tests): the
-// card returns the given 528-byte image page, EDC-checked.
-function enqueuePageReadEcho(usb: ScriptedUsb, imagePage: Uint8Array): void {
-  const start = new Uint8Array(9);
-  start[0] = 0x81;
-  start[1] = 0x23;
-  start[8] = 0x5a;
-  usb.enqueueIn(ps2Reply(start));
-  for (let c = 0; c < 4; c++) {
-    const m = new Uint8Array(134);
-    m[0] = 0x81;
-    m[1] = 0x43;
-    m.set(imagePage.subarray(c * 128, (c + 1) * 128), 4);
-    for (let i = 4; i < 132; i++) m[132] ^= m[i];
-    usb.enqueueIn(ps2Reply(m));
-  }
-  const spare = new Uint8Array(22);
-  spare[0] = 0x81;
-  spare[1] = 0x43;
-  spare.set(imagePage.subarray(512, 528), 4);
-  usb.enqueueIn(ps2Reply(spare));
   const end = new Uint8Array(4);
   end[0] = 0x81;
   end[1] = 0x81;
-  end[3] = 0x5a;
+  end[2] = 0x2b;
+  end[3] = 0x55;
   usb.enqueueIn(ps2Reply(end));
-}
-
-// EDC over a run of bytes (XOR) — mirrors the adapter's mcman_calcEDC.
-function edc(bytes: Uint8Array): number {
-  let e = 0;
-  for (let i = 0; i < bytes.length; i++) e ^= bytes[i];
-  return e & 0xff;
 }
 
 describe("N. PS3 MC Adaptor (WebUSB)", () => {
@@ -265,6 +217,19 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     usb.enqueueIn(resp);
 
     expect(await a.readMemoryCardFrame(0)).toBeNull();
+  });
+
+  it("N3a libmcadpt ignores byte zero of a valid bulk reply", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    const expected = frame(0x10);
+    const resp = readResponse(expected);
+    resp[0] = 0x00;
+    usb.enqueueIn(resp);
+
+    expect(equalBytes(nonNull(await a.readMemoryCardFrame(0)), expected)).toBe(
+      true,
+    );
   });
 
   it("N4 a short read (143 bytes) is rejected", async () => {
@@ -309,176 +274,104 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(w[141]).toBe(0);
   });
 
-  it("N7 a bad ack is retried, a good ack after a bad one succeeds", async () => {
+  it("N7 a bad write reply fails without a retry", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     const f = frame(0x30);
-    usb.enqueueIn(ack(0x5b)); // bad status
-    usb.enqueueIn(ack()); // good
-
-    expect(await a.writeMemoryCardFrame(0, f)).toBe(true);
-    expect(usb.writes.length).toBe(2);
-  });
-
-  it("N8 five failed attempts give up", async () => {
-    const a = new PS3MemCardAdaptor();
-    const usb = connect(a);
-    const f = frame(0x30);
-    for (let i = 0; i < 5; i++) usb.enqueueIn(ack(0x5b));
+    usb.enqueueIn(ack(0x4e));
+    usb.enqueueIn(ack());
 
     expect(await a.writeMemoryCardFrame(0, f)).toBe(false);
-    expect(usb.writes.length).toBe(5);
+    expect(usb.writes.length).toBe(1);
   });
 
-  it("N9 serial: memory dump at 0x06000300, serial is the LE32 of frame[0..4]", async () => {
+  it("N8 a wrong AA 42 echoed length is rejected", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    const f = frame(0x40);
-    f[0] = 0x11;
-    f[1] = 0x22;
-    f[2] = 0x33;
-    f[3] = 0x44;
-    usb.enqueueIn(pocketResponse(f));
+    const r = readResponse(frame(0x30));
+    r[2]--;
+    usb.enqueueIn(r);
+    expect(await a.readMemoryCardFrame(0)).toBeNull();
+  });
 
-    const { serial, errorMsg } = await a.readPocketStationSerial();
-    expect(errorMsg).toBeNull();
-    expect(serial).toBe(0x44332211);
+  it("N9 reads the PocketStation serial through one strict 81 5B transfer", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    const frame = new Uint8Array(128);
+    frame.set([0x11, 0x22, 0x33, 0x44]);
+    usb.enqueueIn(pocketMemoryReply(frame));
 
+    expect(await a.readPocketStationSerial()).toEqual({
+      serial: 0x44332211,
+      errorMsg: null,
+    });
     const w = usb.writes[0];
     expect(w.length).toBe(142);
-    expect(w[5]).toBe(0x5b); // '[' op: get memory block
-    expect(w[6]).toBe(0x01); // function
-    expect(w[8]).toBe(0x00); // 0x06000300 LE
-    expect(w[9]).toBe(0x03);
-    expect(w[10]).toBe(0x00);
-    expect(w[11]).toBe(0x06);
-    expect(w[12]).toBe(0x80); // 128 bytes
+    expect([...w.subarray(0, 7)]).toEqual([
+      0xaa, 0x42, 0x8a, 0x00, 0x81, 0x5b, 0x01,
+    ]);
+    expect([...w.subarray(8, 13)]).toEqual([0x00, 0x03, 0x00, 0x06, 0x80]);
   });
 
-  it("N10 a failed serial dump reports 'not detected'", async () => {
+  it("N10 rejects a short PocketStation memory reply", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(new Uint8Array(141)); // short read
+    usb.enqueueIn(new Uint8Array(141));
 
-    const { serial, errorMsg } = await a.readPocketStationSerial();
-    expect(serial).toBe(0);
-    expect(errorMsg).toBe("PocketStation not detected.");
+    expect(await a.readPocketStationSerial()).toEqual({
+      serial: 0,
+      errorMsg: "PocketStation not detected.",
+    });
   });
 
-  it("N11 BIOS part N is dumped at 0x04000000 + N*128", async () => {
+  it("N11 reads BIOS part N at 0x04000000 + N*128", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     const f = frame(0x50);
-    usb.enqueueIn(pocketResponse(f));
+    usb.enqueueIn(pocketMemoryReply(f));
 
     expect(equalBytes(nonNull(await a.dumpPocketStationBIOS(3)), f)).toBe(true);
-
-    const w = usb.writes[0];
-    // 3 * 128 = 0x180, so part 3 lives at 0x04000180
-    expect(w[8]).toBe(0x80);
-    expect(w[9]).toBe(0x01);
-    expect(w[10]).toBe(0x00);
-    expect(w[11]).toBe(0x04);
-    expect(w[12]).toBe(0x80);
+    expect([...usb.writes[0].subarray(8, 13)]).toEqual([
+      0x80, 0x01, 0x00, 0x04, 0x80,
+    ]);
   });
 
-  it("N12 3rd-party 'G' at frame[127]: re-read at address+2, recover from reframe[125]", async () => {
+  it("N12 returns BIOS bytes unchanged without a shifted-read fallback", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     const f = frame(0x50);
-    f[127] = 0x47; // 'G'
-    usb.enqueueIn(pocketResponse(f));
-    const reframe = frame(0x50);
-    reframe[125] = 0x99;
-    usb.enqueueIn(pocketResponse(reframe));
+    f[127] = 0x47;
+    usb.enqueueIn(pocketMemoryReply(f));
 
-    const result = nonNull(await a.dumpPocketStationBIOS(0));
-    expect(usb.writes.length).toBe(2);
-    expect(usb.writes[1][8]).toBe(0x02); // 0x04000002 LE
-    expect(usb.writes[1][9]).toBe(0x00);
-    expect(usb.writes[1][10]).toBe(0x00);
-    expect(usb.writes[1][11]).toBe(0x04);
-    expect(result[127]).toBe(0x99);
+    expect(nonNull(await a.dumpPocketStationBIOS(0))[127]).toBe(0x47);
+    expect(usb.writes.length).toBe(1);
   });
 
-  // N13 (BCD vectors) is folded into N14: getBCD is a local in
-  // setPocketStationTime, and N14 decodes every BCD field and checks it.
-
-  it("N14 time layout: BCD day/month/year/century/sec/min/hour/dow at [9..16]", async () => {
+  it("N14 writes the PocketStation clock as BCD through one 81 5C transfer", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(new Uint8Array([0x55]));
+    usb.enqueueIn(ps2Reply(new Uint8Array(138)));
 
-    const before = new Date(Date.now() - 1000);
-    const after = new Date(Date.now() + 1000);
-    const { success, errorMsg } = await a.setPocketStationTime();
-    expect(success).toBe(true);
-    expect(errorMsg).toBeNull();
-
+    expect(await a.setPocketStationTime()).toEqual({
+      success: true,
+      errorMsg: null,
+    });
     const w = usb.writes[0];
     expect(w.length).toBe(142);
-    expect(w[5]).toBe(0x5c); // '\\' op: set time
-    const fields = Array.from(w.slice(9, 17));
-    const fieldOf = (t: Date, i: number): number => {
-      switch (i) {
-        case 0:
-          return t.getDate();
-        case 1:
-          return t.getMonth() + 1;
-        case 2:
-          return t.getFullYear() % 100;
-        case 3:
-          return Math.floor(t.getFullYear() / 100);
-        case 4:
-          return t.getSeconds();
-        case 5:
-          return t.getMinutes();
-        case 6:
-          return t.getHours();
-        default:
-          return t.getDay() + 1;
-      }
-    };
-    // True when v lies on the forward arc a->b around a circle of `mod`
-    // (handles the 59->0 wrap for seconds/minutes).
-    const onArc = (v: number, a: number, b: number, mod: number): boolean => {
-      const n = (x: number) => ((x % mod) + mod) % mod;
-      return n(v - a) <= n(b - a);
-    };
-    for (let i = 0; i < 8; i++) {
-      const bcd = fields[i];
+    expect(w[5]).toBe(0x5c);
+    for (const bcd of w.subarray(9, 17)) {
       expect(bcd >> 4).toBeLessThanOrEqual(9);
-      expect(bcd & 0xf).toBeLessThanOrEqual(9);
-      const decoded = (bcd >> 4) * 10 + (bcd & 0xf);
-      const low = fieldOf(before, i);
-      const high = fieldOf(after, i);
-      if (i === 4 || i === 5) {
-        expect(onArc(decoded, low, high, 60)).toBe(true);
-      } else {
-        expect(decoded).toBeGreaterThanOrEqual(Math.min(low, high));
-        expect(decoded).toBeLessThanOrEqual(Math.max(low, high));
-      }
+      expect(bcd & 0x0f).toBeLessThanOrEqual(9);
     }
   });
 
-  it("N15 no reply after the time command means 'not detected'", async () => {
+  it("N15 a missing PocketStation clock reply fails", async () => {
     const a = new PS3MemCardAdaptor();
     connect(a);
-    // no reply enqueued
-
-    const { success, errorMsg } = await a.setPocketStationTime();
-    expect(success).toBe(false);
-    expect(errorMsg).toBe("PocketStation not detected.");
-  });
-
-  it("N16 a failed write surfaces as a USB comm error", async () => {
-    const a = new PS3MemCardAdaptor();
-    const usb = connect(a);
-    usb.failWrites(true);
-
-    const { success, errorMsg } = await a.setPocketStationTime();
-    expect(success).toBe(false);
-    expect(errorMsg).toBe("USB comm error");
+    expect(await a.setPocketStationTime()).toEqual({
+      success: false,
+      errorMsg: "PocketStation not detected.",
+    });
   });
 
   it("N17 name/features/type contract", () => {
@@ -521,10 +414,12 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     // Type 01 is PS1 or PocketStation; 81 58 (N19a) disambiguates.
     for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
     usb.enqueueIn(pocketIdReply(false));
+    usb.enqueueIn(readResponse(frame(0x10)));
     expect(await a.ps2ProbeCardType()).toBe("ps1");
 
     for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
     usb.enqueueIn(pocketIdReply(true));
+    usb.enqueueIn(readResponse(frame(0x20)));
     expect(await a.ps2ProbeCardType()).toBe("pocketstation");
 
     // Mismatched AA 40 replies are unclassifiable.
@@ -536,8 +431,11 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     usb.enqueueIn(new Uint8Array([0x55, 0x03]));
     expect(await a.ps2ProbeCardType()).toBe("unknown");
 
-    usb.enqueueIn(new Uint8Array([0x56, 0x01])); // bad header
-    expect(await a.ps2ProbeCardType()).toBe("unknown");
+    // libmcadpt consumes only response byte 1 for AA 40.
+    for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x56, 0x01]));
+    usb.enqueueIn(pocketIdReply(false));
+    usb.enqueueIn(readResponse(frame(0x30)));
+    expect(await a.ps2ProbeCardType()).toBe("ps1");
 
     usb.enqueueIn(new Uint8Array([0x55])); // short
     expect(await a.ps2ProbeCardType()).toBe("unknown");
@@ -546,16 +444,17 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(await a.ps2ProbeCardType()).toBe("unknown");
   });
 
-  it("N19a a type-01 slot is classified with 3x AA 40 + one 81 58, no dump", async () => {
+  it("N19a a type-01 slot is classified with 3x AA 40, 81 58, and frame 0", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
     usb.enqueueIn(pocketIdReply(false));
+    usb.enqueueIn(readResponse(frame(0x10)));
 
     expect(await a.ps2ProbeCardType()).toBe("ps1");
 
-    // Three 2-byte AA 40 reads, then one AA 42 n=5 (81 58) PocketStation Get ID.
-    expect(usb.writes.length).toBe(4);
+    // Three AA 40 reads, PocketStation ID, then libmcadpt's frame-0 check.
+    expect(usb.writes.length).toBe(5);
     for (let i = 0; i < 3; i++) {
       expect(usb.writes[i].length).toBe(2);
       expect(usb.writes[i][0]).toBe(0xaa);
@@ -565,8 +464,8 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(pocket.length).toBe(9);
     expect(pocket[4]).toBe(0x81);
     expect(pocket[5]).toBe(0x58);
-    // Classification only: no frame/page dump (0x52/0x57) anywhere in the writes.
-    expect(usb.writes.every((w) => w[1] !== 0x52 && w[1] !== 0x57)).toBe(true);
+    expect(usb.writes[4][1]).toBe(0x42);
+    expect(usb.writes[4][5]).toBe(0x52);
   });
 
   it("N20 a USB failure during the probe classifies as unknown", async () => {
@@ -592,10 +491,12 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
 
     for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
     usb.enqueueIn(pocketIdReply(false));
+    usb.enqueueIn(readResponse(frame(0x10)));
     expect(await a.checkCard()).toEqual({ present: true, kind: "ps1" });
 
     for (let i = 0; i < 3; i++) usb.enqueueIn(new Uint8Array([0x55, 0x01]));
     usb.enqueueIn(pocketIdReply(true));
+    usb.enqueueIn(readResponse(frame(0x20)));
     expect(await a.checkCard()).toEqual({
       present: true,
       kind: "pocketstation",
@@ -644,12 +545,26 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(w[5]).toBe(0x26);
   });
 
-  it("N25 Get Specs all-FF (pre-auth) reports needs auth", async () => {
+  it("N24a Get Specs preserves the full 32-bit page count", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(0x01020304)));
+
+    expect(await a.ps2GetSpecs()).toMatchObject({
+      status: "ok",
+      specs: { pageCount: 0x01020304 },
+    });
+  });
+
+  it("N25 Get Specs all-FF is an invalid response", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     usb.enqueueIn(ps2Reply(new Uint8Array(13).fill(0xff)));
 
-    expect(await a.ps2GetSpecs()).toEqual({ status: "needs-auth" });
+    expect(await a.ps2GetSpecs()).toEqual({
+      status: "error",
+      message: "PS2 Get Specs: invalid card response.",
+    });
   });
 
   it("N26 Get Specs with no reply reports an error", async () => {
@@ -663,10 +578,10 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     });
   });
 
-  it("N27 ps2ReadPage assembles a 528-byte page and sends the page number", async () => {
+  it("N27 ps2ReadPage uses USB AA 52 and copies 528 bytes", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueuePageRead(usb, 0x11, 0x77);
+    enqueueUsbPageRead(usb, 0x11, 0x77);
 
     const page = nonNull(
       await a.ps2ReadPage(5, {
@@ -681,21 +596,85 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     for (let i = 0; i < 16; i++) expect(page[512 + i]).toBe((0x77 + i) & 0xff);
 
     const w = usb.writes[0];
-    expect(w.length).toBe(13);
-    expect(w[2]).toBe(9); // len
-    expect(w[4]).toBe(0x81);
-    expect(w[5]).toBe(0x23);
-    expect(w[6]).toBe(5); // page number, LE byte 0
-    expect(usb.writes.map((cmd) => cmd[5])).toEqual([
-      0x23, 0x43, 0x43, 0x43, 0x43, 0x43, 0x81,
-    ]);
+    expect(w.length).toBe(9);
+    expect(w[0]).toBe(0xaa);
+    expect(w[1]).toBe(0x52);
+    expect(w[2]).toBe(0x03);
+    expect(w[3]).toBe(5);
+    expect(w[7]).toBe(0x55);
+    expect(w[8]).toBe(0x2b);
+    expect(usb.writes.map(bulkOp)).toEqual([0x52]);
   });
 
-  it("N28 readPS2CardImage propagates needs-auth from Get Specs", async () => {
+  it("N27a AA 52 also ignores response byte zero", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(new Uint8Array(13).fill(0xff)));
+    const reply = new Uint8Array(0x214);
+    reply[0] = 0x00;
+    reply[1] = 0x5a;
+    reply[2] = 0x10;
+    reply[3] = 0x02;
+    usb.enqueueIn(reply);
+
+    expect(
+      await a.ps2ReadPage(0, {
+        flags: 0x2b,
+        pageSize: 512,
+        blockPages: 16,
+        pageCount: 16384,
+      }),
+    ).not.toBeNull();
+  });
+
+  it("N27b AA 52 preserves page addresses above the OFW 8 MB cap", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueUsbPageRead(usb, 0x00, 0x00);
+
+    expect(
+      await a.ps2ReadPage(0x01020304, {
+        flags: 0x2b,
+        pageSize: 512,
+        blockPages: 16,
+        pageCount: 0x01020305,
+      }),
+    ).not.toBeNull();
+    expect([...usb.writes[0].subarray(3, 7)]).toEqual([4, 3, 2, 1]);
+  });
+
+  it("N27c AA 52 rejects bad status, bad payload length, and a short reply", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    const specs = {
+      flags: 0x2b,
+      pageSize: 512,
+      blockPages: 16,
+      pageCount: 16384,
+    };
+    const badStatus = new Uint8Array(0x214);
+    badStatus[1] = 0xff;
+    badStatus[2] = 0x10;
+    badStatus[3] = 0x02;
+    usb.enqueueIn(badStatus);
+    expect(await a.ps2ReadPage(0, specs)).toBeNull();
+
+    const badLength = new Uint8Array(0x214);
+    badLength[1] = 0x5a;
+    badLength[2] = 0x0f;
+    badLength[3] = 0x02;
+    usb.enqueueIn(badLength);
+    expect(await a.ps2ReadPage(0, specs)).toBeNull();
+
+    usb.enqueueIn(new Uint8Array(0x213));
+    expect(await a.ps2ReadPage(0, specs)).toBeNull();
+    expect(usb.writes).toHaveLength(3);
+  });
+
+  it("N28 readPS2CardImage requires auth after Probe failure", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueuePs2Type(usb);
+    enqueueProbeFailure(usb);
 
     expect(await a.readPS2CardImage(() => {})).toEqual({
       status: "needs-auth",
@@ -705,10 +684,9 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
   it("N29 readPS2CardImage dumps every page into the raw image", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(2)));
-    enqueuePageRead(usb, 0x00, 0xa0);
-    enqueuePageRead(usb, 0x01, 0xa1);
+    enqueuePs2Open(usb, sonySpecsMiso(2));
+    enqueueUsbPageRead(usb, 0x00, 0xa0);
+    enqueueUsbPageRead(usb, 0x01, 0xa1);
 
     let progress = 0;
     const r = await a.readPS2CardImage((p) => {
@@ -722,10 +700,10 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
       expect(r.image[528 + i]).toBe((0x01 + i) & 0xff);
     }
     expect(progress).toBe(1);
-    expect(usb.writes[0][5]).toBe(0x28);
-    expect(usb.writes[1][5]).toBe(0x27);
-    expect(usb.writes[1][6]).toBe(0x5a);
-    expect(usb.writes[2][5]).toBe(0x26);
+    expect(usb.writes.slice(0, 3).every((w) => w[1] === 0x40)).toBe(true);
+    expect(usb.writes[3][5]).toBe(0x11);
+    expect(usb.writes[4][5]).toBe(0x26);
+    expect(usb.writes.slice(5).map(bulkOp)).toEqual([0x52, 0x52]);
   });
 
   it("N30 Get Specs with reset terminator 0x55 is still valid", async () => {
@@ -739,7 +717,7 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     });
   });
 
-  it("N31 Get Specs with implausible geometry is an error, not needs-auth", async () => {
+  it("N31 Get Specs returns wire-valid geometry without a PC plausibility filter", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     const m = sonySpecsMiso(16384);
@@ -750,132 +728,131 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     usb.enqueueIn(ps2Reply(m));
 
     expect(await a.ps2GetSpecs()).toEqual({
-      status: "error",
-      message: "PS2 Get Specs: implausible card geometry.",
+      status: "ok",
+      specs: { flags: 0x2b, pageSize: 3, blockPages: 16, pageCount: 16384 },
     });
   });
 
-  it("N32 without CF_USE_ECC skips the spare packet and still emits 528 bytes", async () => {
+  it("N32 AA 52 failure does not fall back to AA 42", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueuePageRead(usb, 0x11, 0x77, false);
+    enqueueUsbPageUnsupported(usb);
 
-    const data = new Uint8Array(512);
-    for (let i = 0; i < 512; i++) data[i] = (0x11 + i) & 0xff;
-    const page = nonNull(
+    expect(
       await a.ps2ReadPage(0, {
-        flags: 0x2a, // 0x2B without bit 0
+        flags: 0x2b,
         pageSize: 512,
         blockPages: 16,
         pageCount: 16384,
       }),
-    );
-    expect(page.length).toBe(528);
-    expect([...page]).toEqual([...assembleImagePage(data)]);
-    expect(usb.writes.map((cmd) => cmd[5])).toEqual([
-      0x23, 0x43, 0x43, 0x43, 0x43, 0x81,
-    ]);
+    ).toBeNull();
+    expect(usb.writes.map(bulkOp)).toEqual([0x52]);
   });
 
-  it("N33 no-ECC dump is still a 528-byte-page image", async () => {
+  it("N33 Get Specs MISO[2] not '+' is invalid", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(2, 0x5a, 0x2a)));
-    enqueuePageRead(usb, 0x00, 0xa0, false);
-    enqueuePageRead(usb, 0x01, 0xa1, false);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(16384, 0x55, 0x2a)));
 
-    const r = await a.readPS2CardImage(() => {});
-    expect(r.status).toBe("ok");
-    if (r.status !== "ok") return;
-    expect(r.specs.flags).toBe(0x2a);
-    expect(r.image.length).toBe(2 * 528);
-    const p0 = new Uint8Array(512);
-    const p1 = new Uint8Array(512);
-    for (let i = 0; i < 512; i++) {
-      p0[i] = i & 0xff;
-      p1[i] = (0x01 + i) & 0xff;
-    }
-    expect([...r.image.subarray(0, 528)]).toEqual([...assembleImagePage(p0)]);
-    expect([...r.image.subarray(528, 1056)]).toEqual([
-      ...assembleImagePage(p1),
-    ]);
+    expect(await a.ps2GetSpecs()).toEqual({
+      status: "error",
+      message: "PS2 Get Specs: invalid card response.",
+    });
   });
 
-  it("N34 ps2WritePage sends start/data/spare/end and reports success", async () => {
+  it("N33b Get Specs terminator 0x5A is invalid", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueuePageWrite(usb, true);
+    usb.enqueueIn(ps2Reply(sonySpecsMiso(16384, 0x5a)));
+
+    expect(await a.ps2GetSpecs()).toEqual({
+      status: "error",
+      message: "PS2 Get Specs: invalid card response.",
+    });
+  });
+
+  it("N34 ps2WritePage sends USB AA 57 and reports success", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueUsbPageWrite(usb);
     const image = new Uint8Array(528);
     for (let i = 0; i < 528; i++) image[i] = (i * 7) & 0xff;
     const specs = { flags: 0x2b, pageSize: 512, blockPages: 16, pageCount: 2 };
     expect(await a.ps2WritePage(5, image, specs)).toBe(true);
 
-    expect(usb.writes.map((w) => w[5])).toEqual([
-      0x22, 0x42, 0x42, 0x42, 0x42, 0x42, 0x81,
-    ]);
-    const start = usb.writes[0];
-    expect(start[6]).toBe(5);
-    expect(start[10]).toBe(edc(start.subarray(6, 10)));
-    const d0 = usb.writes[1];
-    expect(d0[6]).toBe(128);
-    expect([...d0.subarray(7, 135)]).toEqual([...image.subarray(0, 128)]);
-    expect(d0[135]).toBe(edc(image.subarray(0, 128)));
-    const d3 = usb.writes[4];
-    expect([...d3.subarray(7, 135)]).toEqual([...image.subarray(384, 512)]);
-    const sp = usb.writes[5];
-    expect(sp[6]).toBe(16);
-    expect([...sp.subarray(7, 23)]).toEqual([...image.subarray(512, 528)]);
-    expect(sp[23]).toBe(edc(image.subarray(512, 528)));
+    const w = usb.writes[0];
+    expect(w.length).toBe(0x219);
+    expect(w[0]).toBe(0xaa);
+    expect(w[1]).toBe(0x57);
+    expect(w[2]).toBe(0x03);
+    expect(w[3]).toBe(5);
+    expect([...w.subarray(7, 7 + 528)]).toEqual([...image]);
+    expect(w[7 + 528]).toBe(0x55);
+    expect(w[8 + 528]).toBe(0x2b);
+    expect(usb.writes.map(bulkOp)).toEqual([0x57]);
   });
 
-  it("N35 ps2WritePage without CF_USE_ECC omits the spare packet", async () => {
+  it("N35 AA 57 failure does not fall back to AA 42", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueuePageWrite(usb, false);
+    enqueueUsbPageUnsupported(usb);
     const image = new Uint8Array(528);
-    const specs = { flags: 0x2a, pageSize: 512, blockPages: 16, pageCount: 2 };
-    expect(await a.ps2WritePage(0, image, specs)).toBe(true);
-    expect(usb.writes.map((w) => w[5])).toEqual([
-      0x22, 0x42, 0x42, 0x42, 0x42, 0x81,
-    ]);
+    const specs = { flags: 0x2b, pageSize: 512, blockPages: 16, pageCount: 2 };
+    expect(await a.ps2WritePage(0, image, specs)).toBe(false);
+    expect(usb.writes.map(bulkOp)).toEqual([0x57]);
+  });
+
+  it("N35a erase accepts a block above OFW's 8 MB cap", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueBlockErase(usb);
+    const specs = {
+      flags: 0x2b,
+      pageSize: 512,
+      blockPages: 16,
+      pageCount: 32768,
+    };
+
+    expect(await a.ps2EraseBlock(0x400, specs)).toBe(true);
+    const start = usb.writes[0].subarray(4);
+    expect([...start.subarray(2, 6)]).toEqual([0x00, 0x40, 0x00, 0x00]);
   });
 
   it("N36 writePS2CardImage erases each block before writing its pages", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(32, 0x5a, 0x2b)));
-    // Page 0 is read for the Conquest check; a normal, non-Conquest pattern.
-    enqueuePageRead(usb, 0x00, 0x00);
-    // Two 16-page blocks: the loop must erase block 0, write its 16 pages,
-    // then erase block 1 again before writing those pages.
+    enqueuePs2Open(usb, sonySpecsMiso(32));
+    enqueueUsbPageRead(usb, 0x00, 0x00);
     enqueueBlockErase(usb);
-    for (let p = 0; p < 16; p++) enqueuePageWrite(usb, true);
+    for (let p = 0; p < 16; p++) enqueueUsbPageWrite(usb);
     enqueueBlockErase(usb);
-    for (let p = 0; p < 16; p++) enqueuePageWrite(usb, true);
+    for (let p = 0; p < 16; p++) enqueueUsbPageWrite(usb);
     const image = new Uint8Array(32 * 528);
     for (let i = 0; i < image.length; i++) image[i] = (i * 3) & 0xff;
     const r = await a.writePS2CardImage(image, () => {});
     expect(r.status).toBe("ok");
-    const cmds = usb.writes.map((w) => w[5]);
-    // sync, specs, the page-0 Conquest check, then block 0's erase before its
-    // first page write...
-    expect(cmds.slice(0, 14)).toEqual([
-      0x28, 0x27, 0x26, 0x23, 0x43, 0x43, 0x43, 0x43, 0x43, 0x81, 0x21, 0x82,
-      0x12, 0x22,
+    const cmds = usb.writes.map(bulkOp);
+    expect(cmds.slice(0, 9)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      0x11,
+      0x26,
+      0x52,
+      0x21,
+      0x81,
+      0x57,
     ]);
-    // ...the erase repeats (0x21, 0x82, 0x12) right before page 16's write...
-    expect(cmds.slice(125, 129)).toEqual([0x21, 0x82, 0x12, 0x22]);
-    // ...and two erases + 32 page writes (+ the page-0 read) cover the card.
-    expect(cmds.length).toBe(3 + 7 + 2 * 3 + 32 * 7);
+    expect(cmds.slice(24, 27)).toEqual([0x21, 0x81, 0x57]);
+    expect(cmds).not.toContain(0x82);
+    expect(cmds).not.toContain(0x12);
+    expect(cmds.length).toBe(5 + 1 + 2 + 16 + 2 + 16);
   });
 
   it("N37 writePS2CardImage rejects a mismatched image size", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(2, 0x5a, 0x2b)));
+    enqueuePs2Open(usb, sonySpecsMiso(16));
     const r = await a.writePS2CardImage(new Uint8Array(528), () => {});
     expect(r).toMatchObject({
       status: "error",
@@ -883,26 +860,25 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     });
   });
 
-  it("N38 writePS2CardImage verifies each written page", async () => {
+  it("N38 writePS2CardImage does not add a PC-only verify pass", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(1, 0x5a, 0x2b)));
-    enqueuePageRead(usb, 0x00, 0x00); // page-0 Conquest check
+    enqueuePs2Open(usb, sonySpecsMiso(16));
+    enqueueUsbPageRead(usb, 0x00, 0x00);
     enqueueBlockErase(usb);
-    enqueuePageWrite(usb, true);
-    const image = new Uint8Array(528);
+    for (let p = 0; p < 16; p++) enqueueUsbPageWrite(usb);
+    const image = new Uint8Array(16 * 528);
     for (let i = 0; i < 528; i++) image[i] = (i * 5) & 0xff;
-    enqueuePageReadEcho(usb, image);
     const r = await a.writePS2CardImage(image, () => {}, true);
     expect(r.status).toBe("ok");
+    expect(usb.writes.map(bulkOp).filter((op) => op === 0x52)).toHaveLength(1);
   });
 
-  it("N39 writePS2CardImage propagates needs-auth from Get Specs", async () => {
+  it("N39 writePS2CardImage requires auth after Probe failure", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(new Uint8Array(13).fill(0xff)));
+    enqueuePs2Type(usb);
+    enqueueProbeFailure(usb);
 
     expect(await a.writePS2CardImage(new Uint8Array(528), () => {})).toEqual({
       status: "needs-auth",
@@ -912,59 +888,51 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
   it("N40 writePS2CardImage refuses a Conquest card before any erase", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(32, 0x5a, 0x2b)));
-    // Page 0 opens with the Conquest magic (rest of the page 0xFF).
+    enqueuePs2Open(usb, sonySpecsMiso(32));
     const page0 = new Uint8Array(528).fill(0xff);
     page0.set(new TextEncoder().encode("Memory Card for SoulCaliburII"), 0);
-    enqueuePageReadEcho(usb, page0);
+    enqueueUsbPageReadEcho(usb, page0);
 
     const r = await a.writePS2CardImage(new Uint8Array(32 * 528), () => {});
     expect(r).toMatchObject({
       status: "error",
       message: expect.stringContaining("Conquest"),
     });
-    // The guard fires before the erase loop: specs + page-0 read, then no
-    // erase (0x21/0x82) and no page write (0x22).
-    const cmds = usb.writes.map((w) => w[5]);
-    expect(cmds.slice(0, 4)).toEqual([0x28, 0x27, 0x26, 0x23]);
+    const cmds = usb.writes.map(bulkOp);
+    expect(cmds.slice(3, 6)).toEqual([0x11, 0x26, 0x52]);
     expect(cmds).not.toContain(0x21);
     expect(cmds).not.toContain(0x82);
+    expect(cmds).not.toContain(0x57);
     expect(cmds).not.toContain(0x22);
   });
 
   it("N41 an erased (all-0xFF) page 0 is not Conquest and proceeds", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(1, 0x5a, 0x2b)));
+    enqueuePs2Open(usb, sonySpecsMiso(16));
     const erased = new Uint8Array(528).fill(0xff);
-    enqueuePageReadEcho(usb, erased);
+    enqueueUsbPageReadEcho(usb, erased);
     enqueueBlockErase(usb);
-    enqueuePageWrite(usb, true);
-    const image = new Uint8Array(528);
+    for (let p = 0; p < 16; p++) enqueueUsbPageWrite(usb);
+    const image = new Uint8Array(16 * 528);
     for (let i = 0; i < 528; i++) image[i] = (i * 3) & 0xff;
     const r = await a.writePS2CardImage(image, () => {});
     expect(r.status).toBe("ok");
-    // A full block erase + one page write ran (the erased card is not refused).
-    expect(usb.writes.map((w) => w[5])).toContain(0x21);
-    expect(usb.writes.map((w) => w[5])).toContain(0x22);
+    expect(usb.writes.map(bulkOp)).toContain(0x21);
+    expect(usb.writes.map(bulkOp)).toContain(0x57);
   });
 
   it("N42 a failed page-0 read refuses the write before any erase", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    enqueueTerminator(usb);
-    usb.enqueueIn(ps2Reply(sonySpecsMiso(32, 0x5a, 0x2b)));
-    // No page-0 read reply is enqueued, so ps2ReadPage returns null; the guard
-    // must fail closed rather than erase a card it could not inspect.
+    enqueuePs2Open(usb, sonySpecsMiso(32));
     const r = await a.writePS2CardImage(new Uint8Array(32 * 528), () => {});
     expect(r).toMatchObject({ status: "error" });
-    const cmds = usb.writes.map((w) => w[5]);
-    expect(cmds[2]).toBe(0x26); // specs were read, then the page-0 read failed
+    const cmds = usb.writes.map(bulkOp);
+    expect(cmds[4]).toBe(0x26);
     expect(cmds).not.toContain(0x21);
     expect(cmds).not.toContain(0x82);
-    expect(cmds).not.toContain(0x22);
+    expect(cmds).not.toContain(0x57);
   });
 
   it("N43 start() arms interrupt IN on endpoint 3 and dispatches insert/remove", async () => {

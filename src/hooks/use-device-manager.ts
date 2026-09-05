@@ -272,16 +272,16 @@ export function useDeviceManager(onCardEvent?: (ev: CardEvent) => void) {
     return blank instanceof PS2MemoryCard ? blank : null;
   };
 
-  const getPsDevice = (): MemCARDuino | PS3MemCardAdaptor | null =>
+  const getPocketStationDevice = (): MemCARDuino | PS3MemCardAdaptor | null =>
     device instanceof MemCARDuino || device instanceof PS3MemCardAdaptor
       ? device
       : null;
 
   const readPocketStationSerial = async (): Promise<number> => {
-    const mcdino = getPsDevice();
+    const mcdino = getPocketStationDevice();
     if (!mcdino)
       throw new Error(
-        "PocketStation is only available on a MemCARDuino or PS3 MC Adaptor",
+        "PocketStation service commands require a MemCARDuino or PS3 MC Adaptor",
       );
     const { serial, errorMsg } = await mcdino.readPocketStationSerial();
     if (errorMsg) throw new Error(errorMsg);
@@ -292,10 +292,10 @@ export function useDeviceManager(onCardEvent?: (ev: CardEvent) => void) {
     bios: Uint8Array;
     serial: number;
   }> => {
-    const mcdino = getPsDevice();
+    const mcdino = getPocketStationDevice();
     if (!mcdino)
       throw new Error(
-        "PocketStation is only available on a MemCARDuino or PS3 MC Adaptor",
+        "PocketStation service commands require a MemCARDuino or PS3 MC Adaptor",
       );
     const { serial, errorMsg } = await mcdino.readPocketStationSerial();
     if (errorMsg) throw new Error(errorMsg);
@@ -309,10 +309,10 @@ export function useDeviceManager(onCardEvent?: (ev: CardEvent) => void) {
   };
 
   const setPocketStationTime = async (): Promise<void> => {
-    const mcdino = getPsDevice();
+    const mcdino = getPocketStationDevice();
     if (!mcdino)
       throw new Error(
-        "PocketStation is only available on a MemCARDuino or PS3 MC Adaptor",
+        "PocketStation service commands require a MemCARDuino or PS3 MC Adaptor",
       );
     const { success, errorMsg } = await mcdino.setPocketStationTime();
     if (!success)

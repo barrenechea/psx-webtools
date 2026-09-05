@@ -116,7 +116,7 @@ export type ScriptedUsb = {
     transferOut(
       ep: number,
       data: Uint8Array,
-    ): Promise<{ bytesWritten: number }>;
+    ): Promise<{ bytesWritten: number; status: string }>;
     transferIn(ep: number, length: number): Promise<ScriptedUsbIn>;
   };
   /** A navigator.usb stub whose requestDevice() returns `device`. */
@@ -155,10 +155,10 @@ export function makeScriptedUsb(): ScriptedUsb {
     async transferOut(
       _ep: number,
       data: Uint8Array,
-    ): Promise<{ bytesWritten: number }> {
+    ): Promise<{ bytesWritten: number; status: string }> {
       if (writeError) throw new Error("usb write failed");
       writes.push(new Uint8Array(data));
-      return { bytesWritten: data.length };
+      return { bytesWritten: data.length, status: "ok" };
     },
     async transferIn(ep: number, length: number): Promise<ScriptedUsbIn> {
       inTransfers.push({ ep, length });

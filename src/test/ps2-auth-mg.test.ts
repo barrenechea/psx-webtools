@@ -58,13 +58,21 @@ function reply(miso: Uint8Array): Uint8Array {
   r.set(miso, 4);
   return r;
 }
-function mg5(term = 0x5a, id = 0x2b): Uint8Array {
+
+function enqueueTypeAndProbeFailure(usb: ScriptedUsb): void {
+  for (let i = 0; i < 3; i++) {
+    usb.enqueueIn(new Uint8Array([0x55, 0x02]));
+  }
+  usb.enqueueIn(new Uint8Array([0x55, 0xaf]));
+}
+
+function mg5(term = 0x55, id = 0x2b): Uint8Array {
   const m = new Uint8Array(5);
   m[3] = id;
   m[4] = term;
   return m;
 }
-function mgRead(data: Uint8Array, term = 0x5a): Uint8Array {
+function mgRead(data: Uint8Array, term = 0x55): Uint8Array {
   const m = new Uint8Array(14);
   m[3] = 0x2b;
   for (let i = 0; i < 8; i++) m[4 + i] = data[7 - i];
@@ -74,7 +82,7 @@ function mgRead(data: Uint8Array, term = 0x5a): Uint8Array {
   m[13] = term;
   return m;
 }
-function mgWrite(term = 0x5a, id = 0x2b): Uint8Array {
+function mgWrite(term = 0x55, id = 0x2b): Uint8Array {
   const m = new Uint8Array(14);
   m[12] = id;
   m[13] = term;
@@ -168,22 +176,15 @@ describe("ps2AuthMg", () => {
     expect(w6[6]).toBe(0x06);
   });
 
-  it("polls F3 while not-ready (0x66) before the handshake continues", async () => {
+  it("treats F3 result 0x66 as failure without retrying", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    const uk = uniqueKey();
-    usb.enqueueIn(reply(mg5(0x66))); // F3 not-ready (id 0x2B, term 0x66)
-    for (const m of cexResponses(uk)) usb.enqueueIn(reply(m)); // F3 ok + rest
+    usb.enqueueIn(reply(mg5(0x66)));
 
     const result = await a.ps2AuthMg(keyset, nonce);
-    expect(result.status).toBe("ok");
-    if (result.status === "ok") {
-      expect(equalBytes(result.sessionKey, sessionKey)).toBe(true);
-    }
-    // One extra F3 transfer for the not-ready poll (23 handshake + 1 = 24).
-    expect(usb.writes.length).toBe(24);
+    expect(result).toMatchObject({ status: "error", step: "F3" });
+    expect(usb.writes.length).toBe(1);
     expect(usb.writes[0][5]).toBe(0xf3);
-    expect(usb.writes[1][5]).toBe(0xf3);
   });
 
   it("stores the SessionKey from a successful handshake", async () => {
@@ -205,12 +206,12 @@ describe("ps2AuthMg", () => {
     await a.ps2AuthMg(keyset, nonce);
     expect(a.getPs2SessionKey()).not.toBeNull();
 
-    // A second handshake whose F3 keeps reporting not-ready must clear it.
-    for (let i = 0; i < 5; i++) usb.enqueueIn(reply(mg5(0x66)));
-    usb.enqueueIn(reply(mg5())); // reset F3 issued on failure
+    // A second handshake whose F3 fails must clear it without another transfer.
+    usb.enqueueIn(reply(mg5(0x66)));
     const result = await a.ps2AuthMg(keyset, nonce);
     expect(result.status).toBe("error");
     expect(a.getPs2SessionKey()).toBeNull();
+    expect(usb.writes.length).toBe(24);
   });
 
   it("writes C3/C2/C1 byte-reversed with a host-order XOR", async () => {
@@ -230,10 +231,9 @@ describe("ps2AuthMg", () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     const seq = cexResponses(uniqueKey());
-    // Ok through F0 09 (index 11), fail at F0 0A (index 12), then the reset F3.
+    // Ok through F0 09 (index 11), then fail at F0 0A (index 12).
     for (let i = 0; i < 12; i++) usb.enqueueIn(reply(seq[i]));
     usb.enqueueIn(reply(mg5(0x66))); // F0 0A fails
-    usb.enqueueIn(reply(mg5())); // reset F3 issued on failure
 
     const result = await a.ps2AuthMg(keyset, nonce);
     expect(result.status).toBe("error");
@@ -245,34 +245,40 @@ describe("ps2AuthMg", () => {
     expect(sentF00B).toBe(false);
   });
 
-  it("omits the F7 key-change packet for DEX (keychangeParam 0)", async () => {
+  it("stops after F0 13 when the card response fails crypto verification", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    const seq = cexResponses(uniqueKey());
+    seq[19] = mgRead(new Uint8Array(8).fill(0xa5));
+    for (const m of seq) usb.enqueueIn(reply(m));
+
+    const result = await a.ps2AuthMg(keyset, nonce);
+    expect(result).toMatchObject({ status: "error", step: "verify" });
+    expect(usb.writes.some((w) => w[5] === 0xf0 && w[6] === 0x14)).toBe(false);
+  });
+
+  it("rejects the PC-only DEX path before sending a packet", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     const dex: Ps2MgKeyset = { ...keyset, keychangeParam: 0 };
-    // DEX skips F7: drop seq index 1.
-    const dseq = cexResponses(uniqueKey());
-    for (const m of [dseq[0], ...dseq.slice(2)]) usb.enqueueIn(reply(m));
 
     const result = await a.ps2AuthMg(dex, nonce);
-    expect(result.status).toBe("ok");
-    // The 2nd packet is F0 00, not F7.
-    expect(usb.writes[1][5]).toBe(0xf0);
-    expect(usb.writes[1][6]).toBe(0x00);
-    expect(usb.writes.length).toBe(22);
+    expect(result).toMatchObject({ status: "error", step: "F7" });
+    expect(usb.writes).toEqual([]);
   });
 });
 
-// --- ps2GetSpecsAuth orchestration (needs-auth → handshake → re-sync → re-Get Specs). ---
+// --- libmcadpt open orchestration (type → Probe → MG → term → Get Specs). ---
 
 type SpecsAuthShape = {
   ps2GetSpecsAuth(keyset?: Ps2MgKeyset): Promise<Ps2SpecsResult>;
 };
 
-// 13-byte Get Specs MISO: all 0xFF fails the EDC, so ps2GetSpecs → needs-auth.
+// 13-byte invalid Get Specs MISO.
 function specsMisoNeedsAuth(): Uint8Array {
   return new Uint8Array(13).fill(0xff);
 }
-// A plausible 512-page... (512-byte page) card: flags, pagesize, EDC, term 0x5A.
+// A plausible 512-byte-page card: flags, pagesize, EDC, term 0x55.
 function specsMisoOk(): Uint8Array {
   const m = new Uint8Array(13);
   m[2] = 0x2b; // flags (CF_USE_ECC)
@@ -283,13 +289,15 @@ function specsMisoOk(): Uint8Array {
   let e = 0;
   for (let i = 3; i <= 10; i++) e ^= m[i];
   m[11] = e;
-  m[12] = 0x5a;
+  m[12] = 0x55;
   return m;
 }
-// 5-byte terminator MISO: [4]=0x5A satisfies both the get- and set-terminator polls.
+// 5-byte Get Terminator MISO: '+' plus two matching terminator bytes.
 function termSyncMiso(): Uint8Array {
   const m = new Uint8Array(5);
-  m[4] = 0x5a;
+  m[2] = 0x2b;
+  m[3] = 0x55;
+  m[4] = 0x55;
   return m;
 }
 
@@ -312,14 +320,13 @@ async function withFixedNonce(fn: () => Promise<void>): Promise<void> {
 }
 
 describe("ps2GetSpecsAuth", () => {
-  it("all-0xFF Get Specs → handshake → good Get Specs returns ok", async () => {
+  it("Probe failure → handshake → terminator → Get Specs returns ok", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(reply(specsMisoNeedsAuth()));
+    enqueueTypeAndProbeFailure(usb);
     for (const m of cexResponses(uniqueKey())) usb.enqueueIn(reply(m));
     usb.enqueueIn(reply(termSyncMiso())); // get terminator
-    usb.enqueueIn(reply(termSyncMiso())); // set terminator
-    usb.enqueueIn(reply(specsMisoOk())); // 2nd Get Specs
+    usb.enqueueIn(reply(specsMisoOk()));
 
     await withFixedNonce(async () => {
       const r = await (a as unknown as SpecsAuthShape).ps2GetSpecsAuth(keyset);
@@ -331,11 +338,10 @@ describe("ps2GetSpecsAuth", () => {
   it("treats a still-refusing Get Specs after auth as an error, not needs-auth", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(reply(specsMisoNeedsAuth()));
+    enqueueTypeAndProbeFailure(usb);
     for (const m of cexResponses(uniqueKey())) usb.enqueueIn(reply(m));
     usb.enqueueIn(reply(termSyncMiso()));
-    usb.enqueueIn(reply(termSyncMiso()));
-    usb.enqueueIn(reply(specsMisoNeedsAuth())); // 2nd Get Specs still refuses
+    usb.enqueueIn(reply(specsMisoNeedsAuth()));
 
     await withFixedNonce(async () => {
       const r = await (a as unknown as SpecsAuthShape).ps2GetSpecsAuth(keyset);
@@ -343,13 +349,29 @@ describe("ps2GetSpecsAuth", () => {
     });
   });
 
+  it("resets F3 and clears the session when terminator sync fails", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueTypeAndProbeFailure(usb);
+    for (const m of cexResponses(uniqueKey())) usb.enqueueIn(reply(m));
+    usb.enqueueIn(reply(mg5(0x66))); // Get Terminator fails.
+    usb.enqueueIn(reply(mg5())); // Best-effort F3 reset.
+
+    await withFixedNonce(async () => {
+      const r = await (a as unknown as SpecsAuthShape).ps2GetSpecsAuth(keyset);
+      expect(r).toMatchObject({ status: "error", step: "terminator" });
+      expect(a.getPs2SessionKey()).toBeNull();
+      const reset = usb.writes[usb.writes.length - 1];
+      expect(reset?.[5]).toBe(0xf3);
+      expect(reset?.[6]).toBe(0);
+    });
+  });
+
   it("keeps the failing step when the handshake is rejected", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(reply(specsMisoNeedsAuth()));
-    // F3 retries on 0x66 (not-ready); five of them exhaust the cap so F3 fails.
-    for (let i = 0; i < 5; i++) usb.enqueueIn(reply(mg5(0x66)));
-    usb.enqueueIn(reply(mg5())); // reset F3 issued on failure
+    enqueueTypeAndProbeFailure(usb);
+    usb.enqueueIn(reply(mg5(0x66)));
 
     await withFixedNonce(async () => {
       const r = await (a as unknown as SpecsAuthShape).ps2GetSpecsAuth(keyset);
@@ -361,10 +383,10 @@ describe("ps2GetSpecsAuth", () => {
   it("returns needs-auth unchanged when no keyset is supplied", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
-    usb.enqueueIn(reply(specsMisoNeedsAuth()));
+    enqueueTypeAndProbeFailure(usb);
 
     const r = await (a as unknown as SpecsAuthShape).ps2GetSpecsAuth();
     expect(r.status).toBe("needs-auth");
-    expect(usb.writes.length).toBe(1); // only the first Get Specs was sent
+    expect(usb.writes.length).toBe(4);
   });
 });
