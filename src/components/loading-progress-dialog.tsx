@@ -6,6 +6,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 interface LoadingProgressDialogProps {
   isOpen: boolean;
@@ -31,11 +32,19 @@ export const LoadingProgressDialog: React.FC<LoadingProgressDialogProps> = ({
         <AlertDialogDescription
           render={(props) => (
             <div {...props}>
-              <div className="mb-2">{status}</div>
-              <Progress
-                className="w-full"
-                value={progress !== undefined ? progress * 100 : null}
-              />
+              <div
+                className={cn(
+                  (progress !== undefined || additionalInfo) && "mb-2",
+                )}
+              >
+                {status}
+              </div>
+              {progress !== undefined && (
+                <Progress
+                  className="w-full **:data-[slot=progress-indicator]:transition-none"
+                  value={progress * 100}
+                />
+              )}
               {additionalInfo && (
                 <div className="mt-2 text-right">{additionalInfo}</div>
               )}
