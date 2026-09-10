@@ -381,10 +381,7 @@ export class PS2MemoryCard {
   // File I/O (downloads)
   // -------------------------------------------------------------------
 
-  public async saveMemoryCard(
-    fileName: string,
-    ecc?: boolean,
-  ): Promise<boolean> {
+  public saveMemoryCard(fileName: string, ecc?: boolean): boolean {
     const ok = this.download(
       fileName,
       this.getCardImage(ecc ?? this.loadedEcc),
@@ -396,10 +393,7 @@ export class PS2MemoryCard {
     return ok;
   }
 
-  public async saveSingleSave(
-    fileName: string,
-    saveName: string,
-  ): Promise<boolean> {
+  public saveSingleSave(fileName: string, saveName: string): boolean {
     const data = this.getSingleSaveBytes(saveName);
     if (data === null) return false;
     return this.download(fileName, data);

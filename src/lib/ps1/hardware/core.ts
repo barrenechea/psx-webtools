@@ -176,8 +176,8 @@ export abstract class HardwareInterface {
   // Check whether a usable memory card is in the slot. Most interfaces only
   // surface a missing card as a failed frame read, so the default assumes a
   // present PS1 card; the PS3 MC Adaptor overrides this to probe the slot.
-  async checkCard(): Promise<CardCheck> {
-    return { present: true, kind: "ps1" };
+  checkCard(): Promise<CardCheck> {
+    return Promise.resolve({ present: true, kind: "ps1" });
   }
 
   // Dump a PS2 card over the SIO2 raw-SIO channel. Only hardware that probes

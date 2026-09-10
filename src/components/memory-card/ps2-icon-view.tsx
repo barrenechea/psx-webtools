@@ -418,7 +418,7 @@ export const Ps2IconView: React.FC<Ps2IconViewProps> = ({
   useEffect(() => {
     if (iconModel) return;
     let cancelled = false;
-    loadStockPs2Icon(stockFile).then((model) => {
+    void loadStockPs2Icon(stockFile).then((model) => {
       if (!cancelled) setStockModel(model);
     });
     return () => {

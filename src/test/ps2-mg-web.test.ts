@@ -36,11 +36,11 @@ describe("fetchStandardMgKeysets", () => {
   });
 
   it("surfaces an error when no gateway returns a key set", async () => {
-    globalThis.fetch = (() =>
+    globalThis.fetch = () =>
       Promise.resolve({
         ok: false,
         status: 404,
-      } as unknown as Response)) as unknown as typeof fetch;
+      } as unknown as Response);
 
     await expect(fetchStandardMgKeysets()).rejects.toThrow(/HTTP 404/);
   });

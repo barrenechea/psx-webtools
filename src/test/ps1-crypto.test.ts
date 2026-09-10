@@ -96,7 +96,7 @@ describe("K. crypto (via VMP/PSV/MCX)", () => {
     const rawBefore = card.getRawData(0, TOTAL_CARD_SIZE);
     const enc = await b(card).makeMcxCard();
     expect(enc.length).toBe(0x200a0);
-    const dec = await aesCbcDecrypt(enc, mcxKey, mcxIv);
+    const dec = aesCbcDecrypt(enc, mcxKey, mcxIv);
     for (let i = 0; i < 0x80; i++) expect(dec[i]).toBe(0);
     expect(
       equalBytes(dec.subarray(0x80, 0x80 + TOTAL_CARD_SIZE), rawBefore),

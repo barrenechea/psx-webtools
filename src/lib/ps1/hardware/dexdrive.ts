@@ -1,17 +1,17 @@
 import { HardwareInterface, SupportedFeatures, Types } from "./core";
 
-enum DexDriveCommands {
-  INIT = 0x00,
-  READ = 0x02,
-  WRITE = 0x04,
-  LIGHT = 0x07,
-  MAGIC_HANDSHAKE = 0x27,
-}
+const DexDriveCommands = {
+  INIT: 0x00,
+  READ: 0x02,
+  WRITE: 0x04,
+  LIGHT: 0x07,
+  MAGIC_HANDSHAKE: 0x27,
+} as const;
 
-enum DexDriveResponses {
-  WRITE_OK = 0x28,
-  WRITE_SAME = 0x29,
-}
+const DexDriveResponses = {
+  WRITE_OK: 0x28,
+  WRITE_SAME: 0x29,
+} as const;
 
 // Every IAI command is prefixed with the three-byte "IAI" banner.
 const IAI = new Uint8Array([0x49, 0x41, 0x49]);
@@ -199,10 +199,11 @@ export class DexDrive extends HardwareInterface {
     await this.writer?.write(new Uint8Array([xorData]));
 
     const response = await this.readData(4);
+    const status = response[3];
     return (
       response.length >= 4 &&
-      (response[3] === DexDriveResponses.WRITE_OK ||
-        response[3] === DexDriveResponses.WRITE_SAME)
+      (status === DexDriveResponses.WRITE_OK ||
+        status === DexDriveResponses.WRITE_SAME)
     );
   }
 
@@ -241,9 +242,9 @@ export class DexDrive extends HardwareInterface {
           clearTimeout(timer);
           resolve();
         },
-        (error) => {
+        (error: unknown) => {
           clearTimeout(timer);
-          reject(error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         },
       );
     });

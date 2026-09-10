@@ -29,7 +29,11 @@ interface SaveDialogProps<T extends number> {
   defaultFileName: string;
   formats: readonly SaveFormatOption<T>[];
   defaultFormat: T;
-  onSave: (fileName: string, saveType: T, ecc?: boolean) => Promise<void>;
+  onSave: (
+    fileName: string,
+    saveType: T,
+    ecc?: boolean,
+  ) => void | Promise<void>;
   /** When set, show an ECC-spares checkbox initialized to `default`. */
   ecc?: { default: boolean };
 }
@@ -60,8 +64,8 @@ export const SaveDialog = <T extends number>({
   });
   const [eccValue, setEccValue] = useState(ecc?.default ?? false);
 
-  const handleSave = () => {
-    void onSave(fileName, saveType, ecc !== undefined ? eccValue : undefined);
+  const handleSave = async () => {
+    await onSave(fileName, saveType, ecc !== undefined ? eccValue : undefined);
     onOpenChange(false);
   };
 

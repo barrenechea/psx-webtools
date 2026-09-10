@@ -316,7 +316,7 @@ class PS1MemoryCard {
 
     this.cardName = file.name;
     const { cardType, startOffset, loadComments } =
-      await this.determineCardType(fileData);
+      this.determineCardType(fileData);
     this.cardType = cardType;
 
     // Extract raw data based on the determined offset. Copy into a full-size
@@ -329,7 +329,7 @@ class PS1MemoryCard {
     if (loadComments) {
       this.loadGMEComments(fileData);
     } else if (this.cardType === CardTypes.Mcx) {
-      const decrypted = await this.decryptMcxCard(fileData);
+      const decrypted = this.decryptMcxCard(fileData);
       this.rawData = decrypted.slice(0x80, 0x80 + TOTAL_CARD_SIZE);
     }
 
@@ -338,11 +338,11 @@ class PS1MemoryCard {
     this.savedState = this.rawData.slice();
   }
 
-  private async determineCardType(data: Uint8Array): Promise<{
+  private determineCardType(data: Uint8Array): {
     cardType: CardTypes;
     startOffset: number;
     loadComments: boolean;
-  }> {
+  } {
     const fileSize = data.length;
     const headerString = this.getHeaderString(data);
 
@@ -368,7 +368,7 @@ class PS1MemoryCard {
           loadComments: false,
         };
       default:
-        if (await this.isMcxCard(data)) {
+        if (this.isMcxCard(data)) {
           return {
             cardType: CardTypes.Mcx,
             startOffset: 128,
@@ -403,14 +403,14 @@ class PS1MemoryCard {
     return new TextDecoder("ascii").decode(trimmedBytes);
   }
 
-  private async isMcxCard(data: Uint8Array): Promise<boolean> {
-    const decrypted = await this.decryptMcxCard(data);
+  private isMcxCard(data: Uint8Array): boolean {
+    const decrypted = this.decryptMcxCard(data);
     return this.arrayToString(decrypted.slice(0x80, 0x82)) === "MC";
   }
 
-  private decryptMcxCard(rawCard: Uint8Array): Promise<Uint8Array> {
+  private decryptMcxCard(rawCard: Uint8Array): Uint8Array {
     const mcxCard = new Uint8Array(0x200a0);
-    mcxCard.set(rawCard.subarray(0, mcxCard.length));
+    mcxCard.set(rawCard.subarray(0, 0x200a0));
     return aesCbcDecrypt(mcxCard, mcxKey, mcxIv);
   }
 
@@ -555,7 +555,7 @@ class PS1MemoryCard {
         case 0xa1: // DeletedInitial
         case 0xa2: // DeletedMiddleLink
         case 0xa3: // DeletedEndLink
-          this.slotTypes[i] = this.headerData[i][0] as SlotTypes;
+          this.slotTypes[i] = this.headerData[i][0];
           break;
         default:
           this.slotTypes[i] = SlotTypes.Corrupted;
@@ -1273,7 +1273,7 @@ class PS1MemoryCard {
     );
     mcxCard.set(new Uint8Array(hash), 0x20080);
 
-    mcxCard.set(await aesCbcEncrypt(mcxCard, mcxKey, mcxIv));
+    mcxCard.set(aesCbcEncrypt(mcxCard, mcxKey, mcxIv));
     return mcxCard;
   }
 

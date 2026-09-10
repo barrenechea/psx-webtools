@@ -25,14 +25,14 @@ function inject(l: PS1CardLink): ScriptedSerial {
 // Point navigator.serial at a fake port backed by `s` (handshake tests only).
 function stubSerial(s: ScriptedSerial) {
   const port = {
-    open: async () => {},
-    close: async () => {},
-    setSignals: async () => {},
+    open: () => Promise.resolve(),
+    close: () => Promise.resolve(),
+    setSignals: () => Promise.resolve(),
     readable: { getReader: () => s.reader },
     writable: { getWriter: () => s.writer },
   };
   vi.stubGlobal("navigator", {
-    serial: { requestPort: async () => port },
+    serial: { requestPort: () => Promise.resolve(port) },
   });
 }
 

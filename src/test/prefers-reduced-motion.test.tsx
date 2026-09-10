@@ -24,10 +24,10 @@ function stubMatchMedia(initial: boolean) {
     },
   };
 
-  window.matchMedia = ((query: string) => {
+  window.matchMedia = (query: string) => {
     expect(query).toBe(REDUCED_MOTION_QUERY);
     return mql as unknown as MediaQueryList;
-  }) as typeof window.matchMedia;
+  };
 
   return mql;
 }

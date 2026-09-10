@@ -26,7 +26,7 @@ interface SaveSingleSaveDialogProps<T extends number> {
   defaultFileName: string;
   formats: readonly SaveFormatOption<T>[];
   defaultFormat: T;
-  onSave: (fileName: string, saveType: T) => Promise<void>;
+  onSave: (fileName: string, saveType: T) => void | Promise<void>;
 }
 
 export const SaveSingleSaveDialog = <T extends number>({
@@ -44,8 +44,8 @@ export const SaveSingleSaveDialog = <T extends number>({
       formats.find((option) => option.value === format)?.extensions ?? [],
   });
 
-  const handleSave = () => {
-    void onSave(fileName, saveType);
+  const handleSave = async () => {
+    await onSave(fileName, saveType);
     onOpenChange(false);
   };
 

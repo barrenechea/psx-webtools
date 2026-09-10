@@ -257,7 +257,7 @@ describe("PS2MemoryCard importSingleSave", () => {
     expect(card.importSingleSave("あ", pattern(80))).toBe(true);
     const jp = card.getSaves().find((s) => s.name.charCodeAt(0) === 0x82);
     expect(jp).toBeDefined();
-    expect([...jp!.name].map((c) => c.charCodeAt(0))).toEqual([0x82, 0xa0]);
+    expect(Array.from(jp!.name, (c) => c.charCodeAt(0))).toEqual([0x82, 0xa0]);
   });
 
   it("rejects more than 18 files in a save directory", () => {

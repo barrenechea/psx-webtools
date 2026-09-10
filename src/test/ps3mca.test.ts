@@ -894,10 +894,10 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     enqueueUsbPageReadEcho(usb, page0);
 
     const r = await a.writePS2CardImage(new Uint8Array(32 * 528), () => {});
-    expect(r).toMatchObject({
-      status: "error",
-      message: expect.stringContaining("Conquest"),
-    });
+    if (r.status !== "error") {
+      throw new Error(`expected error, got ${JSON.stringify(r)}`);
+    }
+    expect(r.message).toContain("Conquest");
     const cmds = usb.writes.map(bulkOp);
     expect(cmds.slice(3, 6)).toEqual([0x11, 0x26, 0x52]);
     expect(cmds).not.toContain(0x21);

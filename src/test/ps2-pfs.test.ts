@@ -442,7 +442,7 @@ describe("directory entries", () => {
     const erased = rel + 1;
     expect(readDirectory(raw, sb, erased)).toEqual([]);
     dirEntry(raw, sb, erased, 0, {
-      name: String.fromCharCode(...Array(32).fill(0x7f)),
+      name: String.fromCharCode(...Array.from({ length: 32 }, () => 0x7f)),
       mode: 0xffff,
       length: 0,
       cluster: 0,
@@ -472,10 +472,10 @@ describe("directory entries", () => {
     });
     const a = readDirEntry(raw, sb, rel, 0);
     const b = readDirEntry(raw, sb, rel, 1);
-    expect([...a.name].map((c) => c.charCodeAt(0))).toEqual([
+    expect(Array.from(a.name, (c) => c.charCodeAt(0))).toEqual([
       0x82, 0xa0, 0x82, 0xa2,
     ]);
-    expect([...b.name].map((c) => c.charCodeAt(0))).toEqual([0x82, 0xa0]);
+    expect(Array.from(b.name, (c) => c.charCodeAt(0))).toEqual([0x82, 0xa0]);
     expect(readDirectory(raw, sb, rel).map((e) => e.name)).toEqual([
       a.name,
       b.name,

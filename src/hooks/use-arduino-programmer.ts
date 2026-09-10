@@ -42,7 +42,9 @@ const useArduinoProgrammer = () => {
       setStatus(`Opening port at ${board.baudRate} baud...`);
       await port.open({ baudRate: board.baudRate });
 
-      const reader = new ReadableWebToNodeStream(port.readable!);
+      const reader = new ReadableWebToNodeStream(port.readable!, {
+        propagateDestroy: true,
+      });
       const writer = port.writable!.getWriter();
 
       // We're faking the stream
@@ -71,16 +73,13 @@ const useArduinoProgrammer = () => {
       setStatus("Flashing completed successfully!");
       setProgress(100);
 
-      if (reader) {
-        // @ts-expect-error this is specific to the "readable-web-to-node-stream" library
-        await reader.reader.cancel();
-      }
-      if (writer) {
-        await writer.close();
-      }
-      if (port) {
-        await port.close();
-      }
+      await new Promise<void>((resolve, reject) => {
+        serialStream.once("error", reject);
+        serialStream.once("close", () => resolve());
+        serialStream.destroy();
+      });
+      await writer.close();
+      await port.close();
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "An unknown error occurred";

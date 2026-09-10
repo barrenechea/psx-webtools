@@ -369,7 +369,7 @@ describe("PS2MemoryCard", () => {
     });
     const saves = PS2MemoryCard.fromRaw(raw).getSaves();
     expect(saves).toHaveLength(1);
-    expect([...saves[0].name].map((c) => c.charCodeAt(0))).toEqual([
+    expect(Array.from(saves[0].name, (c) => c.charCodeAt(0))).toEqual([
       0x82, 0xa0,
     ]);
     expect(saves[0].files.map((f) => f.name)).toContain(sjis);

@@ -82,7 +82,7 @@ describe("H. card file formats", () => {
     const card = newCard();
     const mcx = await builders(card).makeMcxCard();
     expect(mcx.length).toBe(0x200a0);
-    const inner = await aesCbcDecrypt(mcx, mcxKey, mcxIv);
+    const inner = aesCbcDecrypt(mcx, mcxKey, mcxIv);
     expect(inner[0x80]).toBe(0x4d); // 'M'
     expect(inner[0x81]).toBe(0x43); // 'C'
   });

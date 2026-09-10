@@ -5,7 +5,6 @@ import {
   parseMgHex,
   parsePs3mcaIni,
   shouldClearKeysetOn,
-  type StoredMgKeyset,
   toStoredMgKeyset,
 } from "@/lib/ps2/ps2-mgkeyset";
 import { equalBytes } from "@/test/psx-helpers";
@@ -170,16 +169,14 @@ describe("StoredMgKeyset persistence", () => {
     const stored = toStoredMgKeyset("retail", keyset);
     // Absent / wrong-shape top level.
     expect(fromStoredMgKeyset(null)).toBeNull();
-    expect(fromStoredMgKeyset({} as StoredMgKeyset)).toBeNull();
+    expect(fromStoredMgKeyset({})).toBeNull();
     // keychange_param must be an integer in 0..3.
     expect(fromStoredMgKeyset({ ...stored, keychangeParam: 5 })).toBeNull();
     expect(fromStoredMgKeyset({ ...stored, keychangeParam: 1.5 })).toBeNull();
     // A hex row that is not a string or is the wrong length.
-    expect(
-      fromStoredMgKeyset({ ...stored, hashKey1: 12345 as unknown as string }),
-    ).toBeNull();
+    expect(fromStoredMgKeyset({ ...stored, hashKey1: 12345 })).toBeNull();
     expect(fromStoredMgKeyset({ ...stored, hashKey1: "zz" })).toBeNull();
-    expect(parseMgHex(16 as unknown as string, 16)).toBeNull();
+    expect(parseMgHex(16, 16)).toBeNull();
   });
 });
 

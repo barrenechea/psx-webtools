@@ -163,7 +163,7 @@ export const MemcarduinoConnectDialog: React.FC<
             <Checkbox
               id="saveSettings"
               checked={saveSettings}
-              onCheckedChange={(checked) => setSaveSettings(checked as boolean)}
+              onCheckedChange={(checked) => setSaveSettings(checked)}
             />
             <Label htmlFor="saveSettings">
               Save settings for next connection

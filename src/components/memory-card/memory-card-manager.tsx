@@ -1040,12 +1040,11 @@ export const MemoryCardManager: React.FC = () => {
         } else {
           setError("Failed to save memory card");
         }
-        setIsSaveDialogOpen(false);
       }
     }
   };
 
-  const handlePs2SaveConfirm = async (
+  const handlePs2SaveConfirm = (
     fileName: string,
     _saveType: Ps2CardFormats,
     ecc?: boolean,
@@ -1053,14 +1052,13 @@ export const MemoryCardManager: React.FC = () => {
     if (selectedCard === null) return;
     const card = ps2Card(selectedCard);
     if (card) {
-      const success = await card.saveMemoryCard(fileName, ecc);
+      const success = card.saveMemoryCard(fileName, ecc);
       if (success) {
         setError(null);
         setMemoryCards([...memoryCards]);
       } else {
         setError("Failed to save memory card");
       }
-      setIsSaveDialogOpen(false);
     }
   };
 
@@ -1111,7 +1109,6 @@ export const MemoryCardManager: React.FC = () => {
         setError(success ? null : "Failed to export save");
       }
     }
-    setIsSingleSaveDialogOpen(false);
   };
 
   const handlePs2ExportConfirm = async (
@@ -1128,11 +1125,10 @@ export const MemoryCardManager: React.FC = () => {
               selectedPs2Save,
               format,
             )
-          : await card.saveSingleSave(fileName, selectedPs2Save);
+          : card.saveSingleSave(fileName, selectedPs2Save);
         setError(success ? null : "Failed to export save");
       }
     }
-    setIsSingleSaveDialogOpen(false);
   };
 
   const handleImportSingleSave = () => {
@@ -1454,7 +1450,7 @@ export const MemoryCardManager: React.FC = () => {
               onMove={() => handleCopyMove("move")}
               onPaste={handlePaste}
               onDelete={handleDelete}
-              onSave={() => void handleSaveMemoryCard()}
+              onSave={() => handleSaveMemoryCard()}
               onExport={handleExportSingleSave}
               onImport={handleImportSave}
             />
@@ -1630,7 +1626,7 @@ export const MemoryCardManager: React.FC = () => {
         type="file"
         accept=".sdt,.dat,.psu,.max,.sps,.xps,.cbs,.psv,.npo"
         className="sr-only"
-        onChange={(e) => void handlePs2ImportFileChange(e)}
+        onChange={(e) => handlePs2ImportFileChange(e)}
       />
       {selectedPs2Card ? (
         <SaveMemoryCardDialog

@@ -69,12 +69,13 @@ export function makeScriptedSerial(): ScriptedSerial {
   };
 
   const writer: ScriptedWriter = {
-    async write(chunk: Uint8Array) {
+    write(chunk: Uint8Array) {
       for (const b of chunk) written.push(b);
       if (responder) {
         const reply = responder(written.slice());
         if (reply) push(reply);
       }
+      return Promise.resolve();
     },
     close() {
       return Promise.resolve();
@@ -142,23 +143,30 @@ export function makeScriptedUsb(): ScriptedUsb {
   let inStatus = "ok";
 
   const device: ScriptedUsb["device"] = {
-    async open(): Promise<void> {},
-    async selectConfiguration(_config: number): Promise<void> {},
-    async claimInterface(_index: number): Promise<void> {},
-    async close(): Promise<void> {
+    open(): Promise<void> {
+      return Promise.resolve();
+    },
+    selectConfiguration(_config: number): Promise<void> {
+      return Promise.resolve();
+    },
+    claimInterface(_index: number): Promise<void> {
+      return Promise.resolve();
+    },
+    close(): Promise<void> {
       if (intPending) {
         const p = intPending;
         intPending = null;
         p.reject(new Error("device closed"));
       }
+      return Promise.resolve();
     },
-    async transferOut(
+    transferOut(
       _ep: number,
       data: Uint8Array,
     ): Promise<{ bytesWritten: number; status: string }> {
-      if (writeError) throw new Error("usb write failed");
+      if (writeError) return Promise.reject(new Error("usb write failed"));
       writes.push(new Uint8Array(data));
-      return { bytesWritten: data.length, status: "ok" };
+      return Promise.resolve({ bytesWritten: data.length, status: "ok" });
     },
     async transferIn(ep: number, length: number): Promise<ScriptedUsbIn> {
       inTransfers.push({ ep, length });
@@ -199,8 +207,8 @@ export function makeScriptedUsb(): ScriptedUsb {
     },
     device,
     usb: {
-      async requestDevice(_opts?: unknown): Promise<ScriptedUsb["device"]> {
-        return device;
+      requestDevice(_opts?: unknown): Promise<ScriptedUsb["device"]> {
+        return Promise.resolve(device);
       },
       addEventListener(_type: string, _listener: unknown) {},
       removeEventListener(_type: string, _listener: unknown) {},

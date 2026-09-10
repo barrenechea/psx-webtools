@@ -126,7 +126,7 @@ export const UniromConnectDialog: React.FC<UniromConnectDialogProps> = ({
             <Checkbox
               id="saveSettings"
               checked={saveSettings}
-              onCheckedChange={(checked) => setSaveSettings(checked as boolean)}
+              onCheckedChange={(checked) => setSaveSettings(checked)}
             />
             <Label htmlFor="saveSettings">
               Save settings for next connection

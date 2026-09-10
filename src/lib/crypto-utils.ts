@@ -286,18 +286,17 @@ function asUint8Array(bufferSource: BufferSource): Uint8Array {
  * original input length.
  * @param toEncrypt - The data to encrypt as a Uint8Array.
  * @param key - The 16-byte key.
- * @returns A Promise that resolves to the encrypted data as a Uint8Array.
+ * @returns The encrypted data as a Uint8Array.
  */
-export async function aesEcbEncrypt(
+export function aesEcbEncrypt(
   toEncrypt: Uint8Array,
   key: BufferSource,
-): Promise<Uint8Array> {
+): Uint8Array {
   const keyBytes = asUint8Array(key);
   const paddedLen = Math.ceil(toEncrypt.length / 16) * 16;
   const padded = new Uint8Array(paddedLen);
   padded.set(toEncrypt);
-  const full = aesEcbEncryptBlocks(padded, keyBytes);
-  return full.slice(0, toEncrypt.length);
+  return aesEcbEncryptBlocks(padded, keyBytes).slice(0, toEncrypt.length);
 }
 
 /**
@@ -305,14 +304,13 @@ export async function aesEcbEncrypt(
  * Only complete 16-byte blocks are decrypted (matching the reference).
  * @param toDecrypt - The data to decrypt as a Uint8Array.
  * @param key - The 16-byte key.
- * @returns A Promise that resolves to the decrypted data as a Uint8Array.
+ * @returns The decrypted data as a Uint8Array.
  */
-export async function aesEcbDecrypt(
+export function aesEcbDecrypt(
   toDecrypt: Uint8Array,
   key: BufferSource,
-): Promise<Uint8Array> {
-  const keyBytes = asUint8Array(key);
-  return aesEcbDecryptBlocks(toDecrypt, keyBytes);
+): Uint8Array {
+  return aesEcbDecryptBlocks(toDecrypt, asUint8Array(key));
 }
 
 /**
@@ -322,13 +320,13 @@ export async function aesEcbDecrypt(
  * @param toEncrypt - The data to encrypt as a Uint8Array.
  * @param key - The 16-byte key.
  * @param iv - The 16-byte initialization vector.
- * @returns A Promise that resolves to the encrypted data as a Uint8Array.
+ * @returns The encrypted data as a Uint8Array.
  */
-export async function aesCbcEncrypt(
+export function aesCbcEncrypt(
   toEncrypt: Uint8Array,
   key: BufferSource,
   iv: BufferSource,
-): Promise<Uint8Array> {
+): Uint8Array {
   return aesCbcEncryptBlocks(toEncrypt, asUint8Array(key), asUint8Array(iv));
 }
 
@@ -338,13 +336,13 @@ export async function aesCbcEncrypt(
  * @param toDecrypt - The data to decrypt as a Uint8Array.
  * @param key - The 16-byte key.
  * @param iv - The 16-byte initialization vector.
- * @returns A Promise that resolves to the decrypted data as a Uint8Array.
+ * @returns The decrypted data as a Uint8Array.
  */
-export async function aesCbcDecrypt(
+export function aesCbcDecrypt(
   toDecrypt: Uint8Array,
   key: BufferSource,
   iv: BufferSource,
-): Promise<Uint8Array> {
+): Uint8Array {
   return aesCbcDecryptBlocks(toDecrypt, asUint8Array(key), asUint8Array(iv));
 }
 
@@ -380,10 +378,10 @@ export async function getHmac(
   const hash2 = new Uint8Array(0x54);
 
   buffer.set(saltSeed.subarray(0, 0x14));
-  buffer.set(await aesEcbDecrypt(buffer.subarray(0, 0x10), saveKey));
+  buffer.set(aesEcbDecrypt(buffer.subarray(0, 0x10), saveKey));
   salt.set(buffer.subarray(0, 0x10));
   buffer.set(saltSeed.subarray(0, 0x10));
-  buffer.set(await aesEcbEncrypt(buffer.subarray(0, 0x14), saveKey));
+  buffer.set(aesEcbEncrypt(buffer.subarray(0, 0x14), saveKey));
 
   salt.set(buffer.subarray(0, 0x10), 0x10);
   xorWithIv(salt, saveIv);

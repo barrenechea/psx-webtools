@@ -66,7 +66,7 @@ function unhex(ch: string | undefined): number {
 // hex (and commas), reject any input that does not yield exactly `expect`
 // bytes. Storage-sourced callers pass through fromStoredMgKeyset, so a
 // non-string (or missing) field is rejected, never a crash.
-export function parseMgHex(value: string, expect: number): Uint8Array | null {
+export function parseMgHex(value: unknown, expect: number): Uint8Array | null {
   if (typeof value !== "string") return null;
   const out = new Uint8Array(expect);
   let i = 0;
@@ -245,17 +245,22 @@ export function toStoredMgKeyset(
 // shape before trusting a single field: the param must be an integer 0–3 and
 // every hex row must restore to the right length, else the entry is treated as
 // absent (the manager re-prompts instead of crashing on load).
-export function fromStoredMgKeyset(
-  stored: StoredMgKeyset | null,
-): Ps2MgKeyset | null {
-  if (stored === null || stored === undefined) return null;
-  const param = stored.keychangeParam;
-  if (!Number.isInteger(param) || param < 0 || param > 3) return null;
-  const hashKey1 = parseMgHex(stored.hashKey1, 16);
-  const hashKey2 = parseMgHex(stored.hashKey2, 16);
-  const material1 = parseMgHex(stored.material1, 8);
-  const material2 = parseMgHex(stored.material2, 8);
-  const challengeMaterial = parseMgHex(stored.challengeMaterial, 8);
+export function fromStoredMgKeyset(stored: unknown): Ps2MgKeyset | null {
+  if (stored === null || typeof stored !== "object") return null;
+  const rec = stored as Record<string, unknown>;
+  const param = rec.keychangeParam;
+  if (
+    typeof param !== "number" ||
+    !Number.isInteger(param) ||
+    param < 0 ||
+    param > 3
+  )
+    return null;
+  const hashKey1 = parseMgHex(rec.hashKey1, 16);
+  const hashKey2 = parseMgHex(rec.hashKey2, 16);
+  const material1 = parseMgHex(rec.material1, 8);
+  const material2 = parseMgHex(rec.material2, 8);
+  const challengeMaterial = parseMgHex(rec.challengeMaterial, 8);
   if (!hashKey1 || !hashKey2 || !material1 || !material2 || !challengeMaterial)
     return null;
   return {

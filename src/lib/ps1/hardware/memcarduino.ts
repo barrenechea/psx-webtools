@@ -1,21 +1,21 @@
 import { HardwareInterface, SupportedFeatures, Types } from "./core";
 
-enum MCinoCommands {
-  GETID = 0xa0,
-  GETVER = 0xa1,
-  MCR = 0xa2,
-  MCW = 0xa3,
-  PSINFO = 0xb0,
-  PSBIOS = 0xb1,
-  PSTIME = 0xb2,
-}
+const MCinoCommands = {
+  GETID: 0xa0,
+  GETVER: 0xa1,
+  MCR: 0xa2,
+  MCW: 0xa3,
+  PSINFO: 0xb0,
+  PSBIOS: 0xb1,
+  PSTIME: 0xb2,
+} as const;
 
-enum MCinoResponses {
-  ERROR = 0xe0,
-  GOOD = 0x47,
-  BADCHECKSUM = 0x4e,
-  BADSECTOR = 0xff,
-}
+const MCinoResponses = {
+  ERROR: 0xe0,
+  GOOD: 0x47,
+  BADCHECKSUM: 0x4e,
+  BADSECTOR: 0xff,
+} as const;
 
 export class MemCARDuino extends HardwareInterface {
   protected port: SerialPort | null = null;
@@ -167,9 +167,9 @@ export class MemCARDuino extends HardwareInterface {
           clearTimeout(timer);
           resolve();
         },
-        (error) => {
+        (error: unknown) => {
           clearTimeout(timer);
-          reject(error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         },
       );
     });
@@ -259,10 +259,7 @@ export class MemCARDuino extends HardwareInterface {
       xorData ^= byte;
     }
 
-    if (
-      xorData !== readData[128] ||
-      readData[129] !== MCinoResponses.GOOD.valueOf()
-    ) {
+    if (xorData !== readData[128] || readData[129] !== MCinoResponses.GOOD) {
       return null;
     }
 
@@ -288,7 +285,7 @@ export class MemCARDuino extends HardwareInterface {
     );
 
     const response = await this.readDataFromPort(1);
-    return response[0] === MCinoResponses.GOOD.valueOf();
+    return response[0] === MCinoResponses.GOOD;
   }
 
   override async readPocketStationSerial(): Promise<{
@@ -342,7 +339,7 @@ export class MemCARDuino extends HardwareInterface {
     if (
       biosData.length < 128 ||
       statusResponse.length < 1 ||
-      statusResponse[0] !== MCinoResponses.GOOD.valueOf()
+      statusResponse[0] !== MCinoResponses.GOOD
     ) {
       return null;
     }
@@ -393,7 +390,7 @@ export class MemCARDuino extends HardwareInterface {
     const statusResponse = await this.readDataFromPort(1);
     if (
       statusResponse.length < 1 ||
-      statusResponse[0] !== MCinoResponses.GOOD.valueOf()
+      statusResponse[0] !== MCinoResponses.GOOD
     ) {
       return { success: false, errorMsg: MemCARDuino.PocketNoAck };
     }

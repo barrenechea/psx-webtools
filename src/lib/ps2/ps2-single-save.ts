@@ -930,7 +930,7 @@ export async function getPsv2Hmac(
 ): Promise<Uint8Array> {
   const salt = new Uint8Array(0x40);
   salt.set(saltSeed.subarray(0, 0x14), 0);
-  const dec = await aesCbcDecrypt(salt, psvPs2Key, psvIv);
+  const dec = aesCbcDecrypt(salt, psvPs2Key, psvIv);
   for (let i = 0x14; i < 0x40; i++) dec[i] = 0;
   const hash1 = await crypto.subtle.digest(
     "SHA-1",
