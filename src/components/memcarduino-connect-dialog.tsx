@@ -154,7 +154,7 @@ export const MemcarduinoConnectDialog: React.FC<
             </SelectContent>
           </Select>
 
-          <p className="text-muted-foreground mt-2 text-sm">
+          <p className="mt-2 text-sm text-muted-foreground">
             Note: If you purchased a reader from AliExpress with the software as
             it comes, it's very likely to use an Arduino Nano in Legacy mode.
           </p>

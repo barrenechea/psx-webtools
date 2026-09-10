@@ -49,7 +49,12 @@ import type { Ps2DateTime, Ps2FileInfo, Ps2SaveInfo } from "./ps2-types";
 
 /** Container export formats (map 1:1 to the UI's single-save types). */
 export type Ps2SingleSaveFormat =
-  "max" | "ems" | "sharkport" | "xport" | "codebreaker" | "psv";
+  | "max"
+  | "ems"
+  | "sharkport"
+  | "xport"
+  | "codebreaker"
+  | "psv";
 
 function toContainerFormat(format: Ps2SingleSaveFormat): Ps2ContainerFormat {
   switch (format) {

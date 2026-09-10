@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { crc32, formatCrc32 } from "@/lib/crc32";
+import PS1MemoryCard from "@/lib/ps1-memory-card";
 import type { CardEvent, HardwareInterface } from "@/lib/ps1/hardware/core";
 import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
-import PS1MemoryCard from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";

@@ -115,7 +115,7 @@ export const PS1CardLinkConnectDialog: React.FC<
             </Select>
           </div>
 
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Note: PS1CardLink connects at a fixed 115200 baud rate.
           </p>
 

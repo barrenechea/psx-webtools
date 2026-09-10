@@ -20,7 +20,11 @@ export interface ParsedMgSection {
 // The five handshake rows per keyset. `_1`/`_2` are the two 3DES halves inside
 // a section, not F7 indices. Original `MC_*` names plus KELFTool `MG_*` aliases.
 type MgFieldKey =
-  "hashKey1" | "hashKey2" | "material1" | "material2" | "challengeMaterial";
+  | "hashKey1"
+  | "hashKey2"
+  | "material1"
+  | "material2"
+  | "challengeMaterial";
 
 interface MgFieldDef {
   key: MgFieldKey;

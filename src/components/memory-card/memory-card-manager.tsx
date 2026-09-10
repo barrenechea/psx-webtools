@@ -23,7 +23,6 @@ import {
 } from "@/hooks/use-game-data";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import type { SaveFormatOption } from "@/hooks/use-save-file-form";
-import type { CardEvent, SlotCardKind } from "@/lib/ps1/hardware/core";
 import PS1MemoryCard, {
   CardExtensions,
   CardTypes,
@@ -37,6 +36,7 @@ import PS1MemoryCard, {
   type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
+import type { CardEvent, SlotCardKind } from "@/lib/ps1/hardware/core";
 import {
   PS2MemoryCard,
   type Ps2SaveSnapshot,
@@ -1487,7 +1487,7 @@ export const MemoryCardManager: React.FC = () => {
               <div className="flex grow flex-row bg-transparent">
                 {selectedCardEntry ? (
                   <>
-                    <div className="bg-card/60 flex min-h-0 grow flex-col">
+                    <div className="flex min-h-0 grow flex-col bg-card/60">
                       <CardContentHeader
                         name={selectedCardEntry.name}
                         type={selectedCardEntry.type}
@@ -1545,7 +1545,7 @@ export const MemoryCardManager: React.FC = () => {
                       )}
                   </>
                 ) : (
-                  <div className="bg-card/80 text-muted-foreground flex grow flex-col items-center justify-center p-4">
+                  <div className="flex grow flex-col items-center justify-center bg-card/80 p-4 text-muted-foreground">
                     <p className="mb-4 text-lg">No memory card selected</p>
                     <p className="text-sm">
                       Open a memory card file or connect a device to get started
@@ -1554,7 +1554,7 @@ export const MemoryCardManager: React.FC = () => {
                 )}
               </div>
             </div>
-            <div className="border-border bg-muted/80 text-muted-foreground border-t px-4 py-2 text-sm">
+            <div className="border-t border-border bg-muted/80 px-4 py-2 text-sm text-muted-foreground">
               {error ??
                 connectionError ??
                 (selectedCard

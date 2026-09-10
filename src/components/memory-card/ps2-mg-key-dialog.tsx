@@ -158,12 +158,12 @@ export const Ps2MgKeyDialog: React.FC<Ps2MgKeyDialogProps> = ({
           </div>
 
           {storedSection !== null && (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Currently stored: {storedSection}
             </p>
           )}
           {error !== null && (
-            <p className="text-destructive text-sm">{error}</p>
+            <p className="text-sm text-destructive">{error}</p>
           )}
         </div>
       </DialogContent>

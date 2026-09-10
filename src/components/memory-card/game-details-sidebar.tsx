@@ -37,7 +37,7 @@ export const GameDetailsFields: React.FC<{
     <div className="space-y-6">
       <div
         className={cn(
-          "bg-muted flex items-center justify-center overflow-hidden rounded-md",
+          "flex items-center justify-center overflow-hidden rounded-md bg-muted",
           useDvdCover ? "aspect-[1/1.49]" : "aspect-square",
         )}
       >
@@ -53,7 +53,7 @@ export const GameDetailsFields: React.FC<{
         ) : coverFallback ? (
           coverFallback
         ) : (
-          <div className="text-muted-foreground flex size-full items-center justify-center">
+          <div className="flex size-full items-center justify-center text-muted-foreground">
             No cover available
           </div>
         )}
@@ -61,12 +61,12 @@ export const GameDetailsFields: React.FC<{
       <div>
         {title ? <h4 className="mb-1 text-sm font-semibold">{title}</h4> : null}
         {gameData.developer ? (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Developed by {gameData.developer}
           </p>
         ) : null}
         {gameData.publisher ? (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Published by {gameData.publisher}
           </p>
         ) : null}
@@ -77,7 +77,7 @@ export const GameDetailsFields: React.FC<{
           <div className="space-y-3">
             {gameData.genre ? (
               <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                   Genre / Style
                 </p>
                 <p className="text-sm">{gameData.genre}</p>
@@ -85,7 +85,7 @@ export const GameDetailsFields: React.FC<{
             ) : null}
             {gameData.releaseDate ? (
               <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                   Release Date
                 </p>
                 <p className="text-sm">{gameData.releaseDate}</p>
@@ -93,7 +93,7 @@ export const GameDetailsFields: React.FC<{
             ) : null}
             {gameData.discs != null ? (
               <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                   Discs
                 </p>
                 <p className="text-sm">{gameData.discs}</p>
@@ -118,7 +118,7 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
   } = useGameData("ps1", region, gameId);
 
   return (
-    <div className="border-border bg-muted/80 flex w-80 flex-col border-l">
+    <div className="flex w-80 flex-col border-l border-border bg-muted/80">
       <div className="flex items-center justify-between p-4">
         <div className="flex-row">
           <div className="flex flex-row items-center space-x-1">
@@ -127,7 +127,7 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
               <TooltipTrigger
                 render={(props) => (
                   <Button {...props} variant="ghost" size="icon">
-                    <InfoIcon className="text-muted-foreground size-3" />
+                    <InfoIcon className="size-3 text-muted-foreground" />
                   </Button>
                 )}
               />
@@ -136,7 +136,7 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
               </TooltipContent>
             </Tooltip>
           </div>
-          <p className="text-muted-foreground text-xs">{gameId}</p>
+          <p className="text-xs text-muted-foreground">{gameId}</p>
         </div>
         <Button
           variant="ghost"
@@ -150,10 +150,10 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
       <Separator />
       {isLoading ? (
         <div className="flex h-full items-center justify-center">
-          <div className="border-primary size-8 animate-spin rounded-full border-2 border-t-transparent"></div>
+          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
         </div>
       ) : gameDataError ? (
-        <div className="text-destructive text-center">{gameDataError}</div>
+        <div className="text-center text-destructive">{gameDataError}</div>
       ) : gameData ? (
         <ScrollArea className="grow overflow-hidden">
           <div className="p-4">
@@ -161,8 +161,8 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
           </div>
         </ScrollArea>
       ) : (
-        <div className="text-muted-foreground flex h-full flex-col items-center justify-center p-4 pb-16 text-center">
-          <div className="bg-muted/50 mb-4 size-16 rounded-full p-4">
+        <div className="flex h-full flex-col items-center justify-center p-4 pb-16 text-center text-muted-foreground">
+          <div className="mb-4 size-16 rounded-full bg-muted/50 p-4">
             <FileIcon className="size-8" />
           </div>
           <p className="text-lg font-semibold">Empty Slot Selected</p>

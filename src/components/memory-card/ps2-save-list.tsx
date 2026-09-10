@@ -42,7 +42,7 @@ const Ps2SaveRow: React.FC<{
     onClick={onClick}
   >
     <CardContent className="flex-row items-center gap-0 p-3">
-      <div className="text-muted-foreground mr-2 w-6 text-xs">
+      <div className="mr-2 w-6 text-xs text-muted-foreground">
         {pad(index + 1)}
       </div>
       <Ps2IconView
@@ -51,10 +51,10 @@ const Ps2SaveRow: React.FC<{
         className="mr-2 size-10 shrink-0 rounded-sm"
       />
       <div className="min-w-0 grow">
-        <h3 className="text-foreground truncate text-sm font-medium">
+        <h3 className="truncate text-sm font-medium text-foreground">
           {save.title}
         </h3>
-        <p className="text-muted-foreground truncate font-mono text-xs">
+        <p className="truncate font-mono text-xs text-muted-foreground">
           {displayDirentName(save.name)}
         </p>
       </div>
@@ -64,13 +64,13 @@ const Ps2SaveRow: React.FC<{
           {save.pocketStation && <Badge variant="outline">PS</Badge>}
           {save.hidden && <Badge variant="outline">Hidden</Badge>}
         </div>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           {formatSize(save.totalSize)}
         </p>
         <Tooltip>
           <TooltipTrigger
             render={(props) => (
-              <p {...props} className="text-muted-foreground text-xs">
+              <p {...props} className="text-xs text-muted-foreground">
                 {formatDate(save.modified)}
               </p>
             )}
@@ -91,14 +91,14 @@ export const Ps2SaveList: React.FC<Ps2SaveListProps> = ({
 }) => {
   if (saves.length === 0) {
     return (
-      <div className="bg-card/80 text-muted-foreground flex grow flex-col items-center justify-center p-4">
+      <div className="flex grow flex-col items-center justify-center bg-card/80 p-4 text-muted-foreground">
         <p className="mb-4 text-lg">No saves</p>
         <p className="text-sm">This card has no save directories</p>
       </div>
     );
   }
   return (
-    <ScrollArea className="bg-card/60 grow overflow-hidden">
+    <ScrollArea className="grow overflow-hidden bg-card/60">
       <div className="min-h-full p-4">
         {saves.map((save, index) => (
           <Ps2SaveRow

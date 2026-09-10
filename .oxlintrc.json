@@ -1,0 +1,61 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "plugins": ["eslint", "typescript", "react"],
+  "env": {
+    "browser": true
+  },
+  "ignorePatterns": ["dist/**", "coverage/**", "src/routeTree.gen.ts"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "eslint/no-array-constructor": "error",
+    "eslint/no-prototype-builtins": "error",
+    "eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-namespace": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unsafe-function-type": "error",
+
+    // Follow-up: type-aware rules that need source changes (not this migration).
+    "typescript/no-floating-promises": "off",
+    "typescript/no-meaningless-void-operator": "off",
+    "typescript/no-misused-promises": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/no-unnecessary-type-assertion": "off",
+    "typescript/no-unsafe-argument": "off",
+    "typescript/no-unsafe-assignment": "off",
+    "typescript/no-unsafe-call": "off",
+    "typescript/no-unsafe-enum-comparison": "off",
+    "typescript/no-unsafe-member-access": "off",
+    "typescript/no-unsafe-return": "off",
+    "typescript/prefer-promise-reject-errors": "off",
+    "typescript/require-await": "off",
+
+    "react/exhaustive-deps": "warn",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "react/rules-of-hooks": "error",
+    "react/unsupported-syntax": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.{test,spec}.{ts,tsx}", "src/test/**"],
+      "env": {
+        "vitest": true
+      },
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    }
+  ]
+}

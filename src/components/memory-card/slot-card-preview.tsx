@@ -29,8 +29,8 @@ export const SlotCardPreview: React.FC<SlotCardPreviewProps> = ({ kind }) => {
       aria-live="polite"
       className="pointer-events-none fixed inset-0 z-40"
     >
-      <div className="animate-card-insert-veil motion-reduce:animate-card-insert-reduce absolute inset-0 bg-black/50 supports-backdrop-filter:backdrop-blur-xs" />
-      <div className="animate-card-insert motion-reduce:animate-card-insert-reduce relative flex h-full flex-col items-center justify-center">
+      <div className="absolute inset-0 animate-card-insert-veil bg-black/50 supports-backdrop-filter:backdrop-blur-xs motion-reduce:animate-card-insert-reduce" />
+      <div className="relative flex h-full animate-card-insert flex-col items-center justify-center motion-reduce:animate-card-insert-reduce">
         <img
           src={`${import.meta.env.BASE_URL}ps2/${art.file}`}
           alt=""
@@ -39,7 +39,7 @@ export const SlotCardPreview: React.FC<SlotCardPreviewProps> = ({ kind }) => {
           draggable={false}
           className="size-44 object-contain drop-shadow-lg"
         />
-        <span className="text-muted-foreground mt-1 text-sm font-light">
+        <span className="mt-1 text-sm font-light text-muted-foreground">
           {art.label}
         </span>
       </div>

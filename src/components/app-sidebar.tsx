@@ -82,7 +82,7 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="group-data-[collapsible=icon]:hidden">
-        <p className="text-sidebar-foreground/70 px-2 py-1 text-center text-xs">
+        <p className="px-2 py-1 text-center text-xs text-sidebar-foreground/70">
           © {copyrightYear} Sebastian Barrenechea
         </p>
       </SidebarFooter>

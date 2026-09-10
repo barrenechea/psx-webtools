@@ -37,13 +37,13 @@ export const WriteCardDialog: React.FC<WriteCardDialogProps> = ({
         <DialogTitle>Write to {deviceName}</DialogTitle>
         <DialogDescription>
           Overwrite the memory card in the connected device with{" "}
-          <span className="text-foreground font-medium">{cardName}</span>. This
+          <span className="font-medium text-foreground">{cardName}</span>. This
           cannot be undone.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4">
         <div>
-          <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+          <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
             Raw CRC-32
           </p>
           <p className="font-mono text-sm tracking-wider">{checksum}</p>
@@ -57,7 +57,7 @@ export const WriteCardDialog: React.FC<WriteCardDialogProps> = ({
           />
           <div className="grid gap-1">
             <Label htmlFor="verify-after-write">Verify after write</Label>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Re-read the card and confirm the raw checksum still matches. GME
               comments are not part of this check.
             </p>

@@ -54,29 +54,29 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
               iconFrameCount={copiedIcon.frameCount}
             />
             {copiedSlots.length > 1 && (
-              <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full text-[10px]">
+              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
                 {copiedSlots.length}
               </span>
             )}
           </>
         );
   return (
-    <div className="border-border bg-muted/80 flex items-center justify-between border-b p-4 px-6">
+    <div className="flex items-center justify-between border-b border-border bg-muted/80 p-4 px-6">
       <div>
         <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
           {name}
           <Badge
             variant="outline"
-            className="text-muted-foreground text-[10px]"
+            className="text-[10px] text-muted-foreground"
           >
             {kind === "ps2" ? "PS2" : "PS1"}
           </Badge>
         </h2>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           {type === "new" ? "New card" : `Opened via ${type} "${source}"`}
         </p>
         <Tooltip>
-          <TooltipTrigger className="text-muted-foreground mt-1 font-mono text-xs tracking-wider">
+          <TooltipTrigger className="mt-1 font-mono text-xs tracking-wider text-muted-foreground">
             CRC-32 {checksum}
           </TooltipTrigger>
           <TooltipContent>
@@ -94,11 +94,11 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
             <div {...props} className="flex items-center">
               {bufferedIcon ? (
                 <div className="group relative">
-                  <div className="animate-tilt absolute -inset-0.5 rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200 motion-reduce:animate-none motion-reduce:transition-none" />
+                  <div className="absolute -inset-0.5 animate-tilt rounded-lg bg-linear-to-r from-pink-600 to-purple-600 opacity-75 blur-sm transition duration-1000 group-hover:opacity-100 group-hover:duration-200 motion-reduce:animate-none motion-reduce:transition-none" />
                   <div className="relative size-8">{bufferedIcon}</div>
                 </div>
               ) : (
-                <div className="border-muted-foreground size-8 rounded-sm border-2 border-dashed" />
+                <div className="size-8 rounded-sm border-2 border-dashed border-muted-foreground" />
               )}
             </div>
           )}

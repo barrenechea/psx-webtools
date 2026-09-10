@@ -45,7 +45,8 @@ export type CardEvent = 0x01 | 0x02 | 0x03;
 // other interfaces report "ps1"); otherwise `message` explains what was
 // found (empty slot, undetectable card, ...).
 export type CardCheck =
-  { present: true; kind: SlotCardKind } | { present: false; message: string };
+  | { present: true; kind: SlotCardKind }
+  | { present: false; message: string };
 
 const pocketstationError =
   "PocketStation commands are not supported by this interface";

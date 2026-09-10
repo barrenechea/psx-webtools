@@ -63,11 +63,11 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
             : "pointer-events-none invisible opacity-0",
         )}
       >
-        <div className="border-primary pointer-events-none rounded-lg border-2 border-dashed p-8 text-center">
+        <div className="pointer-events-none rounded-lg border-2 border-dashed border-primary p-8 text-center">
           <p className="text-lg font-semibold">
             Drop your memory card files here
           </p>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Supported formats: .mcr, .mcd, .gme, .vgs, .vmp, .psm, .ps1, .bin,
             .mem, .psx, .pda, .mc, .ddf, .mc1, .mc2, .srm
           </p>

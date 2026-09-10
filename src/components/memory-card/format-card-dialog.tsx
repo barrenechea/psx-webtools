@@ -58,7 +58,7 @@ export const FormatCardDialog: React.FC<FormatCardDialogProps> = ({
           {isPs2 ? (
             <div className="grid gap-2">
               <Label>Format type</Label>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-sm text-muted-foreground">
                 Full erase. A PS2 card has no quick format; every block is
                 erased and the filesystem rebuilt from the card's own geometry.
               </p>
@@ -84,7 +84,7 @@ export const FormatCardDialog: React.FC<FormatCardDialogProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-sm text-muted-foreground">
                 Quick rewrites the card header for a fast reset; full rewrites
                 every block on the card.
               </p>

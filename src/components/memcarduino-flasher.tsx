@@ -106,8 +106,8 @@ export function MemcarduinoFlasher() {
     <div className="flex size-full items-center justify-center bg-transparent p-4">
       <div className="flex w-full max-w-4xl flex-col overflow-hidden rounded-xl shadow-xl">
         {/* Toolbar */}
-        <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
-          <h1 className="text-muted-foreground pl-2 font-light">
+        <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
+          <h1 className="pl-2 font-light text-muted-foreground">
             MemCARDuino Flasher{" "}
             <span className="text-xs text-sky-500 dark:text-sky-400">Beta</span>
           </h1>
@@ -115,13 +115,13 @@ export function MemcarduinoFlasher() {
 
         {/* Main content */}
         <div className="flex grow overflow-hidden">
-          <div className="bg-card/80 flex grow flex-col">
-            <div className="border-border bg-muted/80 flex items-center justify-between border-b p-4 px-6">
+          <div className="flex grow flex-col bg-card/80">
+            <div className="flex items-center justify-between border-b border-border bg-muted/80 p-4 px-6">
               <div>
                 <h2 className="mb-1 text-lg font-semibold">
                   Flash MemCARDuino Firmware
                 </h2>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-sm text-muted-foreground">
                   Select your board and MemCARDuino version to flash
                 </p>
               </div>
@@ -213,14 +213,14 @@ export function MemcarduinoFlasher() {
         </div>
 
         {/* Status bar */}
-        <div className="border-border bg-muted/80 text-muted-foreground flex items-center justify-between border-t px-4 py-2 text-sm">
+        <div className="flex items-center justify-between border-t border-border bg-muted/80 px-4 py-2 text-sm text-muted-foreground">
           <span>
             Powered by{" "}
             <a
               href="https://github.com/barrenechea/stk500-esm"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-foreground underline"
+              className="underline hover:text-foreground"
             >
               stk500-esm
             </a>
@@ -231,7 +231,7 @@ export function MemcarduinoFlasher() {
               href="https://github.com/barrenechea/memcarduino-builder"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-foreground underline"
+              className="underline hover:text-foreground"
             >
               memcarduino-builder
             </a>
@@ -240,7 +240,7 @@ export function MemcarduinoFlasher() {
             href="https://github.com/ShendoXT/memcarduino"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground flex items-center space-x-2 underline"
+            className="flex items-center space-x-2 underline hover:text-foreground"
           >
             <GHLogo className="size-4" />
             <span>View MemCARDuino on GitHub</span>

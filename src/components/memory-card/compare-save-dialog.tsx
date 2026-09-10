@@ -69,12 +69,12 @@ export const CompareSaveDialog: React.FC<CompareSaveDialogProps> = ({
           <p className="py-2 text-sm">Compared saves are identical.</p>
         ) : (
           <div className="space-y-2 py-2">
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               {diffs.length} byte{diffs.length === 1 ? "" : "s"} differ.
             </p>
             <div className="max-h-96 overflow-auto rounded border">
               <table className="w-full text-xs">
-                <thead className="bg-muted sticky top-0">
+                <thead className="sticky top-0 bg-muted">
                   <tr>
                     <th className="text-left">Offset</th>
                     <th className="text-left">Save 1</th>
@@ -93,7 +93,7 @@ export const CompareSaveDialog: React.FC<CompareSaveDialogProps> = ({
               </table>
             </div>
             {diffs.length > rows.length && (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 ...and {diffs.length - rows.length} more differing bytes
               </p>
             )}

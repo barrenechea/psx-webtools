@@ -2,13 +2,13 @@ import { useState } from "react";
 
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useHardwareConnection } from "@/hooks/use-hardware";
+import PS1MemoryCard from "@/lib/ps1-memory-card";
 import type { CardEvent, SlotCardKind } from "@/lib/ps1/hardware/core";
 import { DexDrive } from "@/lib/ps1/hardware/dexdrive";
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
 import { PS1CardLink } from "@/lib/ps1/hardware/ps1cardlink";
 import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
 import { Unirom } from "@/lib/ps1/hardware/unirom";
-import PS1MemoryCard from "@/lib/ps1-memory-card";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import type { Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
 

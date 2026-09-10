@@ -36,7 +36,7 @@ interface Ps1SaveInfoDialogProps {
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>
-    <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+    <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
       {label}
     </p>
     <p className="text-sm break-all">{value}</p>
@@ -62,7 +62,7 @@ export const Ps1SaveInfoDialog: React.FC<Ps1SaveInfoDialogProps> = ({
       </DialogHeader>
       <div className="grid gap-4">
         <div className="flex items-center gap-4">
-          <div className="bg-muted flex size-16 shrink-0 items-center justify-center rounded-md">
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-md bg-muted">
             <PS1BlockIcon
               iconData={iconData}
               iconPalette={iconPalette}
@@ -73,7 +73,7 @@ export const Ps1SaveInfoDialog: React.FC<Ps1SaveInfoDialogProps> = ({
             <p className="truncate text-sm font-semibold">
               {save.name || "Unknown"}
             </p>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               {save.iconFrameCount} icon frame
               {save.iconFrameCount === 1 ? "" : "s"}
             </p>
@@ -99,20 +99,20 @@ export const Ps1SaveInfoDialog: React.FC<Ps1SaveInfoDialogProps> = ({
               <div className="flex items-center gap-4">
                 {mcIcon && (
                   <div className="text-foreground">
-                    <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                    <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                       MC icon
                     </p>
-                    <div className="bg-muted rounded-md p-1">
+                    <div className="rounded-md bg-muted p-1">
                       <PocketStationMonoIcon frames={mcIcon.data} />
                     </div>
                   </div>
                 )}
                 {apIcon && (
                   <div className="text-foreground">
-                    <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                    <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                       AP icon
                     </p>
-                    <div className="bg-muted rounded-md p-1">
+                    <div className="rounded-md bg-muted p-1">
                       <PocketStationMonoIcon frames={apIcon.data} />
                     </div>
                   </div>

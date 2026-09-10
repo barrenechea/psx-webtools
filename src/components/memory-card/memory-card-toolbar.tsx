@@ -84,8 +84,8 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
     : selectedSlot !== null && isDeletable;
 
   return (
-    <div className="border-border bg-muted/80 flex items-center justify-between border-b p-2">
-      <h1 className="text-muted-foreground pl-2 font-light">
+    <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
+      <h1 className="pl-2 font-light text-muted-foreground">
         Memory Card Manager{" "}
         <span className="text-xs text-sky-500 dark:text-sky-400">Beta</span>
       </h1>

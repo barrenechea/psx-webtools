@@ -58,7 +58,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
   );
 
   return (
-    <div className="border-border bg-muted/80 flex w-80 flex-col border-l">
+    <div className="flex w-80 flex-col border-l border-border bg-muted/80">
       <div className="flex items-center justify-between p-4">
         <div className="flex-row">
           <div className="flex flex-row items-center space-x-1">
@@ -67,7 +67,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
               <TooltipTrigger
                 render={(props) => (
                   <Button {...props} variant="ghost" size="icon">
-                    <InfoIcon className="text-muted-foreground size-3" />
+                    <InfoIcon className="size-3 text-muted-foreground" />
                   </Button>
                 )}
               />
@@ -76,7 +76,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
               </TooltipContent>
             </Tooltip>
           </div>
-          <p className="text-muted-foreground text-xs">{productCode}</p>
+          <p className="text-xs text-muted-foreground">{productCode}</p>
         </div>
         <Button
           variant="ghost"
@@ -94,11 +94,11 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
             {gameDataLoading ? (
               <div
                 className={cn(
-                  "bg-muted flex items-center justify-center rounded-md",
+                  "flex items-center justify-center rounded-md bg-muted",
                   platform === "ps2" ? "aspect-[1/1.49]" : "aspect-square",
                 )}
               >
-                <div className="border-primary size-8 animate-spin rounded-full border-2 border-t-transparent"></div>
+                <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
               </div>
             ) : gameData ? (
               <GameDetailsFields
@@ -119,26 +119,26 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
               )}
               <div className="min-w-0">
                 <h4 className="truncate text-sm font-semibold">{save.title}</h4>
-                <p className="text-muted-foreground truncate font-mono text-xs">
+                <p className="truncate font-mono text-xs text-muted-foreground">
                   {displayDirentName(save.name)}
                 </p>
               </div>
             </div>
             <div className="space-y-2">
               <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                   Size
                 </p>
                 <p className="text-sm">{formatSize(save.totalSize)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                   Created
                 </p>
                 <p className="text-sm">{formatDate(save.created)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
                   Modified
                 </p>
                 <p className="text-sm">{formatDate(save.modified)}</p>
@@ -146,7 +146,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
             </div>
             <Separator />
             <div>
-              <p className="text-muted-foreground mb-2 text-xs font-medium uppercase">
+              <p className="mb-2 text-xs font-medium text-muted-foreground uppercase">
                 Files
               </p>
               <div className="space-y-1">
@@ -158,7 +158,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
                     <span className="truncate font-mono text-xs">
                       {file.name}
                     </span>
-                    <span className="text-muted-foreground shrink-0 text-xs">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {formatSize(file.size)}
                     </span>
                   </div>
@@ -168,7 +168,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
           </div>
         </ScrollArea>
       ) : (
-        <div className="text-muted-foreground flex h-full flex-col items-center justify-center p-4 pb-16 text-center">
+        <div className="flex h-full flex-col items-center justify-center p-4 pb-16 text-center text-muted-foreground">
           <p className="text-lg font-semibold">Save Not Found</p>
           <p className="mt-2 text-sm">This save is no longer on the card</p>
         </div>

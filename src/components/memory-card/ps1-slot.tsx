@@ -15,7 +15,11 @@ import {
 import { cn } from "@/lib/utils";
 
 export type Ps1SlotAction =
-  "editHeader" | "editComment" | "info" | "remove" | "compare";
+  | "editHeader"
+  | "editComment"
+  | "info"
+  | "remove"
+  | "compare";
 
 interface Ps1SlotProps {
   slot: SaveInfo;
@@ -93,7 +97,7 @@ export const Ps1Slot: React.FC<Ps1SlotProps> = ({
       onClick={() => onClick(index)}
     >
       <CardContent className="flex-row items-center gap-0 p-3">
-        <div className="text-muted-foreground mr-2 w-6 text-xs">
+        <div className="mr-2 w-6 text-xs text-muted-foreground">
           {(index + 1).toString().padStart(2, "0")}
         </div>
         {!isFormatted ? (
@@ -106,10 +110,10 @@ export const Ps1Slot: React.FC<Ps1SlotProps> = ({
               />
             )}
             <div className="min-w-0 grow">
-              <h3 className="text-foreground truncate text-sm font-medium">
+              <h3 className="truncate text-sm font-medium text-foreground">
                 {isLink ? "Linked Save Data" : slot.name}
               </h3>
-              <p className="text-muted-foreground truncate text-xs">
+              <p className="truncate text-xs text-muted-foreground">
                 {isLink ? "Part of a multi-block save" : slot.productCode}
               </p>
             </div>
@@ -160,7 +164,7 @@ export const Ps1Slot: React.FC<Ps1SlotProps> = ({
             </div>
           </>
         ) : (
-          <span className="text-muted-foreground text-sm">Empty Slot</span>
+          <span className="text-sm text-muted-foreground">Empty Slot</span>
         )}
       </CardContent>
     </Card>

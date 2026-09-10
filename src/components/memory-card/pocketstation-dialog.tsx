@@ -29,7 +29,7 @@ interface PocketStationDialogProps {
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>
-    <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+    <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
       {label}
     </p>
     <p className="text-sm break-all">{value}</p>

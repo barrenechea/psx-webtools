@@ -77,7 +77,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onWrite,
   onFormat,
 }) => (
-  <div className="border-border bg-muted/80 flex w-64 flex-col border-r">
+  <div className="flex w-64 flex-col border-r border-border bg-muted/80">
     <ScrollArea className="grow overflow-hidden">
       <div className="p-2">
         {cards.map((card) => (
@@ -94,7 +94,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
         ))}
       </div>
     </ScrollArea>
-    <div className="border-border space-y-1 border-t p-2">
+    <div className="space-y-1 border-t border-border p-2">
       <input
         ref={fileInputRef}
         type="file"
@@ -109,7 +109,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
             <Button
               {...props}
               variant="ghost"
-              className="hover:bg-card/80 w-full justify-start"
+              className="w-full justify-start hover:bg-card/80"
             >
               <FolderOpenIcon className="mr-2 size-4" />
               Open...
@@ -190,21 +190,21 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
         <>
           <Button
             variant="ghost"
-            className="hover:bg-card/80 w-full justify-start"
+            className="w-full justify-start hover:bg-card/80"
             onClick={onDisconnect}
           >
             Disconnect {connectedDevice ?? "device"}
           </Button>
           <Button
             variant="ghost"
-            className="hover:bg-card/80 w-full justify-start"
+            className="w-full justify-start hover:bg-card/80"
             onClick={onRead}
           >
             Read from {connectedDevice ?? "device"}
           </Button>
           <Button
             variant="ghost"
-            className="hover:bg-card/80 w-full justify-start"
+            className="w-full justify-start hover:bg-card/80"
             onClick={onWrite}
             disabled={selectedCard === null}
           >
@@ -212,7 +212,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
           </Button>
           <Button
             variant="ghost"
-            className="hover:bg-card/80 w-full justify-start"
+            className="w-full justify-start hover:bg-card/80"
             onClick={onFormat}
           >
             Format {connectedDevice ?? "device"}
@@ -221,7 +221,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
             connectedDevice === "PS3 MC Adaptor") && (
             <Button
               variant="ghost"
-              className="hover:bg-card/80 w-full justify-start"
+              className="w-full justify-start hover:bg-card/80"
               onClick={onPocketStation}
             >
               PocketStation

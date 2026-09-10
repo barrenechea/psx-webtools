@@ -77,7 +77,7 @@ export const Ps2ImportSaveDialog: React.FC<Ps2ImportSaveDialogProps> = ({
               }}
             />
             {nameError !== null && (
-              <p className="text-destructive text-sm">{nameError}</p>
+              <p className="text-sm text-destructive">{nameError}</p>
             )}
           </div>
           <div className="grid gap-2">
@@ -94,7 +94,7 @@ export const Ps2ImportSaveDialog: React.FC<Ps2ImportSaveDialogProps> = ({
             />
           </div>
           {error !== null && (
-            <p className="text-destructive text-sm">{error}</p>
+            <p className="text-sm text-destructive">{error}</p>
           )}
         </div>
         <DialogFooter>

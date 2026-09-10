@@ -38,7 +38,7 @@ export const Ps1SlotList: React.FC<Ps1SlotListProps> = ({
   const canEdit = !!contextSave && !isFormatted && !isCorrupted;
 
   return (
-    <ScrollArea className="bg-card/60 grow overflow-hidden">
+    <ScrollArea className="grow overflow-hidden bg-card/60">
       <ContextMenu>
         <ContextMenuTrigger
           render={(props) => (

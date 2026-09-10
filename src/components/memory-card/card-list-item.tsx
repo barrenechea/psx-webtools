@@ -32,8 +32,8 @@ export const CardListItem: React.FC<CardListItemProps> = ({
       variant="ghost"
       className={`w-full min-w-0 justify-start overflow-hidden pr-6 ${
         isSelected
-          ? "bg-card hover:bg-card cursor-default"
-          : "bg-card/40 hover:bg-card/80 border-transparent"
+          ? "cursor-default bg-card hover:bg-card"
+          : "border-transparent bg-card/40 hover:bg-card/80"
       }`}
       onClick={onClick}
     >
@@ -47,7 +47,7 @@ export const CardListItem: React.FC<CardListItemProps> = ({
       <span className="min-w-0 flex-1 truncate text-left">{name}</span>
       <Badge
         variant="outline"
-        className="text-muted-foreground ml-2 shrink-0 text-[10px]"
+        className="ml-2 shrink-0 text-[10px] text-muted-foreground"
       >
         {kind === "ps2" ? "PS2" : "PS1"}
       </Badge>
@@ -73,7 +73,7 @@ export const CardListItem: React.FC<CardListItemProps> = ({
         e.stopPropagation();
         onClose();
       }}
-      className="text-muted-foreground hover:bg-accent hover:text-accent-foreground absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-0.5 group-hover:block"
+      className="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-0.5 text-muted-foreground group-hover:block hover:bg-accent hover:text-accent-foreground"
     >
       <XIcon className="size-3.5" />
     </button>

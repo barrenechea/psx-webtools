@@ -117,7 +117,7 @@ export const UniromConnectDialog: React.FC<UniromConnectDialogProps> = ({
             </Select>
           </div>
 
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Note: Unirom connects at a fixed 115200 baud rate. Make sure the
             Unirom firmware is running on your console.
           </p>
