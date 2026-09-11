@@ -2,6 +2,7 @@ import { FileIcon, InfoIcon, XIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import PS1BlockIcon from "@/components/ui/ps1-icon";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -10,12 +11,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useGameData } from "@/hooks/use-game-data";
+import type { IconPalette, SlotIconData } from "@/lib/ps1-memory-card";
 import type { GameData, GamePlatform } from "@/lib/query";
 import { cn } from "@/lib/utils";
 
 interface GameDetailsSidebarProps {
   gameId: string;
   region: string;
+  saveName?: string;
+  icon?: {
+    data: SlotIconData;
+    palette: IconPalette;
+    frameCount: number;
+  } | null;
   onClose: () => void;
 }
 
@@ -109,13 +117,30 @@ export const GameDetailsFields: React.FC<{
 export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
   gameId,
   region,
+  saveName,
+  icon,
   onClose,
 }) => {
-  const {
-    gameData,
-    isLoading,
-    error: gameDataError,
-  } = useGameData("ps1", region, gameId);
+  const { gameData, isLoading } = useGameData("ps1", region, gameId);
+
+  // Icon shown when the cover image is unavailable (lookup failed, or the game
+  // was found without a cover).
+  const coverFallback = icon ? (
+    <PS1BlockIcon
+      iconData={icon.data}
+      iconPalette={icon.palette}
+      iconFrameCount={icon.frameCount}
+      className="mr-0 size-32"
+    />
+  ) : null;
+
+  // What is known about the slot without the DataCenter lookup (the on-card
+  // save name). GameDetailsFields skips the fields we don't have.
+  const fallbackData: GameData = {
+    id: gameId,
+    title: saveName || gameId,
+    cover: null,
+  };
 
   return (
     <div className="flex w-80 flex-col border-l border-border bg-muted/80">
@@ -152,12 +177,24 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
         <div className="flex h-full items-center justify-center">
           <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
         </div>
-      ) : gameDataError ? (
-        <div className="text-center text-destructive">{gameDataError}</div>
       ) : gameData ? (
         <ScrollArea className="grow overflow-hidden">
           <div className="p-4">
-            <GameDetailsFields gameData={gameData} platform="ps1" />
+            <GameDetailsFields
+              gameData={gameData}
+              platform="ps1"
+              coverFallback={coverFallback}
+            />
+          </div>
+        </ScrollArea>
+      ) : gameId ? (
+        <ScrollArea className="grow overflow-hidden">
+          <div className="p-4">
+            <GameDetailsFields
+              gameData={fallbackData}
+              platform="ps1"
+              coverFallback={coverFallback}
+            />
           </div>
         </ScrollArea>
       ) : (

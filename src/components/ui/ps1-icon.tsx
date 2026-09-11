@@ -2,17 +2,20 @@ import { useEffect, useState } from "react";
 
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import type { IconPalette, SlotIconData } from "@/lib/ps1-memory-card";
+import { cn } from "@/lib/utils";
 
 interface PS1BlockIconProps {
   iconData: SlotIconData;
   iconPalette: IconPalette;
   iconFrameCount: number;
+  className?: string;
 }
 
 const PS1BlockIcon: React.FC<PS1BlockIconProps> = ({
   iconData,
   iconPalette,
   iconFrameCount,
+  className,
 }) => {
   const prefersReducedMotion = usePrefersReducedMotion();
   const [currentFrame, setCurrentFrame] = useState(0);
@@ -30,8 +33,12 @@ const PS1BlockIcon: React.FC<PS1BlockIconProps> = ({
   }, [animate, iconFrameCount]);
 
   return (
-    <div className="mr-2 size-8 shrink-0">
-      <svg width="32" height="32" viewBox="0 0 16 16">
+    <div className={cn("mr-2 size-8 shrink-0", className)}>
+      <svg
+        viewBox="0 0 16 16"
+        className="size-full"
+        shapeRendering="crispEdges"
+      >
         {iconData[animate ? currentFrame : 0].map((colorIndex, i) => {
           const [r, g, b, a] = iconPalette[colorIndex] || [0, 0, 0, 0];
           return (

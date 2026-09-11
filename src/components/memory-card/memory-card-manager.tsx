@@ -241,6 +241,12 @@ export const MemoryCardManager: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  // Known data for the selected slot, used by the Game Details sidebar when the
+  // DataCenter lookup fails (corrupted / unknown product code).
+  const [selectedGameMeta, setSelectedGameMeta] = useState<{
+    name: string;
+    icon: { data: SlotIconData; palette: IconPalette; frameCount: number };
+  } | null>(null);
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const [isPS1CardLinkDialogOpen, setIsPS1CardLinkDialogOpen] = useState(false);
   const [isUniromDialogOpen, setIsUniromDialogOpen] = useState(false);
@@ -1377,13 +1383,22 @@ export const MemoryCardManager: React.FC = () => {
     const saves = card.getSaves();
     const parentSlot = card.getMasterLinkForSlot(index);
     const linkedSlots = card.getSaveLinks(parentSlot);
+    const masterSave = saves[parentSlot];
 
     setSelectedSlot((prev) =>
       linkedSlots.includes(prev ?? -1) ? null : parentSlot,
     );
     setSidebarOpen(true);
-    setSelectedGameId(saves[parentSlot].productCode);
-    setSelectedRegion(saves[parentSlot].region);
+    setSelectedGameId(masterSave.productCode);
+    setSelectedRegion(masterSave.region);
+    setSelectedGameMeta({
+      name: masterSave.name,
+      icon: {
+        data: card.getIconData(parentSlot),
+        palette: card.getIconPalette(parentSlot),
+        frameCount: masterSave.iconFrameCount,
+      },
+    });
   };
 
   const handlePs2SaveClick = (name: string) => {
@@ -1527,6 +1542,8 @@ export const MemoryCardManager: React.FC = () => {
                       <GameDetailsSidebar
                         gameId={selectedGameId ?? ""}
                         region={selectedRegion ?? ""}
+                        saveName={selectedGameMeta?.name}
+                        icon={selectedGameMeta?.icon ?? null}
                         onClose={() => setSidebarOpen(false)}
                       />
                     )}
