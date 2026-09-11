@@ -1,15 +1,11 @@
-import { InfoIcon, XIcon } from "lucide-react";
-
-import { GameDetailsFields } from "@/components/memory-card/game-details-sidebar";
+import {
+  GameDetailsFields,
+  SidebarShell,
+  gameDetailsFromData,
+} from "@/components/memory-card/game-details-sidebar";
 import { Ps2IconView } from "@/components/memory-card/ps2-icon-view";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useGameData } from "@/hooks/use-game-data";
 import type { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import { ps2SaveProductCode, ps2SaveRegion } from "@/lib/ps2/ps2-dirname";
@@ -58,36 +54,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
   );
 
   return (
-    <div className="flex w-80 flex-col border-l border-border bg-muted/80">
-      <div className="flex items-center justify-between p-4">
-        <div className="flex-row">
-          <div className="flex flex-row items-center space-x-1">
-            <p className="font-semibold">Save Info</p>
-            <Tooltip>
-              <TooltipTrigger
-                render={(props) => (
-                  <Button {...props} variant="ghost" size="icon">
-                    <InfoIcon className="size-3 text-muted-foreground" />
-                  </Button>
-                )}
-              />
-              <TooltipContent>
-                <p>Game details provided by The PlayStation DataCenter</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <p className="text-xs text-muted-foreground">{productCode}</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <XIcon className="size-4" />
-        </Button>
-      </div>
-      <Separator />
+    <SidebarShell title="Save Info" id={productCode} onClose={onClose}>
       {save ? (
         <ScrollArea className="grow overflow-hidden">
           <div className="space-y-4 p-4">
@@ -102,7 +69,7 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
               </div>
             ) : gameData ? (
               <GameDetailsFields
-                gameData={gameData}
+                details={gameDetailsFromData(gameData)}
                 platform={platform}
                 coverFallback={
                   <Ps2IconView animate save={save} className="size-full" />
@@ -173,6 +140,6 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
           <p className="mt-2 text-sm">This save is no longer on the card</p>
         </div>
       )}
-    </div>
+    </SidebarShell>
   );
 };

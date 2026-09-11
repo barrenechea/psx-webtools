@@ -15,6 +15,167 @@ import type { IconPalette, SlotIconData } from "@/lib/ps1-memory-card";
 import type { GameData, GamePlatform } from "@/lib/query";
 import { cn } from "@/lib/utils";
 
+interface SidebarShellProps {
+  title: string;
+  id: string;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+// Frame for the PS1/PS2 info sidebars: header with the title, DataCenter
+// credit and product code, plus the close button, around the body.
+export const SidebarShell: React.FC<SidebarShellProps> = ({
+  title,
+  id,
+  onClose,
+  children,
+}) => (
+  <div className="flex w-80 flex-col border-l border-border bg-muted/80">
+    <div className="flex items-center justify-between p-4">
+      <div className="flex-row">
+        <div className="flex flex-row items-center space-x-1">
+          <p className="font-semibold">{title}</p>
+          <Tooltip>
+            <TooltipTrigger
+              render={(props) => (
+                <Button {...props} variant="ghost" size="icon">
+                  <InfoIcon className="size-3 text-muted-foreground" />
+                </Button>
+              )}
+            />
+            <TooltipContent>
+              <p>Game details provided by The PlayStation DataCenter</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <p className="text-xs text-muted-foreground">{id}</p>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onClose}
+        className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      >
+        <XIcon className="size-4" />
+      </Button>
+    </div>
+    <Separator />
+    {children}
+  </div>
+);
+
+// Facts shown for a game, derived from the DataCenter response or the
+// save's on-card data. Fields we don't have are left absent and skipped.
+export interface GameDetails {
+  title?: string;
+  cover: string | null;
+  developer?: string;
+  publisher?: string;
+  genre?: string;
+  releaseDate?: string;
+  discs?: number;
+}
+
+export function gameDetailsFromData(data: GameData): GameDetails {
+  return {
+    title: data.officialTitle || data.title,
+    cover: data.cover,
+    developer: data.developer,
+    publisher: data.publisher,
+    genre: data.genre,
+    releaseDate: data.releaseDate,
+    discs: data.discs,
+  };
+}
+
+export const GameDetailsFields: React.FC<{
+  details: GameDetails;
+  platform?: GamePlatform;
+  coverFallback?: ReactNode;
+}> = ({ details, platform = "ps1", coverFallback }) => {
+  const hasFacts =
+    Boolean(details.genre) ||
+    Boolean(details.releaseDate) ||
+    details.discs != null;
+  const [failedCover, setFailedCover] = useState<string | null>(null);
+  const showCover = Boolean(details.cover) && failedCover !== details.cover;
+  const useDvdCover = platform === "ps2" && showCover;
+
+  return (
+    <div className="space-y-6">
+      <div
+        className={cn(
+          "flex items-center justify-center overflow-hidden rounded-md bg-muted",
+          useDvdCover ? "aspect-[1/1.49]" : "aspect-square",
+        )}
+      >
+        {showCover && details.cover ? (
+          <img
+            src={details.cover}
+            alt="Game cover"
+            className="size-full object-cover"
+            onError={() => {
+              if (details.cover) setFailedCover(details.cover);
+            }}
+          />
+        ) : coverFallback ? (
+          coverFallback
+        ) : (
+          <div className="flex size-full items-center justify-center text-muted-foreground">
+            No cover available
+          </div>
+        )}
+      </div>
+      <div>
+        {details.title ? (
+          <h4 className="mb-1 text-sm font-semibold">{details.title}</h4>
+        ) : null}
+        {details.developer ? (
+          <p className="text-xs text-muted-foreground">
+            Developed by {details.developer}
+          </p>
+        ) : null}
+        {details.publisher ? (
+          <p className="text-xs text-muted-foreground">
+            Published by {details.publisher}
+          </p>
+        ) : null}
+      </div>
+      {hasFacts ? (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            {details.genre ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
+                  Genre / Style
+                </p>
+                <p className="text-sm">{details.genre}</p>
+              </div>
+            ) : null}
+            {details.releaseDate ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
+                  Release Date
+                </p>
+                <p className="text-sm">{details.releaseDate}</p>
+              </div>
+            ) : null}
+            {details.discs != null ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
+                  Discs
+                </p>
+                <p className="text-sm">{details.discs}</p>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+};
+
 interface GameDetailsSidebarProps {
   gameId: string;
   region: string;
@@ -27,93 +188,6 @@ interface GameDetailsSidebarProps {
   onClose: () => void;
 }
 
-export const GameDetailsFields: React.FC<{
-  gameData: GameData;
-  platform?: GamePlatform;
-  coverFallback?: ReactNode;
-}> = ({ gameData, platform = "ps1", coverFallback }) => {
-  const title = gameData.officialTitle || gameData.title;
-  const hasFacts =
-    Boolean(gameData.genre) ||
-    Boolean(gameData.releaseDate) ||
-    gameData.discs != null;
-  const [failedCover, setFailedCover] = useState<string | null>(null);
-  const showCover = Boolean(gameData.cover) && failedCover !== gameData.cover;
-  const useDvdCover = platform === "ps2" && showCover;
-
-  return (
-    <div className="space-y-6">
-      <div
-        className={cn(
-          "flex items-center justify-center overflow-hidden rounded-md bg-muted",
-          useDvdCover ? "aspect-[1/1.49]" : "aspect-square",
-        )}
-      >
-        {showCover && gameData.cover ? (
-          <img
-            src={gameData.cover}
-            alt="Game cover"
-            className="size-full object-cover"
-            onError={() => {
-              if (gameData.cover) setFailedCover(gameData.cover);
-            }}
-          />
-        ) : coverFallback ? (
-          coverFallback
-        ) : (
-          <div className="flex size-full items-center justify-center text-muted-foreground">
-            No cover available
-          </div>
-        )}
-      </div>
-      <div>
-        {title ? <h4 className="mb-1 text-sm font-semibold">{title}</h4> : null}
-        {gameData.developer ? (
-          <p className="text-xs text-muted-foreground">
-            Developed by {gameData.developer}
-          </p>
-        ) : null}
-        {gameData.publisher ? (
-          <p className="text-xs text-muted-foreground">
-            Published by {gameData.publisher}
-          </p>
-        ) : null}
-      </div>
-      {hasFacts ? (
-        <>
-          <Separator />
-          <div className="space-y-3">
-            {gameData.genre ? (
-              <div>
-                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
-                  Genre / Style
-                </p>
-                <p className="text-sm">{gameData.genre}</p>
-              </div>
-            ) : null}
-            {gameData.releaseDate ? (
-              <div>
-                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
-                  Release Date
-                </p>
-                <p className="text-sm">{gameData.releaseDate}</p>
-              </div>
-            ) : null}
-            {gameData.discs != null ? (
-              <div>
-                <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">
-                  Discs
-                </p>
-                <p className="text-sm">{gameData.discs}</p>
-              </div>
-            ) : null}
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-};
-
 export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
   gameId,
   region,
@@ -123,8 +197,8 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
 }) => {
   const { gameData, isLoading } = useGameData("ps1", region, gameId);
 
-  // Icon shown when the cover image is unavailable (lookup failed, or the game
-  // was found without a cover).
+  // Icon shown when the cover image is unavailable (lookup failed, or the
+  // game was found without a cover).
   const coverFallback = icon ? (
     <PS1BlockIcon
       iconData={icon.data}
@@ -134,64 +208,25 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
     />
   ) : null;
 
-  // What is known about the slot without the DataCenter lookup (the on-card
-  // save name). GameDetailsFields skips the fields we don't have.
-  const fallbackData: GameData = {
-    id: gameId,
-    title: saveName || gameId,
-    cover: null,
-  };
+  // The DataCenter facts, or the known on-card data (the save name) when the
+  // lookup fails. Neither for an empty slot.
+  const details: GameDetails | null = gameData
+    ? gameDetailsFromData(gameData)
+    : gameId
+      ? { title: saveName || gameId, cover: null }
+      : null;
 
   return (
-    <div className="flex w-80 flex-col border-l border-border bg-muted/80">
-      <div className="flex items-center justify-between p-4">
-        <div className="flex-row">
-          <div className="flex flex-row items-center space-x-1">
-            <p className="font-semibold">Game Details</p>
-            <Tooltip>
-              <TooltipTrigger
-                render={(props) => (
-                  <Button {...props} variant="ghost" size="icon">
-                    <InfoIcon className="size-3 text-muted-foreground" />
-                  </Button>
-                )}
-              />
-              <TooltipContent>
-                <p>Game details provided by The PlayStation DataCenter</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <p className="text-xs text-muted-foreground">{gameId}</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <XIcon className="size-4" />
-        </Button>
-      </div>
-      <Separator />
+    <SidebarShell title="Game Details" id={gameId} onClose={onClose}>
       {isLoading ? (
         <div className="flex h-full items-center justify-center">
           <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
         </div>
-      ) : gameData ? (
+      ) : details ? (
         <ScrollArea className="grow overflow-hidden">
           <div className="p-4">
             <GameDetailsFields
-              gameData={gameData}
-              platform="ps1"
-              coverFallback={coverFallback}
-            />
-          </div>
-        </ScrollArea>
-      ) : gameId ? (
-        <ScrollArea className="grow overflow-hidden">
-          <div className="p-4">
-            <GameDetailsFields
-              gameData={fallbackData}
+              details={details}
               platform="ps1"
               coverFallback={coverFallback}
             />
@@ -208,6 +243,6 @@ export const GameDetailsSidebar: React.FC<GameDetailsSidebarProps> = ({
           </p>
         </div>
       )}
-    </div>
+    </SidebarShell>
   );
 };
