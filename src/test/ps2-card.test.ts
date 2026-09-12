@@ -206,6 +206,17 @@ describe("PS2MemoryCard", () => {
     );
   });
 
+  it("format() keeps an injected 800/816 bad-block list", () => {
+    const card = PS2MemoryCard.format(8192, [800, 816]);
+    const sb = card.getSuperblock();
+    expect(sb.badBlockList[0]).toBe(800);
+    expect(sb.badBlockList[1]).toBe(816);
+    expect(sb.backupBlock1).toBe(1023);
+    expect(sb.backupBlock2).toBe(1022);
+    expect(sb.ifcList[0]).toBe(8);
+    expect(card.getOccupiedBadBlocks()).toEqual([800, 816]);
+  });
+
   it("fromRaw() rejects malformed images", () => {
     expect(() => PS2MemoryCard.fromRaw(new Uint8Array(527))).toThrow();
     expect(() =>

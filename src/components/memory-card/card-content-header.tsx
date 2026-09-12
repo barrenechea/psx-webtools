@@ -27,6 +27,7 @@ interface CardContentHeaderProps {
     frameCount: number;
   } | null;
   copiedPs2: Ps2SaveInfo | null;
+  badBlocks?: number[];
 }
 
 export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
@@ -38,6 +39,7 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
   copiedSlots,
   copiedIcon,
   copiedPs2,
+  badBlocks = [],
 }) => {
   // The save currently staged in the temp buffer (PS2 icon or PS1 block icon).
   const bufferedIcon =
@@ -71,6 +73,21 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
           >
             {kind === "ps2" ? "PS2" : "PS1"}
           </Badge>
+          {kind === "ps2" && badBlocks.length > 0 ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={(props) => (
+                  <Badge variant="outline" className="text-[10px]" {...props}>
+                    {badBlocks.length} bad block
+                    {badBlocks.length === 1 ? "" : "s"}
+                  </Badge>
+                )}
+              />
+              <TooltipContent>
+                <p>The filesystem skips erase blocks {badBlocks.join(", ")}.</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </h2>
         <p className="text-sm text-muted-foreground">
           {type === "new" ? "New card" : `Opened via ${type} "${source}"`}

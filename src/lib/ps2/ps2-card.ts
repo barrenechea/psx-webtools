@@ -12,6 +12,7 @@ import {
   CLUSTER_DATA_SIZE,
   claimFatChain,
   clusterChain,
+  eraseBlockCount,
   FAT_ALLOCATED_BIT,
   FAT_EOF,
   FAT_FREE,
@@ -24,6 +25,7 @@ import {
   MODE_PDA,
   MODE_PSX,
   normalizeCardImage,
+  occupiedBadBlocks,
   PAGE_DATA_SIZE,
   PAGE_SIZE,
   PAGES_PER_CLUSTER,
@@ -37,6 +39,7 @@ import {
   readDirEntry,
   releaseFatChain,
   ROOT_CLUSTER,
+  sameOccupiedBadBlocks,
   SELF_ENTRY,
   stripImageSpares,
   walkFatChain,
@@ -121,17 +124,21 @@ export interface Ps2ImportOptions {
 }
 
 // A save captured for the temp buffer: its dir mode plus every file (name,
-// mode and bytes), so it can be re-created in the same or another card.
+// mode, bytes, and timestamps), so it can be re-created on another card.
 export interface Ps2SaveSnapshot {
   name: string;
   mode: number;
   files: FileSpec[];
+  created: Ps2DateTime;
+  modified: Ps2DateTime;
 }
 
 interface FileSpec {
   name: string;
   mode: number;
   data: Uint8Array;
+  created?: Ps2DateTime;
+  modified?: Ps2DateTime;
 }
 
 export class PS2MemoryCard {
@@ -176,9 +183,47 @@ export class PS2MemoryCard {
     }
   }
 
-  static format(clustersPerCard = 8192): PS2MemoryCard {
-    const raw = format2(clustersPerCard, PS2MemoryCard.nowJst());
+  static format(
+    clustersPerCard = 8192,
+    badBlocks?: readonly number[],
+  ): PS2MemoryCard {
+    const raw = format2(clustersPerCard, PS2MemoryCard.nowJst(), badBlocks);
     return PS2MemoryCard.fromRaw(raw);
+  }
+
+  /**
+   * Rebuild this card's filesystem for a destination bad-block list: existing
+   * (non-deleted) saves are copied onto a fresh format2 of the same size.
+   * Returns null when format2 cannot build that geometry or a save cannot be
+   * copied. Same list returns a parsed copy of this image (layout preserved).
+   */
+  remapToBadBlocks(badBlocks: readonly number[]): PS2MemoryCard | null {
+    const blocks = eraseBlockCount(this.sb.clustersPerCard);
+    const want = occupiedBadBlocks(badBlocks, blocks);
+    const have = occupiedBadBlocks(this.sb.badBlockList, blocks);
+    if (sameOccupiedBadBlocks(want, have)) {
+      return PS2MemoryCard.fromRaw(this.raw);
+    }
+    let dest: PS2MemoryCard;
+    try {
+      dest = PS2MemoryCard.format(this.sb.clustersPerCard, want);
+    } catch {
+      return null;
+    }
+    for (const save of this.getSaves()) {
+      if (save.deleted) continue;
+      const snap = this.snapshotSave(save.name);
+      if (snap === null || !dest.insertSave(snap)) return null;
+    }
+    return dest;
+  }
+
+  /** Occupied erase-block indices from this image's superblock list. */
+  getOccupiedBadBlocks(): number[] {
+    return occupiedBadBlocks(
+      this.sb.badBlockList,
+      eraseBlockCount(this.sb.clustersPerCard),
+    );
   }
 
   static async loadFromFile(file: File): Promise<PS2MemoryCard> {
@@ -224,8 +269,8 @@ export class PS2MemoryCard {
 
   /**
    * Data-only CRC-32 (every page's 512 data bytes, spares/ECC excluded), so a
-   * card written to hardware and read back compares equal to its source image
-   * regardless of ECC.
+   * 1:1 dump written to hardware and read back compares equal regardless of
+   * ECC. Remapped writes and skipped bad blocks are a different image.
    */
   getRawChecksum(): string {
     return formatCrc32(dataOnlyCrc32(this.raw));
@@ -634,7 +679,10 @@ export class PS2MemoryCard {
         name: sameDirentName(f.name, sourceName) ? newName : f.name,
         mode: f.mode,
         data: f.data,
+        created: f.created,
+        modified: f.modified,
       })),
+      { created: snap.created, modified: snap.modified },
     );
   }
 
@@ -652,6 +700,8 @@ export class PS2MemoryCard {
         name: e.name,
         mode: e.exists ? e.mode : e.mode | MODE_EXISTS,
         data: this.readChainBytes(e),
+        created: { ...e.created },
+        modified: { ...e.modified },
       });
     }
     if (files.length === 0) return null;
@@ -659,12 +709,17 @@ export class PS2MemoryCard {
       name,
       mode: entry.exists ? entry.mode : entry.mode | MODE_EXISTS,
       files,
+      created: { ...entry.created },
+      modified: { ...entry.modified },
     };
   }
 
   /** Re-create a snapshotted save under its original name. */
   public insertSave(snapshot: Ps2SaveSnapshot): boolean {
-    return this.createSave(snapshot.name, snapshot.mode, snapshot.files);
+    return this.createSave(snapshot.name, snapshot.mode, snapshot.files, {
+      created: snapshot.created,
+      modified: snapshot.modified,
+    });
   }
 
   /**
@@ -813,7 +868,12 @@ export class PS2MemoryCard {
   // -------------------------------------------------------------------
 
   // Layout of one created save, planned read-only before any mutation.
-  private createSave(name: string, mode: number, files: FileSpec[]): boolean {
+  private createSave(
+    name: string,
+    mode: number,
+    files: FileSpec[],
+    dirTimes?: { created: Ps2DateTime; modified: Ps2DateTime },
+  ): boolean {
     if (!PS2MemoryCard.isValidName(name)) return false;
     for (const f of files) {
       if (!PS2MemoryCard.isValidName(f.name)) return false;
@@ -922,6 +982,8 @@ export class PS2MemoryCard {
 
     // Save directory: "." (dir_entry = our slot in the parent), "..", files.
     const time = PS2MemoryCard.nowJst();
+    const dirCreated = dirTimes?.created ?? time;
+    const dirModified = dirTimes?.modified ?? time;
     writeDirEntry(
       this.raw,
       sb,
@@ -933,8 +995,8 @@ export class PS2MemoryCard {
         length: 0,
         cluster: 0,
         dirEntry: ordinal,
-        created: time,
-        modified: time,
+        created: dirCreated,
+        modified: dirModified,
         attr: 0,
       },
       true,
@@ -950,8 +1012,8 @@ export class PS2MemoryCard {
         length: 0,
         cluster: 0,
         dirEntry: 0,
-        created: time,
-        modified: time,
+        created: dirCreated,
+        modified: dirModified,
         attr: 0,
       },
       true,
@@ -969,8 +1031,8 @@ export class PS2MemoryCard {
           length: files[i].data.length,
           cluster: dataChains[i][0],
           dirEntry: 0,
-          created: time,
-          modified: time,
+          created: files[i].created ?? dirCreated,
+          modified: files[i].modified ?? dirModified,
           attr: 0,
         },
         true,
@@ -995,8 +1057,8 @@ export class PS2MemoryCard {
         length: entryCount,
         cluster: dirChain[0],
         dirEntry: 0,
-        created: time,
-        modified: time,
+        created: dirCreated,
+        modified: dirModified,
         attr: 0,
       },
       true,

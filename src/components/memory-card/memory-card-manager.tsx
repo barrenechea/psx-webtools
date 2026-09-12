@@ -34,7 +34,11 @@ import PS1MemoryCard, {
   type SlotIconData,
   SlotTypes,
 } from "@/lib/ps1-memory-card";
-import type { CardEvent, SlotCardKind } from "@/lib/ps1/hardware/core";
+import type {
+  CardEvent,
+  FormatChoice,
+  SlotCardKind,
+} from "@/lib/ps1/hardware/core";
 import {
   PS2MemoryCard,
   type Ps2SaveSnapshot,
@@ -695,7 +699,7 @@ export const MemoryCardManager: React.FC = () => {
       try {
         if (op.kind === "read") await performRead(keyset);
         else if (op.kind === "write") await performWrite(op.card, keyset);
-        else await performFormat(false, keyset);
+        else await performFormat({ kind: "ps2" }, keyset);
       } catch (err) {
         handleMgAuthError(err, op);
       }
@@ -716,30 +720,14 @@ export const MemoryCardManager: React.FC = () => {
     setIsMgKeyDialogOpen(open);
   };
 
-  const addFormattedPs2Card = (blank: PS2MemoryCard) => {
-    const label = connectedDevice ?? "Device";
-    const newCard: MemoryCard = {
-      id: nextCardId(),
-      name: `${label} Formatted`,
-      type: "device",
-      source: firmwareVersion ? `${label} v${firmwareVersion}` : label,
-      card: blank,
-    };
-    setMemoryCards((prev) => [...prev, newCard]);
-    setSelectedCard(newCard.id);
-    setSelectedSlot(null);
-    setSelectedPs2Save(null);
-  };
-
-  // Build and write the blank card, then put the formatted PS2 card in the list
-  // so the sidebar is not a stale save list while the slot reads empty.
-  const performFormat = async (quick: boolean, keyset?: Ps2MgKeyset) => {
-    const blank = await withBusy(
+  // Build and write the blank card. The formatted image stays on the hardware;
+  // it is not added to the card list (same as PS1 format).
+  const performFormat = async (choice: FormatChoice, keyset?: Ps2MgKeyset) => {
+    await withBusy(
       bulkOpInFlightRef,
-      () => formatCard(quick, keyset ?? mgKeyset ?? undefined),
+      () => formatCard(choice, keyset ?? mgKeyset ?? undefined),
       flushPendingClassify,
     );
-    if (blank) addFormattedPs2Card(blank);
   };
 
   // Probe the slot so the format dialog can hide quick/full for a PS2 card. A
@@ -755,11 +743,11 @@ export const MemoryCardManager: React.FC = () => {
     setIsFormatDialogOpen(true);
   };
 
-  const handleFormatConfirm = async (quick: boolean) => {
+  const handleFormatConfirm = async (choice: FormatChoice) => {
     setIsFormatDialogOpen(false);
     setError(null);
     try {
-      await performFormat(quick);
+      await performFormat(choice);
     } catch (err) {
       handleMgAuthError(err, { kind: "format" });
     }
@@ -1594,6 +1582,11 @@ export const MemoryCardManager: React.FC = () => {
                             ? (copiedPs2?.info ?? null)
                             : null
                         }
+                        badBlocks={
+                          selectedCardEntry.card.kind === "ps2"
+                            ? selectedCardEntry.card.getOccupiedBadBlocks()
+                            : []
+                        }
                       />
                       {selectedCardEntry.card.kind === "ps2" ? (
                         <Ps2SaveList
@@ -1694,7 +1687,7 @@ export const MemoryCardManager: React.FC = () => {
         onOpenChange={setIsFormatDialogOpen}
         deviceName={connectedDevice ?? "device"}
         cardKind={formatCardKind}
-        onFormat={(quick) => void handleFormatConfirm(quick)}
+        onFormat={(choice) => void handleFormatConfirm(choice)}
       />
       {compareData && (
         <CompareSaveDialog

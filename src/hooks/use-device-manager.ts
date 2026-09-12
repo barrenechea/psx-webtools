@@ -3,7 +3,11 @@ import { useState } from "react";
 import { useLoadingDialog } from "@/contexts/loading-dialog-context";
 import { useHardwareConnection } from "@/hooks/use-hardware";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
-import type { CardEvent, SlotCardKind } from "@/lib/ps1/hardware/core";
+import type {
+  CardEvent,
+  FormatChoice,
+  SlotCardKind,
+} from "@/lib/ps1/hardware/core";
 import { DexDrive } from "@/lib/ps1/hardware/dexdrive";
 import { MemCARDuino } from "@/lib/ps1/hardware/memcarduino";
 import { PS1CardLink } from "@/lib/ps1/hardware/ps1cardlink";
@@ -240,17 +244,17 @@ export function useDeviceManager(onCardEvent?: (ev: CardEvent) => void) {
   };
 
   // Format the card in the slot (PS2 format2 from Get Specs, or PS1 quick/full
-  // frames). Returns the blank PS2 card on a PS2 format so the caller can put
-  // it in the card list; null on a PS1 format (which the list does not track).
+  // frames). Throws if the device is missing or the format fails. The blank
+  // image stays on the hardware.
   const formatCard = async (
-    quick: boolean,
+    choice: FormatChoice,
     keyset?: Ps2MgKeyset,
-  ): Promise<PS2MemoryCard | null> => {
+  ): Promise<void> => {
     showDialog("Formatting Memory Card", "Preparing to format...");
-    let blank: PS1MemoryCard | PS2MemoryCard | null;
+    let error: unknown = null;
     try {
-      blank = await formatMemoryCard(
-        quick,
+      await formatMemoryCard(
+        choice,
         (progress) =>
           updateDialog(
             `Formatting memory card... ${Math.round(progress * 100)}%`,
@@ -260,16 +264,14 @@ export function useDeviceManager(onCardEvent?: (ev: CardEvent) => void) {
         keyset,
       );
     } catch (err) {
-      hideDialog();
-      throw err;
+      error = err;
     }
-    if (!blank) {
+    if (error) {
       hideDialog();
-      throw new Error("Failed to format memory card");
+      throw error;
     }
     updateDialog("Memory card formatted!");
     setTimeout(hideDialog, 1000);
-    return blank instanceof PS2MemoryCard ? blank : null;
   };
 
   const getPocketStationDevice = (): MemCARDuino | PS3MemCardAdaptor | null =>

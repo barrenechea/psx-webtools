@@ -35,6 +35,10 @@ export enum SupportedFeatures {
 // slot (same PS1 frame path) detected via the PocketStation ID command.
 export type SlotCardKind = "ps1" | "ps2" | "pocketstation";
 
+// What the format dialog confirmed. PS2 is a full NAND rebuild; PS1 keeps the
+// quick (64-frame) vs full (1024-frame) choice.
+export type FormatChoice = { kind: "ps1"; quick: boolean } | { kind: "ps2" };
+
 // Card-presence edges the PS3 MC Adaptor reports on interrupt IN `0x83`:
 // `01` is a PS1 insert, `02` is a remove, and `03` is a PS2 insert.
 export type CardEvent = 0x01 | 0x02 | 0x03;
@@ -205,6 +209,19 @@ export abstract class HardwareInterface {
     return Promise.resolve({
       status: "error",
       message: "PS2 card write is not supported by this interface",
+    });
+  }
+
+  // Format a PS2 card in the slot (dest-skip survey + format2). Only hardware
+  // that probes the slot (the PS3 MC Adaptor) supports it; the default reports
+  // that it is unavailable so a PS2 slot on another interface fails clearly.
+  formatPS2Card(
+    _onProgress: (progress: number) => void,
+    _keyset?: Ps2MgKeyset,
+  ): Promise<Ps2CardImageResult> {
+    return Promise.resolve({
+      status: "error",
+      message: "PS2 card format is not supported by this interface",
     });
   }
 

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { FormatChoice } from "@/lib/ps1/hardware/core";
 
 const FORMAT_TYPE_ITEMS = [
   { value: "0", label: "Quick format" },
@@ -30,7 +31,7 @@ interface FormatCardDialogProps {
   // The slot kind probed when the dialog opened. PS2 is a full NAND erase with
   // no quick/full choice; PS1 keeps the two frame options.
   cardKind: "ps1" | "ps2";
-  onFormat: (quick: boolean) => void;
+  onFormat: (choice: FormatChoice) => void;
 }
 
 export const FormatCardDialog: React.FC<FormatCardDialogProps> = ({
@@ -50,20 +51,12 @@ export const FormatCardDialog: React.FC<FormatCardDialogProps> = ({
           <DialogTitle>Format {deviceName}</DialogTitle>
           <DialogDescription>
             {isPs2
-              ? "Erase every block of the PS2 card and rebuild its filesystem. This cannot be undone."
+              ? "Erase the PS2 card and rebuild its filesystem. This cannot be undone."
               : "Erase the memory card in the connected device into an empty, formatted state. This cannot be undone."}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4">
-          {isPs2 ? (
-            <div className="grid gap-2">
-              <Label>Format type</Label>
-              <p className="text-sm text-muted-foreground">
-                Full erase. A PS2 card has no quick format; every block is
-                erased and the filesystem rebuilt from the card's own geometry.
-              </p>
-            </div>
-          ) : (
+        {!isPs2 && (
+          <div className="grid gap-4">
             <div className="grid gap-2">
               <Label>Format type</Label>
               <Select
@@ -89,13 +82,21 @@ export const FormatCardDialog: React.FC<FormatCardDialogProps> = ({
                 every block on the card.
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={() => onFormat(isPs2 ? false : formatType === 0)}>
+          <Button
+            onClick={() =>
+              onFormat(
+                isPs2
+                  ? { kind: "ps2" }
+                  : { kind: "ps1", quick: formatType === 0 },
+              )
+            }
+          >
             Format
           </Button>
         </DialogFooter>

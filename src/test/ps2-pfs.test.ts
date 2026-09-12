@@ -10,6 +10,7 @@ import {
   clusterChain,
   clusterDataOffset,
   CLUSTERS_PER_BLOCK,
+  eraseBlockCount,
   FAT_ALLOCATED_BIT,
   FAT_BAD,
   FAT_EOF,
@@ -20,6 +21,8 @@ import {
   format2,
   FRESH_ROOT_TIME,
   ifcFatCounts,
+  occupiedBadBlocks,
+  BAD_BLOCK_SLOTS,
   PAGE_DATA_SIZE,
   PAGE_SIZE,
   PAGES_PER_BLOCK,
@@ -33,6 +36,7 @@ import {
   readDirEntry,
   releaseFatChain,
   ROOT_CLUSTER,
+  sameOccupiedBadBlocks,
   SELF_ENTRY,
   walkFatChain,
   writeClusterData,
@@ -278,6 +282,48 @@ describe("format2 geometry", () => {
     }
     expect(sawBlock4).toBe(true);
     everyPageClean(raw);
+  });
+
+  it("keeps 8 MB backup/IFC geometry with injected 800 and 816", () => {
+    const raw = format2(8192, FRESH_ROOT_TIME, [800, 816]);
+    const sb = parseSuperblock(raw);
+    expect(sb.backupBlock1).toBe(1023);
+    expect(sb.backupBlock2).toBe(1022);
+    expect(sb.ifcList[0]).toBe(8);
+    expect(sb.badBlockList[0]).toBe(800);
+    expect(sb.badBlockList[1]).toBe(816);
+    let saw800 = false;
+    let saw816 = false;
+    for (let rel = 0; rel < sb.allocEnd; rel++) {
+      const abs = sb.allocOffset + rel;
+      const erase = Math.floor((abs * sb.pagesPerCluster) / sb.pagesPerBlock);
+      if (erase === 800 || erase === 816) {
+        expect(fatGet(raw, sb, rel)).toBe(FAT_BAD);
+        if (erase === 800) saw800 = true;
+        if (erase === 816) saw816 = true;
+      }
+    }
+    expect(saw800).toBe(true);
+    expect(saw816).toBe(true);
+  });
+
+  it("filters empty and out-of-range bad-block slots", () => {
+    expect(
+      occupiedBadBlocks([0xffffffff, 0, 800, 816, 800, 1024], 1024),
+    ).toEqual([800, 816]);
+    expect(eraseBlockCount(8192)).toBe(1024);
+    expect(sameOccupiedBadBlocks([816, 800], [800, 816])).toBe(true);
+    expect(sameOccupiedBadBlocks([800], [816])).toBe(false);
+  });
+
+  it("refuses more occupied bad blocks than the superblock can list", () => {
+    const tooMany = Array.from(
+      { length: BAD_BLOCK_SLOTS + 1 },
+      (_, i) => i + 1,
+    );
+    expect(() => format2(8192, FRESH_ROOT_TIME, tooMany)).toThrow(
+      /more than 32 occupied bad blocks/,
+    );
   });
 
   it("programs unused FAT page 1 with Hamming spare", () => {

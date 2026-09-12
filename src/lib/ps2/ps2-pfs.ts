@@ -846,7 +846,7 @@ function builderSuperblock(allocOffset: number): Ps2Superblock {
   };
 }
 
-const BAD_BLOCK_SLOTS = 32;
+export const BAD_BLOCK_SLOTS = 32;
 
 /**
  * IFC and FAT cluster counts: `fat = ceil(clusters / 256)`,
@@ -867,13 +867,55 @@ export function ifcFatCounts(clustersPerCard: number): {
   return { fat, ifc };
 }
 
-function packBadBlockList(badBlocks?: readonly number[]): number[] {
+function packBadBlockList(occupied: readonly number[]): number[] {
   const list = new Array<number>(BAD_BLOCK_SLOTS).fill(0xffffffff);
-  if (badBlocks !== undefined) {
-    const n = Math.min(badBlocks.length, BAD_BLOCK_SLOTS);
-    for (let i = 0; i < n; i++) list[i] = badBlocks[i] >>> 0;
-  }
+  for (let i = 0; i < occupied.length; i++) list[i] = occupied[i] >>> 0;
   return list;
+}
+
+/** Occupied erase-block indices: `0 < b < blockCount`, not `0xFFFFFFFF`. */
+export function occupiedBadBlocks(
+  list: readonly number[],
+  blockCount: number,
+): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const raw of list) {
+    const b = raw >>> 0;
+    if (b === 0xffffffff || b <= 0 || b >= blockCount) continue;
+    if (seen.has(b)) continue;
+    seen.add(b);
+    out.push(b);
+  }
+  return out;
+}
+
+/** True when two occupied lists name the same erase blocks. */
+export function sameOccupiedBadBlocks(
+  a: readonly number[],
+  b: readonly number[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const as = a.slice().sort((x, y) => x - y);
+  const bs = b.slice().sort((x, y) => x - y);
+  for (let i = 0; i < as.length; i++) {
+    if (as[i] !== bs[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Superblock 0xD0 list from page 0. Null when the 27-byte format magic is
+ * missing (erased or partial-format page 0).
+ */
+export function readBadBlockListFromPage(page: Uint8Array): number[] | null {
+  if (!superblockMagicMatches(page)) return null;
+  return readOnDiskBadBlockList(page);
+}
+
+/** Erase-block count from cluster geometry (16 pages / block). */
+export function eraseBlockCount(clustersPerCard: number): number {
+  return (clustersPerCard * PAGES_PER_CLUSTER) / PAGES_PER_BLOCK;
 }
 
 /** True if `eraseBlock` is in the 32-slot bad-block list. */
@@ -1003,13 +1045,21 @@ export function format2(
     raw.fill(0xff);
   }
 
-  const list =
-    opts.badBlocks !== undefined
-      ? packBadBlockList(opts.badBlocks)
-      : superblockMagicMatches(raw)
-        ? readOnDiskBadBlockList(raw)
-        : scanBadEraseBlocks(raw, clustersPerCard);
   const blocks = pages / PAGES_PER_BLOCK;
+  let list: number[];
+  if (opts.badBlocks !== undefined) {
+    const occupied = occupiedBadBlocks(opts.badBlocks, blocks);
+    if (occupied.length > BAD_BLOCK_SLOTS) {
+      throw new Error(
+        `format2: more than ${BAD_BLOCK_SLOTS} occupied bad blocks`,
+      );
+    }
+    list = packBadBlockList(occupied);
+  } else if (superblockMagicMatches(raw)) {
+    list = readOnDiskBadBlockList(raw);
+  } else {
+    list = scanBadEraseBlocks(raw, clustersPerCard);
+  }
   let backupBlock1 = blocks - 1;
   while (isListedEraseBlock(list, backupBlock1)) backupBlock1--;
   let backupBlock2 = backupBlock1 - 1;

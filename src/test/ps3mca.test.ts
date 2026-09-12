@@ -1,5 +1,11 @@
 import { SupportedFeatures, Types } from "@/lib/ps1/hardware/core";
 import { PS3MemCardAdaptor } from "@/lib/ps1/hardware/ps3memcardadaptor";
+import {
+  format2,
+  FRESH_ROOT_TIME,
+  occupiedBadBlocks,
+  readBadBlockListFromPage,
+} from "@/lib/ps2/ps2-pfs";
 
 import { makeScriptedUsb, nonNull, type ScriptedUsb } from "./hardware-helpers";
 import { equalBytes } from "./psx-helpers";
@@ -164,8 +170,9 @@ function enqueueUsbPageUnsupported(usb: ScriptedUsb): void {
 }
 
 // SIO replies for one block erase (libmcadpt): start erase (0x21, 2B + term
-// [8]) then commit (0x81, 2B + term [3]).
-function enqueueBlockErase(usb: ScriptedUsb): void {
+// [8]) then commit (0x81, 2B + term [3]). `commitTerm` 0x66 is card-reported
+// `'f'`.
+function enqueueBlockErase(usb: ScriptedUsb, commitTerm = 0x55): void {
   const start = new Uint8Array(9);
   start[0] = 0x81;
   start[1] = 0x21;
@@ -176,8 +183,65 @@ function enqueueBlockErase(usb: ScriptedUsb): void {
   end[0] = 0x81;
   end[1] = 0x81;
   end[2] = 0x2b;
-  end[3] = 0x55;
+  end[3] = commitTerm;
   usb.enqueueIn(ps2Reply(end));
+}
+
+function enqueueBlockEraseFail(usb: ScriptedUsb): void {
+  enqueueBlockErase(usb, 0x66);
+}
+
+function eraseStartBlocks(writes: Uint8Array[]): number[] {
+  const out: number[] = [];
+  for (const w of writes) {
+    if (w[1] === 0x42 && w[5] === 0x21) {
+      const page = (w[6] | (w[7] << 8) | (w[8] << 16) | (w[9] << 24)) >>> 0;
+      out.push(page >>> 4);
+    }
+  }
+  return out;
+}
+
+function imageWithBadBlocks(pageCount: number, bad: number[]): Uint8Array {
+  const image = new Uint8Array(pageCount * 528);
+  image.set(new TextEncoder().encode("Sony PS2 Memory Card Format"), 0);
+  for (let i = 0; i < 32; i++) {
+    const o = 0xd0 + i * 4;
+    const b = i < bad.length ? bad[i] >>> 0 : 0xffffffff;
+    image[o] = b & 0xff;
+    image[o + 1] = (b >>> 8) & 0xff;
+    image[o + 2] = (b >>> 16) & 0xff;
+    image[o + 3] = (b >>> 24) & 0xff;
+  }
+  return image;
+}
+
+function enqueueBlockProgram(usb: ScriptedUsb): void {
+  for (let p = 0; p < 16; p++) enqueueUsbPageWrite(usb);
+}
+
+const FORMAT_PAGES = 128;
+const FORMAT_BLOCKS = 8;
+
+function enqueueFormatOpen(usb: ScriptedUsb, page0: Uint8Array): void {
+  enqueuePs2Open(usb, sonySpecsMiso(FORMAT_PAGES));
+  enqueueUsbPageReadEcho(usb, page0);
+}
+
+function enqueueFormatPrograms(
+  usb: ScriptedUsb,
+  skip: ReadonlySet<number>,
+): void {
+  for (let block = 0; block < FORMAT_BLOCKS; block++) {
+    if (!skip.has(block)) enqueueBlockProgram(usb);
+  }
+}
+
+function writtenBadBlocks(image: Uint8Array): number[] {
+  return occupiedBadBlocks(
+    readBadBlockListFromPage(image) ?? [],
+    FORMAT_BLOCKS,
+  );
 }
 
 describe("N. PS3 MC Adaptor (WebUSB)", () => {
@@ -818,35 +882,30 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect([...start.subarray(2, 6)]).toEqual([0x00, 0x40, 0x00, 0x00]);
   });
 
-  it("N36 writePS2CardImage erases each block before writing its pages", async () => {
+  it("N36 writePS2CardImage surveys every block, then programs", async () => {
     const a = new PS3MemCardAdaptor();
     const usb = connect(a);
     enqueuePs2Open(usb, sonySpecsMiso(32));
     enqueueUsbPageRead(usb, 0x00, 0x00);
     enqueueBlockErase(usb);
-    for (let p = 0; p < 16; p++) enqueueUsbPageWrite(usb);
     enqueueBlockErase(usb);
-    for (let p = 0; p < 16; p++) enqueueUsbPageWrite(usb);
+    enqueueBlockProgram(usb);
+    enqueueBlockProgram(usb);
     const image = new Uint8Array(32 * 528);
     for (let i = 0; i < image.length; i++) image[i] = (i * 3) & 0xff;
     const r = await a.writePS2CardImage(image, () => {});
     expect(r.status).toBe("ok");
     const cmds = usb.writes.map(bulkOp);
-    expect(cmds.slice(0, 9)).toEqual([
-      undefined,
-      undefined,
-      undefined,
-      0x11,
-      0x26,
-      0x52,
-      0x21,
-      0x81,
-      0x57,
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1]);
+    expect(cmds.filter((op) => op === 0x57)).toHaveLength(32);
+    const firstWrite = cmds.indexOf(0x57);
+    expect(cmds.slice(0, firstWrite).filter((op) => op === 0x21)).toEqual([
+      0x21, 0x21,
     ]);
-    expect(cmds.slice(24, 27)).toEqual([0x21, 0x81, 0x57]);
+    expect(cmds.slice(firstWrite)).not.toContain(0x21);
     expect(cmds).not.toContain(0x82);
     expect(cmds).not.toContain(0x12);
-    expect(cmds.length).toBe(5 + 1 + 2 + 16 + 2 + 16);
+    expect(cmds.length).toBe(5 + 1 + 2 + 2 + 16 + 16);
   });
 
   it("N37 writePS2CardImage rejects a mismatched image size", async () => {
@@ -933,6 +992,136 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     expect(cmds).not.toContain(0x21);
     expect(cmds).not.toContain(0x82);
     expect(cmds).not.toContain(0x57);
+  });
+
+  it("N44 write of a non-PFS image onto a healthy dest programs every block", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueuePs2Open(usb, sonySpecsMiso(32));
+    enqueueUsbPageRead(usb, 0x00, 0x00);
+    enqueueBlockErase(usb);
+    enqueueBlockErase(usb);
+    enqueueBlockProgram(usb);
+    enqueueBlockProgram(usb);
+    const image = imageWithBadBlocks(32, [1]);
+    const r = await a.writePS2CardImage(image, () => {});
+    expect(r.status).toBe("ok");
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1]);
+    expect(usb.writes.map(bulkOp).filter((op) => op === 0x57)).toHaveLength(32);
+    expect(usb.writes.map(bulkOp)).not.toContain(0x82);
+  });
+
+  it("N45 format continues when an unlisted block reports 'f' and lists it", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueFormatOpen(usb, new Uint8Array(528).fill(0xff));
+    for (let block = 0; block < FORMAT_BLOCKS; block++) {
+      if (block === 3) enqueueBlockEraseFail(usb);
+      else enqueueBlockErase(usb);
+    }
+    enqueueFormatPrograms(usb, new Set([3]));
+    const r = await a.formatPS2Card(() => {});
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(writtenBadBlocks(r.image)).toEqual([3]);
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(usb.writes.map(bulkOp)).not.toContain(0x82);
+  });
+
+  it("N46 format never erases a listed block", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueFormatOpen(usb, imageWithBadBlocks(FORMAT_PAGES, [3]));
+    for (let block = 0; block < FORMAT_BLOCKS; block++) {
+      if (block !== 3) enqueueBlockErase(usb);
+    }
+    enqueueFormatPrograms(usb, new Set([3]));
+    const r = await a.formatPS2Card(() => {});
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(writtenBadBlocks(r.image)).toEqual([3]);
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1, 2, 4, 5, 6, 7]);
+  });
+
+  it("N49 format still errors when block 0 erase fails", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueFormatOpen(usb, new Uint8Array(528).fill(0xff));
+    enqueueBlockEraseFail(usb);
+    const r = await a.formatPS2Card(() => {});
+    expect(r).toMatchObject({
+      status: "error",
+      message: "Failed to erase block 0 of 8.",
+    });
+    expect(eraseStartBlocks(usb.writes)).toEqual([0]);
+    expect(usb.writes.map(bulkOp)).not.toContain(0x57);
+  });
+
+  it("N50 write remaps a clean dump onto dest listed blocks", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueFormatOpen(usb, imageWithBadBlocks(FORMAT_PAGES, [3]));
+    for (let block = 0; block < FORMAT_BLOCKS; block++) {
+      if (block !== 3) enqueueBlockErase(usb);
+    }
+    enqueueFormatPrograms(usb, new Set([3]));
+    const r = await a.writePS2CardImage(format2(64, FRESH_ROOT_TIME), () => {});
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(writtenBadBlocks(r.image)).toEqual([3]);
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1, 2, 4, 5, 6, 7]);
+  });
+
+  it("N51 write programs source-listed blocks onto a healthy dest", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueFormatOpen(usb, new Uint8Array(528).fill(0xff));
+    for (let block = 0; block < FORMAT_BLOCKS; block++) {
+      enqueueBlockErase(usb);
+    }
+    enqueueFormatPrograms(usb, new Set());
+    const r = await a.writePS2CardImage(
+      format2(64, FRESH_ROOT_TIME, [3]),
+      () => {},
+    );
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(writtenBadBlocks(r.image)).toEqual([]);
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("N52 write treats a live dest 'f' as a dest bad block", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueFormatOpen(usb, new Uint8Array(528).fill(0xff));
+    for (let block = 0; block < FORMAT_BLOCKS; block++) {
+      if (block === 3) enqueueBlockEraseFail(usb);
+      else enqueueBlockErase(usb);
+    }
+    enqueueFormatPrograms(usb, new Set([3]));
+    const r = await a.writePS2CardImage(format2(64, FRESH_ROOT_TIME), () => {});
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(writtenBadBlocks(r.image)).toEqual([3]);
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("N53 write with matching dest and source lists skips those blocks", async () => {
+    const a = new PS3MemCardAdaptor();
+    const usb = connect(a);
+    enqueueFormatOpen(usb, imageWithBadBlocks(FORMAT_PAGES, [3]));
+    for (let block = 0; block < FORMAT_BLOCKS; block++) {
+      if (block !== 3) enqueueBlockErase(usb);
+    }
+    enqueueFormatPrograms(usb, new Set([3]));
+    const r = await a.writePS2CardImage(
+      format2(64, FRESH_ROOT_TIME, [3]),
+      () => {},
+    );
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(writtenBadBlocks(r.image)).toEqual([3]);
+    expect(eraseStartBlocks(usb.writes)).toEqual([0, 1, 2, 4, 5, 6, 7]);
   });
 
   it("N43 start() arms interrupt IN on endpoint 3 and dispatches insert/remove", async () => {

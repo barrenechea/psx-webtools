@@ -8,13 +8,16 @@ import { buildIconSys, ICON_SYS_SIZE } from "@/lib/ps2/ps2-iconsys";
 import {
   CLUSTER_DATA_SIZE,
   clusterChain,
+  eraseBlockCount,
   FAT_ALLOCATED_BIT,
+  FAT_BAD,
   FAT_EOF,
   FAT_FREE,
   fatGet,
   fatSet,
   findFreeCluster,
   format2,
+  occupiedBadBlocks,
   PAGE_DATA_SIZE,
   PAGE_SIZE,
   PARENT_ENTRY,
@@ -771,6 +774,8 @@ describe("PS2MemoryCard copySave", () => {
       ["icon.sys", 0x8497, false],
       ["SAVE-CCC0003", 0x9497, true],
     ]);
+    expect(copy.created).toEqual(saves[0].created);
+    expect(copy.modified).toEqual(saves[0].modified);
     everyPageClean(raw);
 
     // Independence: deleting the original leaves the copy fully readable.
@@ -853,6 +858,77 @@ describe("PS2MemoryCard getSingleSaveBytes", () => {
     expect([...foreign.getSingleSaveBytes("SAVE-FFF0001")!]).toEqual([
       ...pattern(500, 9),
     ]);
+  });
+});
+
+describe("PS2MemoryCard remapToBadBlocks", () => {
+  it("copies saves onto dest geometry and skips dest bad erase blocks", () => {
+    const src = PS2MemoryCard.format(8192);
+    const data = pattern(900, 2);
+    expect(src.importSingleSave("SAVE-AAA0001", data, { title: "T" })).toBe(
+      true,
+    );
+    const dst = src.remapToBadBlocks([800, 816]);
+    expect(dst).not.toBeNull();
+    const sb = dst!.getSuperblock();
+    expect(occupiedBadBlocks(sb.badBlockList, eraseBlockCount(8192))).toEqual([
+      800, 816,
+    ]);
+    expect(dst!.getSaves().map((s) => s.name)).toEqual(["SAVE-AAA0001"]);
+    expect([...dst!.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...data,
+    ]);
+    const save = dst!.getSaves()[0];
+    for (const rel of clusterChain(dst!.getRawData(), sb, save.dataCluster)) {
+      const erase = Math.floor(
+        ((sb.allocOffset + rel) * sb.pagesPerCluster) / sb.pagesPerBlock,
+      );
+      expect(erase === 800 || erase === 816).toBe(false);
+      expect(fatGet(dst!.getRawData(), sb, rel) === FAT_BAD).toBe(false);
+    }
+  });
+
+  it("drops source-only bad blocks when dest is healthy", () => {
+    const src = PS2MemoryCard.format(8192, [800, 816]);
+    const data = pattern(400, 5);
+    expect(src.importSingleSave("SAVE-AAA0001", data)).toBe(true);
+    const dst = src.remapToBadBlocks([]);
+    expect(dst).not.toBeNull();
+    expect(
+      occupiedBadBlocks(
+        dst!.getSuperblock().badBlockList,
+        eraseBlockCount(8192),
+      ),
+    ).toEqual([]);
+    expect([...dst!.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...data,
+    ]);
+  });
+
+  it("does not copy deleted saves", () => {
+    const src = PS2MemoryCard.format(8192);
+    expect(src.importSingleSave("SAVE-AAA0001", pattern(80))).toBe(true);
+    expect(src.deleteSave("SAVE-AAA0001")).toBe(true);
+    const dst = src.remapToBadBlocks([800]);
+    expect(dst).not.toBeNull();
+    expect(dst!.getSaves().filter((s) => !s.deleted)).toEqual([]);
+  });
+
+  it("keeps original created and modified times", () => {
+    const src = foreignFileCard();
+    const dst = src.remapToBadBlocks([800, 816]);
+    expect(dst).not.toBeNull();
+    expect(dst!.getSaves()[0].created).toEqual(T);
+    expect(dst!.getSaves()[0].modified).toEqual(T);
+    const files = readDirectory(
+      dst!.getRawData(),
+      dst!.getSuperblock(),
+      dst!.getSaves()[0].dataCluster,
+    ).filter((f) => f.isFile);
+    for (const f of files) {
+      expect(f.created).toEqual(T);
+      expect(f.modified).toEqual(T);
+    }
   });
 });
 
@@ -940,6 +1016,10 @@ describe("PS2MemoryCard temp-buffer snapshot/insert/replace", () => {
     ]);
     const dataFile = snap!.files.find((f) => f.name === "SAVE-AAA0001");
     expect([...(dataFile?.data ?? [])]).toEqual([...data]);
+    expect(snap!.created).toEqual(card.getSaves()[0].created);
+    expect(snap!.modified).toEqual(card.getSaves()[0].modified);
+    expect(dataFile?.created).toBeDefined();
+    expect(dataFile?.modified).toBeDefined();
   });
 
   it("insertSave re-creates a snapshot and refuses a name collision", () => {
@@ -958,6 +1038,26 @@ describe("PS2MemoryCard temp-buffer snapshot/insert/replace", () => {
     // Same name is now taken: the snapshot must not be inserted twice.
     expect(dst.insertSave(src.snapshotSave("SAVE-AAA0001")!)).toBe(false);
     expect(dst.getSaves().length).toBe(1);
+  });
+
+  it("insertSave keeps original created and modified times", () => {
+    const src = foreignFileCard();
+    expect(src.getSaves()[0].created).toEqual(T);
+    expect(src.getSaves()[0].modified).toEqual(T);
+    const dst = PS2MemoryCard.format(8192);
+    expect(dst.insertSave(src.snapshotSave("SAVE-FFF0001")!)).toBe(true);
+    expect(dst.getSaves()[0].created).toEqual(T);
+    expect(dst.getSaves()[0].modified).toEqual(T);
+    const files = readDirectory(
+      dst.getRawData(),
+      dst.getSuperblock(),
+      dst.getSaves()[0].dataCluster,
+    ).filter((f) => f.isFile);
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      expect(f.created).toEqual(T);
+      expect(f.modified).toEqual(T);
+    }
   });
 
   it("replaceSave swaps an existing same-name save and is undoable", () => {

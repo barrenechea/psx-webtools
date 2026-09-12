@@ -1,4 +1,4 @@
-import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
+import { formatPs2DestCard, writePs2DestCard } from "@/lib/ps2/ps2-dest-write";
 import {
   PS2Mechacon,
   type Ps2MgKeyset,
@@ -693,6 +693,21 @@ export class PS3MemCardAdaptor extends HardwareInterface {
     return !!endMiso && endMiso[2] === 0x2b && endMiso[3] === PS2_TERM;
   }
 
+  /**
+   * Survey erase, build format2 with the skip list, then program good blocks.
+   * Listed bad blocks are left listed and not erased. Block 0 erase failure
+   * is fatal. Other `'f'` results join the skip list.
+   */
+  override async formatPS2Card(
+    onProgress: (progress: number) => void,
+    keyset?: Ps2MgKeyset,
+  ): Promise<Ps2CardImageResult> {
+    const specsResult = await this.ps2GetSpecsAuth(keyset);
+    if (specsResult.status !== "ok") return specsResult;
+    const specs = specsResult.specs;
+    return formatPs2DestCard(this.ps2DestNand(specs), specs, onProgress);
+  }
+
   override async writePS2CardImage(
     image: Uint8Array,
     onProgress: (progress: number) => void,
@@ -702,66 +717,16 @@ export class PS3MemCardAdaptor extends HardwareInterface {
     const specsResult = await this.ps2GetSpecsAuth(keyset);
     if (specsResult.status !== "ok") return specsResult;
     const specs = specsResult.specs;
-    const pageBytes = USB_PAGE_PAYLOAD;
-    if (image.length !== specs.pageCount * pageBytes) {
-      return {
-        status: "error",
-        message: "The PS2 card image size does not match the card in the slot.",
-      };
-    }
-    // Conquest guard, before the first erase packet. Arcade SoulCalibur II
-    // Conquest cards have no PFS filesystem; the firmware erases on request, so
-    // the host must refuse here. The guard is fail-closed: a page-0 read that
-    // does not return a page cannot prove the card is not Conquest, so refuse
-    // too (erasing an unreadable Conquest card would destroy it).
-    const page0 = await this.ps2ReadPage(0, specs);
-    if (page0 === null) {
-      return {
-        status: "error",
-        message:
-          "Page 0 could not be read, so the card could not be checked for Conquest; the format/write was refused before any erase.",
-      };
-    }
-    if (isPs2ConquestCard(page0)) {
-      return {
-        status: "error",
-        message:
-          "The card is a SoulCalibur II Conquest card with no PFS filesystem; it was refused before any erase or write.",
-      };
-    }
-    if (specs.pageCount % PS2_USB_BLOCK_PAGES !== 0) {
-      return {
-        status: "error",
-        message: "The PS2 card does not contain complete 16-page blocks.",
-      };
-    }
-    const blockCount = specs.pageCount / PS2_USB_BLOCK_PAGES;
-    for (let block = 0; block < blockCount; block++) {
-      const erased = await this.ps2EraseBlock(block, specs);
-      if (!erased) {
-        return {
-          status: "error",
-          message: `Failed to erase block ${block} of ${blockCount}.`,
-        };
-      }
-      const blockStart = block * PS2_USB_BLOCK_PAGES;
-      const blockEnd = blockStart + PS2_USB_BLOCK_PAGES;
-      for (let page = blockStart; page < blockEnd; page++) {
-        const ok = await this.ps2WritePage(
-          page,
-          image.subarray(page * pageBytes, (page + 1) * pageBytes),
-          specs,
-        );
-        if (!ok) {
-          return {
-            status: "error",
-            message: `Failed to write page ${page} of ${specs.pageCount}.`,
-          };
-        }
-        onProgress((page + 1) / specs.pageCount);
-      }
-    }
-    return { status: "ok", image, specs };
+    return writePs2DestCard(this.ps2DestNand(specs), image, specs, onProgress);
+  }
+
+  private ps2DestNand(specs: Ps2CardSpecs) {
+    return {
+      readPage: (page: number) => this.ps2ReadPage(page, specs),
+      writePage: (page: number, data: Uint8Array) =>
+        this.ps2WritePage(page, data, specs),
+      eraseBlock: (block: number) => this.ps2EraseBlock(block, specs),
+    };
   }
 
   override async readMemoryCardFrame(
