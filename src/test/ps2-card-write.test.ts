@@ -10,6 +10,7 @@ import {
   clusterChain,
   FAT_ALLOCATED_BIT,
   FAT_EOF,
+  FAT_FREE,
   fatGet,
   fatSet,
   findFreeCluster,
@@ -19,6 +20,7 @@ import {
   PARENT_ENTRY,
   parseSuperblock,
   type Ps2Superblock,
+  readClusterData,
   readDirectory,
   readDirEntry,
   SELF_ENTRY,
@@ -633,6 +635,99 @@ describe("PS2MemoryCard toggleDeleteSave", () => {
     card.loadFromRawData(raw);
     expect(card.getSaves()[0].corrupted).toBe(true);
     expect(card.getSaves()[0].deleted).toBe(false);
+  });
+});
+
+describe("PS2MemoryCard eraseSave", () => {
+  it("wipes clusters, frees FAT, clears the dirent, and is undoable", () => {
+    const card = PS2MemoryCard.format(8192);
+    const dataA = pattern(1000);
+    const dataB = pattern(2000);
+    card.importSingleSave("SAVE-AAA0001", dataA);
+    card.importSingleSave("SAVE-BBB0002", dataB);
+    const sb = card.getSuperblock();
+    const before = readDirEntry(card.getRawData(), sb, 1, 0);
+    const innerFiles = readDirectory(
+      card.getRawData(),
+      sb,
+      before.cluster,
+      before.length,
+    ).filter((e) => e.isFile);
+    const wiped = [
+      ...clusterChain(card.getRawData(), sb, before.cluster),
+      ...innerFiles.flatMap((f) =>
+        clusterChain(card.getRawData(), sb, f.cluster),
+      ),
+    ];
+
+    expect(card.eraseSave("SAVE-AAA0001")).toBe(true);
+    const raw = card.getRawData();
+    const hole = readDirEntry(raw, sb, before.relCluster, before.slot);
+    expect(hole.name).toBe("");
+    expect(hole.mode).toBe(0);
+    expect(hole.exists).toBe(false);
+    expect(hole.cluster).toBe(0);
+    for (const rel of wiped) {
+      expect(fatGet(raw, sb, rel)).toBe(FAT_FREE);
+      expect([...readClusterData(raw, sb.allocOffset + rel)]).toEqual(
+        Array(CLUSTER_DATA_SIZE).fill(0),
+      );
+    }
+    expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0002"]);
+    expect([...card.readFile("SAVE-BBB0002", "SAVE-BBB0002")]).toEqual([
+      ...dataB,
+    ]);
+    everyPageClean(raw);
+
+    expect(card.eraseSave("NOPE")).toBe(false);
+    expect(card.undo()).toBe(true);
+    expect(card.getSaves().map((s) => s.name)).toEqual([
+      "SAVE-AAA0001",
+      "SAVE-BBB0002",
+    ]);
+    expect([...card.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...dataA,
+    ]);
+    expect(card.redo()).toBe(true);
+    expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0002"]);
+    everyPageClean(card.getRawData());
+  });
+
+  it("removes a soft-deleted save from the list", () => {
+    const card = PS2MemoryCard.format(8192);
+    card.importSingleSave("SAVE-AAA0001", pattern(1000));
+    expect(card.deleteSave("SAVE-AAA0001")).toBe(true);
+    expect(card.getSaves()[0]?.deleted).toBe(true);
+    expect(card.eraseSave("SAVE-AAA0001")).toBe(true);
+    expect(card.getSaves()).toEqual([]);
+    expect(card.importSingleSave("SAVE-AAA0001", pattern(400, 3))).toBe(true);
+    expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-AAA0001"]);
+    everyPageClean(card.getRawData());
+  });
+
+  it("clears a reused leftover dirent without wiping the occupying cluster", () => {
+    const card = PS2MemoryCard.format(8192);
+    card.importSingleSave("SAVE-AAA0001", pattern(1000));
+    expect(card.deleteSave("SAVE-AAA0001")).toBe(true);
+    const sb = card.getSuperblock();
+    const raw = card.getRawData();
+    const gone = readDirEntry(raw, sb, 1, 0);
+    const dataBefore = readClusterData(raw, sb.allocOffset + gone.cluster);
+    fatSet(raw, sb, gone.cluster, FAT_EOF);
+    card.loadFromRawData(raw);
+
+    expect(card.getSaves()[0]?.corrupted).toBe(true);
+    expect(card.eraseSave("SAVE-AAA0001")).toBe(true);
+    expect(card.getSaves()).toEqual([]);
+    const after = card.getRawData();
+    const hole = readDirEntry(after, sb, gone.relCluster, gone.slot);
+    expect(hole.name).toBe("");
+    expect(hole.mode).toBe(0);
+    expect(fatGet(after, sb, gone.cluster) & FAT_ALLOCATED_BIT).not.toBe(0);
+    expect([...readClusterData(after, sb.allocOffset + gone.cluster)]).toEqual([
+      ...dataBefore,
+    ]);
+    everyPageClean(after);
   });
 });
 

@@ -14,6 +14,7 @@ import {
   clusterChain,
   FAT_ALLOCATED_BIT,
   FAT_EOF,
+  FAT_FREE,
   fatEntryPage,
   fatGet,
   fatSet,
@@ -545,6 +546,80 @@ export class PS2MemoryCard {
   }
 
   /**
+   * Permanently wipe a save (live or leftover): zero reachable clusters,
+   * mark them free, and clear the root dirent. Does not follow reused FAT
+   * clusters that belong to another save. Nested inner directories are
+   * refused.
+   */
+  public eraseSave(name: string): boolean {
+    const entry = this.getRootDirEntry(name, true);
+    if (entry === null) return false;
+
+    const released = !entry.exists;
+    const dirReusable =
+      entry.cluster !== 0 &&
+      entry.cluster !== FAT_EOF &&
+      !(
+        released &&
+        walkFatChain(this.raw, this.sb, entry.cluster, true).stop === "reused"
+      );
+    const inner = dirReusable
+      ? readDirectory(this.raw, this.sb, entry.cluster, entry.length, {
+          includeDeleted: true,
+          released,
+        })
+      : [];
+    if (
+      inner.some(
+        (e) => e.isDir && e.name !== SELF_ENTRY && e.name !== PARENT_ENTRY,
+      )
+    ) {
+      return false;
+    }
+
+    const clusters = this.collectWipeClusters(entry, inner, released);
+    const touched: number[] = [this.entryPage(entry.relCluster, entry.slot)];
+    for (const rel of clusters) {
+      const abs = this.sb.allocOffset + rel;
+      touched.push(abs * PAGES_PER_CLUSTER, abs * PAGES_PER_CLUSTER + 1);
+      const fatPage = fatEntryPage(this.raw, this.sb, rel);
+      if (fatPage >= 0) touched.push(fatPage);
+    }
+    this.pushHistory(touched);
+
+    const zeros = new Uint8Array(CLUSTER_DATA_SIZE);
+    for (const rel of clusters) {
+      writeClusterData(this.raw, this.sb.allocOffset + rel, zeros);
+      fatSet(this.raw, this.sb, rel, FAT_FREE);
+    }
+    this.writeEmptySlot(entry.relCluster, entry.slot);
+    this.changedFlag = true;
+    return true;
+  }
+
+  private collectWipeClusters(
+    entry: Ps2DirEntry,
+    inner: Ps2DirEntry[],
+    released: boolean,
+  ): number[] {
+    const seen = new Set<number>();
+    const add = (first: number) => {
+      if (first === FAT_EOF || first === 0) return;
+      for (const rel of walkFatChain(this.raw, this.sb, first, released)
+        .clusters) {
+        if (rel === 0 || seen.has(rel)) continue;
+        seen.add(rel);
+      }
+    };
+    add(entry.cluster);
+    for (const e of inner) {
+      if (!e.isFile) continue;
+      add(e.cluster);
+    }
+    return [...seen];
+  }
+
+  /**
    * Clone an existing save (files, flags and all) under a new name. The
    * data file named after the source is renamed to the new save name,
    * keeping the "data file carries the save name" convention.
@@ -831,26 +906,6 @@ export class PS2MemoryCard {
     }
     this.linkChain(dirChain);
 
-    const writeEmptySlot = (rel: number, slot: 0 | 1) => {
-      writeDirEntry(
-        this.raw,
-        sb,
-        rel,
-        slot,
-        {
-          name: "",
-          mode: 0,
-          length: 0,
-          cluster: 0,
-          dirEntry: 0,
-          created: ZERO_TIME,
-          modified: ZERO_TIME,
-          attr: 0,
-        },
-        true,
-      );
-    };
-
     if (extendsRoot) {
       fatSet(
         this.raw,
@@ -862,7 +917,7 @@ export class PS2MemoryCard {
       // The sibling slot is initialized as an empty entry so every slot in
       // the chain is explicit (erased slots read back as mode 0xFFFF, which
       // would look like a used entry).
-      writeEmptySlot(newRootRel, 1);
+      this.writeEmptySlot(newRootRel, 1);
     }
 
     // Save directory: "." (dir_entry = our slot in the parent), "..", files.
@@ -925,7 +980,7 @@ export class PS2MemoryCard {
     // as an empty (mode 0) entry so it is not an erased 0xFFFF slot.
     const lastPos = 2 + files.length - 1;
     if (lastPos % 2 === 0) {
-      writeEmptySlot(dirChain[Math.floor(lastPos / 2)], 1);
+      this.writeEmptySlot(dirChain[Math.floor(lastPos / 2)], 1);
     }
 
     // Root entry.
@@ -980,6 +1035,26 @@ export class PS2MemoryCard {
   // Absolute page index of a directory entry slot.
   private entryPage(relCluster: number, slot: number): number {
     return (this.sb.allocOffset + relCluster) * PAGES_PER_CLUSTER + slot;
+  }
+
+  private writeEmptySlot(rel: number, slot: 0 | 1): void {
+    writeDirEntry(
+      this.raw,
+      this.sb,
+      rel,
+      slot,
+      {
+        name: "",
+        mode: 0,
+        length: 0,
+        cluster: 0,
+        dirEntry: 0,
+        created: ZERO_TIME,
+        modified: ZERO_TIME,
+        attr: 0,
+      },
+      true,
+    );
   }
 
   private rawEquals(other: Uint8Array): boolean {

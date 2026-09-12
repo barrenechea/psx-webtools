@@ -8,24 +8,25 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { displayDirentName } from "@/lib/ps2/ps2-sjis";
-import type { Ps2DateTime, Ps2SaveInfo } from "@/lib/ps2/ps2-types";
+import type { Ps2SaveInfo } from "@/lib/ps2/ps2-types";
 import { cn } from "@/lib/utils";
+
+import {
+  formatPs2Date,
+  formatPs2Size,
+  formatPs2SlotLabel,
+} from "./ps2-save-display";
+import { SaveListMenu } from "./save-list-menu";
+
+export type Ps2SaveAction = "compare" | "erase";
 
 interface Ps2SaveListProps {
   saves: Ps2SaveInfo[];
   selectedSave: string | null;
+  hasTempBuffer: boolean;
   onSelectSave: (name: string) => void;
+  onSaveAction: (action: Ps2SaveAction, name: string) => void;
 }
-
-const pad = (n: number) => n.toString().padStart(2, "0");
-
-const formatDate = (t: Ps2DateTime): string =>
-  `${t.year}-${pad(t.month)}-${pad(t.day)} ${pad(t.hour)}:${pad(t.min)}`;
-
-const formatSize = (bytes: number): string =>
-  bytes >= 1024 * 1024
-    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    : `${Math.ceil(bytes / 1024)} KB`;
 
 const SaveStatusBadge: React.FC<{ save: Ps2SaveInfo }> = ({ save }) => (
   <>
@@ -76,7 +77,7 @@ const Ps2SaveRow: React.FC<{
   >
     <CardContent className="flex-row items-center gap-0 p-3">
       <div className="mr-2 w-6 text-xs text-muted-foreground">
-        {pad(index + 1)}
+        {formatPs2SlotLabel(index)}
       </div>
       <Ps2IconView
         animate={isSelected}
@@ -99,13 +100,13 @@ const Ps2SaveRow: React.FC<{
           <SaveStatusBadge save={save} />
         </div>
         <p className="text-xs text-muted-foreground">
-          {formatSize(save.totalSize)}
+          {formatPs2Size(save.totalSize)}
         </p>
         <Tooltip>
           <TooltipTrigger
             render={(props) => (
               <p {...props} className="text-xs text-muted-foreground">
-                {formatDate(save.modified)}
+                {formatPs2Date(save.modified)}
               </p>
             )}
           />
@@ -121,7 +122,9 @@ const Ps2SaveRow: React.FC<{
 export const Ps2SaveList: React.FC<Ps2SaveListProps> = ({
   saves,
   selectedSave,
+  hasTempBuffer,
   onSelectSave,
+  onSaveAction,
 }) => {
   if (saves.length === 0) {
     return (
@@ -131,9 +134,33 @@ export const Ps2SaveList: React.FC<Ps2SaveListProps> = ({
       </div>
     );
   }
+  const byName = new Map(saves.map((save) => [save.name, save]));
   return (
     <ScrollArea className="grow overflow-hidden bg-card/60">
-      <div className="min-h-full p-4">
+      <SaveListMenu
+        rowSelector="[data-ps2-save-name]"
+        parseRow={(el) => {
+          const name = el.getAttribute("data-ps2-save-name");
+          return name && name.length > 0 ? name : null;
+        }}
+        itemsFor={(name) => {
+          const save = byName.get(name);
+          const canCompare = !!save && !save.corrupted && hasTempBuffer;
+          return [
+            {
+              label: "Compare with temp buffer",
+              disabled: !canCompare,
+              onClick: () => onSaveAction("compare", name),
+            },
+            {
+              label: "Permanently delete",
+              destructive: true,
+              separatorBefore: true,
+              onClick: () => onSaveAction("erase", name),
+            },
+          ];
+        }}
+      >
         {saves.map((save, index) => (
           <Ps2SaveRow
             key={save.name}
@@ -143,7 +170,7 @@ export const Ps2SaveList: React.FC<Ps2SaveListProps> = ({
             onClick={() => onSelectSave(save.name)}
           />
         ))}
-      </div>
+      </SaveListMenu>
     </ScrollArea>
   );
 };

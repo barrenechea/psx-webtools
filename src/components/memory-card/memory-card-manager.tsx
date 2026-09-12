@@ -26,9 +26,7 @@ import type { SaveFormatOption } from "@/hooks/use-save-file-form";
 import PS1MemoryCard, {
   CardExtensions,
   CardTypes,
-  DataTypes,
   type IconPalette,
-  IconTypes,
   RAW_EXTENSIONS,
   type SaveInfo,
   SingleSaveExtensions,
@@ -56,6 +54,7 @@ import {
   Ps2ContainerFormat,
   readPs2Container,
 } from "@/lib/ps2/ps2-single-save";
+import { displayDirentName, sameDirentName } from "@/lib/ps2/ps2-sjis";
 import {
   PS2_RAW_EXTENSIONS,
   PS2_SINGLE_SAVE_EXTENSIONS,
@@ -74,7 +73,6 @@ import { FormatCardDialog } from "./format-card-dialog";
 import { GameDetailsSidebar } from "./game-details-sidebar";
 import { MemoryCardToolbar } from "./memory-card-toolbar";
 import { PocketStationDialog } from "./pocketstation-dialog";
-import { Ps1SaveInfoDialog } from "./ps1-save-info-dialog";
 import type { Ps1SlotAction } from "./ps1-slot";
 import { Ps1SlotList } from "./ps1-slot-list";
 import { derivePs1SlotRows } from "./ps1-slot-rows";
@@ -82,13 +80,34 @@ import { Ps2ImportSaveDialog } from "./ps2-import-save-dialog";
 import { Ps2MgKeyDialog } from "./ps2-mg-key-dialog";
 import { Ps2NewCardDialog } from "./ps2-new-card-dialog";
 import { Ps2SaveInfoSidebar } from "./ps2-save-info-sidebar";
-import { Ps2SaveList } from "./ps2-save-list";
+import { type Ps2SaveAction, Ps2SaveList } from "./ps2-save-list";
 import { SlotCardPreview } from "./slot-card-preview";
 import { isPs2Card, type MemoryCard } from "./types";
 import { WriteCardDialog } from "./write-card-dialog";
 
 let lastCardId = 0;
 const nextCardId = (): number => ++lastCardId;
+
+type PendingErase =
+  | { kind: "ps1"; slot: number }
+  | { kind: "ps2"; name: string };
+
+function ps2SnapshotUserData(snapshot: Ps2SaveSnapshot): Uint8Array | null {
+  const named = snapshot.files.find((f) =>
+    sameDirentName(f.name, snapshot.name),
+  );
+  if (named) return named.data;
+  let best: Uint8Array | null = null;
+  let bestSize = -1;
+  for (const f of snapshot.files) {
+    if (f.name.toLowerCase() === "icon.sys") continue;
+    if (f.data.length > bestSize) {
+      bestSize = f.data.length;
+      best = f.data;
+    }
+  }
+  return best;
+}
 
 // Runs an async operation with a shared "in flight" flag set for its duration.
 // `onSettled` runs once the flag clears, whether the op succeeded or threw, so a
@@ -271,13 +290,12 @@ export const MemoryCardManager: React.FC = () => {
   const [isSingleSaveDialogOpen, setIsSingleSaveDialogOpen] = useState(false);
   const [isHeaderDialogOpen, setIsHeaderDialogOpen] = useState(false);
   const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
-  const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
   const [isPocketStationDialogOpen, setIsPocketStationDialogOpen] =
     useState(false);
   const [dialogSlot, setDialogSlot] = useState<number | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<number | null>(null);
-  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [pendingErase, setPendingErase] = useState<PendingErase | null>(null);
   // Card id awaiting a "replace existing save?" confirmation (PS2 paste).
   const [pendingPs2Replace, setPendingPs2Replace] = useState<number | null>(
     null,
@@ -977,24 +995,40 @@ export const MemoryCardManager: React.FC = () => {
     setIsCommentDialogOpen(false);
   };
 
-  const handleRemoveSaveConfirm = () => {
-    if (dialogSlot !== null && selectedCard !== null) {
+  const handleConfirmErase = () => {
+    if (pendingErase === null || selectedCard === null) {
+      setPendingErase(null);
+      return;
+    }
+    if (pendingErase.kind === "ps1") {
       const card = ps1Card(selectedCard);
       if (card) {
-        const parentSlot = card.getMasterLinkForSlot(dialogSlot);
+        const parentSlot = card.getMasterLinkForSlot(pendingErase.slot);
         const rowBefore = card.undoCount;
         card.formatSave(parentSlot);
         appendHistoryLabel(selectedCard, rowBefore, "Save removed");
         setSelectedSlot(null);
         setMemoryCards([...memoryCards]);
       }
+    } else {
+      const card = ps2Card(selectedCard);
+      if (card) {
+        const rowBefore = card.undoCount;
+        if (card.eraseSave(pendingErase.name)) {
+          appendHistoryLabel(selectedCard, rowBefore, "Save removed");
+          if (selectedPs2Save === pendingErase.name) setSelectedPs2Save(null);
+          setMemoryCards([...memoryCards]);
+        } else {
+          setError("Failed to erase save");
+        }
+      }
     }
-    setRemoveConfirmOpen(false);
+    setPendingErase(null);
   };
 
   const handleSlotAction = (action: Ps1SlotAction, index: number) => {
     const card = ps1Card(selectedCard);
-    // Resolve to the save's first (master) slot so header/comment/info edits
+    // Resolve to the save's first (master) slot so header/comment edits
     // target the real save, not a linked continuation slot.
     const master = card ? card.getMasterLinkForSlot(index) : index;
     setDialogSlot(master);
@@ -1005,11 +1039,8 @@ export const MemoryCardManager: React.FC = () => {
       case "editComment":
         setIsCommentDialogOpen(true);
         break;
-      case "info":
-        setIsInfoDialogOpen(true);
-        break;
       case "remove":
-        setRemoveConfirmOpen(true);
+        setPendingErase({ kind: "ps1", slot: master });
         break;
       case "compare": {
         const compareCard = ps1Card(selectedCard);
@@ -1097,15 +1128,10 @@ export const MemoryCardManager: React.FC = () => {
     selectedPs2Info?.deleted === true ||
     selectedSaveInfo?.slotType === SlotTypes.DeletedInitial;
 
-  const dialogCard = dialogSlot !== null ? ps1Card(selectedCard) : undefined;
   const dialogSaveInfo =
-    dialogSlot !== null && dialogCard
-      ? dialogCard.getSaves()[dialogSlot]
+    dialogSlot !== null
+      ? ps1Card(selectedCard)?.getSaves()[dialogSlot]
       : undefined;
-  const dialogLinkedSlots =
-    dialogSlot !== null && dialogCard
-      ? dialogCard.getSaveLinks(dialogCard.getMasterLinkForSlot(dialogSlot))
-      : [];
 
   const handleExportSingleSave = () => {
     if (selectedCard === null) return;
@@ -1423,6 +1449,31 @@ export const MemoryCardManager: React.FC = () => {
     setSelectedPs2Save((prev) => (prev === name ? null : name));
   };
 
+  const handlePs2SaveAction = (action: Ps2SaveAction, name: string) => {
+    switch (action) {
+      case "compare": {
+        const card = ps2Card(selectedCard);
+        if (card && copiedPs2 !== null) {
+          const bytes = card.getSingleSaveBytes(name);
+          const buffer = ps2SnapshotUserData(copiedPs2.snapshot);
+          if (bytes !== null && buffer !== null) {
+            setCompareData({
+              save1Name: name,
+              save1Bytes: bytes,
+              save2Name: copiedPs2.snapshot.name,
+              save2Bytes: buffer,
+            });
+            setIsCompareDialogOpen(true);
+          }
+        }
+        break;
+      }
+      case "erase":
+        setPendingErase({ kind: "ps2", name });
+        break;
+    }
+  };
+
   const selectedCardEntry = memoryCards.find((c) => c.id === selectedCard);
   const selectedPs1Card = ps1Card(selectedCard);
   const selectedPs2Card = ps2Card(selectedCard);
@@ -1447,17 +1498,21 @@ export const MemoryCardManager: React.FC = () => {
     selectedKind === "ps2" ? copiedPs2 !== null : copiedSaveBytes !== null;
 
   const eraseChain =
-    dialogSlot !== null &&
-    selectedCardEntry &&
-    !isPs2Card(selectedCardEntry.card)
-      ? selectedCardEntry.card.getSaveLinks(dialogSlot)
+    pendingErase?.kind === "ps1" && selectedCardEntry
+      ? (ps1Card(selectedCard)?.getSaveLinks(pendingErase.slot) ?? [])
       : [];
+  const eraseTitle =
+    pendingErase?.kind === "ps2"
+      ? "Permanently delete save"
+      : "Erase slot data";
   const eraseMessage =
-    eraseChain.length > 1
-      ? `This will erase ${eraseChain.length} slots (${eraseChain
-          .map((s) => s + 1)
-          .join(", ")}), the entire multi-slot save.`
-      : `This will erase the data in slot ${(dialogSlot ?? 0) + 1}.`;
+    pendingErase?.kind === "ps2"
+      ? `This will permanently erase “${displayDirentName(pendingErase.name)}” and its files.`
+      : eraseChain.length > 1
+        ? `This will erase ${eraseChain.length} slots (${eraseChain
+            .map((s) => s + 1)
+            .join(", ")}), the entire multi-slot save.`
+        : `This will erase the data in slot ${(pendingErase?.kind === "ps1" ? pendingErase.slot : 0) + 1}.`;
 
   return (
     <>
@@ -1545,7 +1600,9 @@ export const MemoryCardManager: React.FC = () => {
                           key={selectedCardEntry.id}
                           saves={ps2Saves}
                           selectedSave={selectedPs2Save}
+                          hasTempBuffer={copiedPs2 !== null}
                           onSelectSave={handlePs2SaveClick}
+                          onSaveAction={handlePs2SaveAction}
                         />
                       ) : (
                         <Ps1SlotList
@@ -1567,11 +1624,10 @@ export const MemoryCardManager: React.FC = () => {
                       />
                     )}
                     {selectedCardEntry.card.kind === "ps2" &&
-                      selectedPs2Save !== null && (
+                      selectedPs2Info && (
                         <Ps2SaveInfoSidebar
-                          key={`${selectedCardEntry.id}:${selectedPs2Save}`}
-                          card={selectedCardEntry.card}
-                          saveName={selectedPs2Save}
+                          key={`${selectedCardEntry.id}:${selectedPs2Info.name}`}
+                          save={selectedPs2Info}
                           onClose={() => setSelectedPs2Save(null)}
                         />
                       )}
@@ -1742,21 +1798,6 @@ export const MemoryCardManager: React.FC = () => {
         initialComment={dialogSaveInfo?.comment ?? ""}
         onSave={handleEditCommentConfirm}
       />
-      {dialogSaveInfo && dialogCard && dialogSlot !== null && (
-        <Ps1SaveInfoDialog
-          isOpen={isInfoDialogOpen}
-          onOpenChange={setIsInfoDialogOpen}
-          save={dialogSaveInfo}
-          linkedSlots={dialogLinkedSlots}
-          iconData={dialogCard.getIconData(dialogSlot)}
-          iconPalette={dialogCard.getIconPalette(dialogSlot)}
-          isSoftware={
-            dialogCard.getSaveDataType(dialogSlot) === DataTypes.Software
-          }
-          mcIcon={dialogCard.getPocketStationIcon(dialogSlot, IconTypes.MCIcon)}
-          apIcon={dialogCard.getPocketStationIcon(dialogSlot, IconTypes.APIcon)}
-        />
-      )}
       <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1774,17 +1815,22 @@ export const MemoryCardManager: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={removeConfirmOpen} onOpenChange={setRemoveConfirmOpen}>
+      <AlertDialog
+        open={pendingErase !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingErase(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Erase slot data</AlertDialogTitle>
+            <AlertDialogTitle>{eraseTitle}</AlertDialogTitle>
             <AlertDialogDescription>
               {eraseMessage} You can undo this action from the toolbar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveSaveConfirm}>
+            <AlertDialogAction onClick={handleConfirmErase}>
               Erase
             </AlertDialogAction>
           </AlertDialogFooter>
