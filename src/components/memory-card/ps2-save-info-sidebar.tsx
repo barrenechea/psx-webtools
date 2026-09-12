@@ -91,6 +91,13 @@ export const Ps2SaveInfoSidebar: React.FC<Ps2SaveInfoSidebarProps> = ({
                 </p>
               </div>
             </div>
+            {(save.deleted || save.corrupted) && (
+              <p className="text-sm text-muted-foreground">
+                {save.corrupted
+                  ? "This save data is corrupted and may not be readable."
+                  : "This save has been deleted but can be recovered."}
+              </p>
+            )}
             <div className="space-y-2">
               <div>
                 <p className="mb-1 text-xs font-medium text-muted-foreground uppercase">

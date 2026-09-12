@@ -368,6 +368,95 @@ export function releaseFatChain(
   }
 }
 
+export type FatWalkStop =
+  | "eof"
+  | "free"
+  | "zero"
+  | "bad"
+  | "oob"
+  | "cycle"
+  | "reused";
+
+export interface FatWalk {
+  clusters: number[];
+  stop: FatWalkStop;
+}
+
+/**
+ * Follow a FAT chain without throwing. `released` walks leftover next-links
+ * after delete (allocated bit clear) and stops as `reused` if it hits a
+ * cluster that is allocated again.
+ */
+export function walkFatChain(
+  raw: Uint8Array,
+  sb: Ps2Superblock,
+  firstRel: number,
+  released = false,
+): FatWalk {
+  if (firstRel === FAT_EOF) return { clusters: [], stop: "eof" };
+  if (firstRel >= sb.allocEnd) return { clusters: [], stop: "oob" };
+
+  const clusters: number[] = [];
+  const seen = new Set<number>();
+  let cur = firstRel >>> 0;
+  for (let guard = 0; guard <= sb.clustersPerCard; guard++) {
+    if (cur >= sb.allocEnd) return { clusters, stop: "oob" };
+    const v = fatGet(raw, sb, cur);
+    if (released && v & FAT_ALLOCATED_BIT) {
+      return { clusters, stop: "reused" };
+    }
+    if (seen.has(cur)) return { clusters, stop: "cycle" };
+    seen.add(cur);
+    clusters.push(cur);
+    if (v === FAT_BAD) return { clusters, stop: "bad" };
+    if (v === FAT_EOF) return { clusters, stop: "eof" };
+    if (v === FAT_FREE) return { clusters, stop: "free" };
+    if (v === 0) return { clusters, stop: "zero" };
+    if (!released && !(v & FAT_ALLOCATED_BIT)) {
+      return { clusters, stop: "free" };
+    }
+    const next = v & 0x7fffffff;
+    if (next === 0x7fffffff) return { clusters, stop: "free" };
+    cur = next;
+  }
+  return { clusters, stop: "cycle" };
+}
+
+const FAT_WALK_FAIL: ReadonlySet<FatWalkStop> = new Set([
+  "reused",
+  "oob",
+  "cycle",
+  "bad",
+]);
+
+/**
+ * Inverse of {@link releaseFatChain}: set the allocated bit on leftover
+ * next-links (`0x00000005` → `0x80000005`, `0x7FFFFFFF` → `0xFFFFFFFF`).
+ * Returns false when the chain is empty, reused, or otherwise unclaimable.
+ */
+export function claimFatChain(
+  raw: Uint8Array,
+  sb: Ps2Superblock,
+  firstRel: number,
+): boolean {
+  if (firstRel === FAT_EOF) return true;
+  const walk = walkFatChain(raw, sb, firstRel, true);
+  if (walk.clusters.length === 0 || FAT_WALK_FAIL.has(walk.stop)) return false;
+  for (const rel of walk.clusters) {
+    if (fatGet(raw, sb, rel) & FAT_ALLOCATED_BIT) return false;
+  }
+  for (const rel of walk.clusters) {
+    const v = fatGet(raw, sb, rel);
+    fatSet(
+      raw,
+      sb,
+      rel,
+      v === FAT_FREE || v === 0 ? FAT_EOF : (v | FAT_ALLOCATED_BIT) >>> 0,
+    );
+  }
+  return true;
+}
+
 export function fatSet(
   raw: Uint8Array,
   sb: Ps2Superblock,
@@ -436,8 +525,11 @@ export function readChainBytes(
   length: number,
 ): Uint8Array {
   const out = new Uint8Array(length);
+  if (firstRel === FAT_EOF || length <= 0) return out;
+  const start = fatGet(raw, sb, firstRel);
+  const released = (start & FAT_ALLOCATED_BIT) === 0 && start !== FAT_EOF;
   let off = 0;
-  for (const rel of clusterChain(raw, sb, firstRel)) {
+  for (const rel of walkFatChain(raw, sb, firstRel, released).clusters) {
     const data = readClusterData(raw, sb.allocOffset + rel);
     const n = Math.min(CLUSTER_DATA_SIZE, length - off);
     out.set(data.subarray(0, n), off);
@@ -529,13 +621,12 @@ export function readDirEntry(
       (raw[e + o + 3] << 24)) >>>
     0;
   const mode = u16(0x00);
-  const kind = mode & (MODE_FILE | MODE_DIR | MODE_EXISTS);
   return {
     name: readDirentName(raw, e + 0x40, 32),
     mode,
     exists: (mode & MODE_EXISTS) !== 0,
-    isDir: kind === (MODE_DIR | MODE_EXISTS),
-    isFile: kind === (MODE_FILE | MODE_EXISTS),
+    isDir: (mode & MODE_DIR) !== 0,
+    isFile: (mode & MODE_FILE) !== 0,
     hidden: (mode & MODE_HIDDEN) !== 0,
     ps1: (mode & MODE_PSX) !== 0,
     pocketStation: (mode & MODE_PDA) !== 0,
@@ -666,6 +757,16 @@ function isPlausibleName(name: string): boolean {
   return !allFf && !all7f;
 }
 
+export interface ReadDirectoryOptions {
+  /** Include exists-cleared dir/file slots that still carry a name. */
+  includeDeleted?: boolean;
+  /**
+   * Walk leftover FAT next-links (allocated bit clear). Used for a save
+   * directory whose chain was released on delete.
+   */
+  released?: boolean;
+}
+
 /**
  * Existing entries of a directory, in chain order (`.`, `..`, files...).
  * When `entryCount` is given, at most that many slots are examined: the
@@ -677,15 +778,22 @@ export function readDirectory(
   sb: Ps2Superblock,
   firstRel: number,
   entryCount?: number,
+  opts?: ReadDirectoryOptions,
 ): Ps2DirEntry[] {
+  const includeDeleted = opts?.includeDeleted === true;
+  const released = opts?.released === true;
+  const walk = walkFatChain(raw, sb, firstRel, released);
   const out: Ps2DirEntry[] = [];
   let slots = 0;
-  for (const rel of clusterChain(raw, sb, firstRel)) {
+  for (const rel of walk.clusters) {
     for (const slot of [0, 1] as const) {
       if (entryCount !== undefined && slots >= entryCount) break;
       slots++;
       const entry = readDirEntry(raw, sb, rel, slot);
-      if (entry.exists && isPlausibleName(entry.name)) {
+      const keep =
+        isPlausibleName(entry.name) &&
+        (entry.exists || (includeDeleted && (entry.isDir || entry.isFile)));
+      if (keep) {
         entry.index = out.length;
         out.push(entry);
       }

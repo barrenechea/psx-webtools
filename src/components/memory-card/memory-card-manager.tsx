@@ -830,13 +830,21 @@ export const MemoryCardManager: React.FC = () => {
     const ps2 = ps2Card(selectedCard);
     if (ps2) {
       if (selectedPs2Save === null) return;
+      const save = ps2.getSaves().find((s) => s.name === selectedPs2Save);
+      if (save === undefined || save.corrupted) return;
+      const isRestore = save.deleted;
       const rowBefore = ps2.undoCount;
-      if (ps2.deleteSave(selectedPs2Save)) {
-        appendHistoryLabel(selectedCard, rowBefore, "Save deleted");
-        setSelectedPs2Save(null);
+      if (ps2.toggleDeleteSave(selectedPs2Save)) {
+        appendHistoryLabel(
+          selectedCard,
+          rowBefore,
+          isRestore ? "Save restored" : "Save deleted",
+        );
         setMemoryCards([...memoryCards]);
       } else {
-        setError("Failed to delete save");
+        setError(
+          isRestore ? "Failed to restore save" : "Failed to delete save",
+        );
       }
       return;
     }
@@ -1072,11 +1080,21 @@ export const MemoryCardManager: React.FC = () => {
     selectedSlot !== null
       ? ps1Card(selectedCard)?.getSaves()[selectedSlot]
       : undefined;
+  const selectedPs2Info =
+    selectedPs2Save !== null
+      ? ps2Card(selectedCard)
+          ?.getSaves()
+          .find((s) => s.name === selectedPs2Save)
+      : undefined;
   const isSlotEmpty = selectedSaveInfo?.slotType === SlotTypes.Formatted;
   // The Delete button toggles delete/restore, so it applies to any real save
   // (regular or deleted) but not to empty or corrupted slots.
-  const isDeletable =
-    selectedSaveInfo?.slotType === SlotTypes.Initial ||
+  const isDeletable = selectedPs2Info
+    ? !selectedPs2Info.corrupted
+    : selectedSaveInfo?.slotType === SlotTypes.Initial ||
+      selectedSaveInfo?.slotType === SlotTypes.DeletedInitial;
+  const isRestore =
+    selectedPs2Info?.deleted === true ||
     selectedSaveInfo?.slotType === SlotTypes.DeletedInitial;
 
   const dialogCard = dialogSlot !== null ? ps1Card(selectedCard) : undefined;
@@ -1454,6 +1472,7 @@ export const MemoryCardManager: React.FC = () => {
               hasCopiedSave={hasCopiedSave}
               isSlotEmpty={isSlotEmpty}
               isDeletable={isDeletable}
+              isRestore={isRestore}
               canUndo={(selectedCardEntry?.card.undoCount ?? 0) > 0}
               canRedo={(selectedCardEntry?.card.redoCount ?? 0) > 0}
               onUndo={handleUndo}

@@ -27,6 +27,39 @@ const formatSize = (bytes: number): string =>
     ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     : `${Math.ceil(bytes / 1024)} KB`;
 
+const SaveStatusBadge: React.FC<{ save: Ps2SaveInfo }> = ({ save }) => (
+  <>
+    {save.deleted && (
+      <Tooltip>
+        <TooltipTrigger
+          render={(props) => (
+            <Badge variant="destructive" {...props}>
+              Deleted
+            </Badge>
+          )}
+        />
+        <TooltipContent>
+          <p>This save has been deleted but can be recovered</p>
+        </TooltipContent>
+      </Tooltip>
+    )}
+    {save.corrupted && (
+      <Tooltip>
+        <TooltipTrigger
+          render={(props) => (
+            <Badge variant="outline" {...props}>
+              Corrupted
+            </Badge>
+          )}
+        />
+        <TooltipContent>
+          <p>This save data is corrupted and may not be readable</p>
+        </TooltipContent>
+      </Tooltip>
+    )}
+  </>
+);
+
 const Ps2SaveRow: React.FC<{
   save: Ps2SaveInfo;
   index: number;
@@ -63,6 +96,7 @@ const Ps2SaveRow: React.FC<{
           {save.ps1 && <Badge variant="outline">PS1</Badge>}
           {save.pocketStation && <Badge variant="outline">PS</Badge>}
           {save.hidden && <Badge variant="outline">Hidden</Badge>}
+          <SaveStatusBadge save={save} />
         </div>
         <p className="text-xs text-muted-foreground">
           {formatSize(save.totalSize)}

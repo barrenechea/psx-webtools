@@ -3,12 +3,14 @@
 // page-granular undo/redo.
 
 import { crc32Update, formatCrc32 } from "../crc32";
+import { checkPage } from "./ps2-ecc";
 import type { Ps2IconModel } from "./ps2-icon";
 import { parsePs2Icon } from "./ps2-icon";
 import type { Ps2IconCorner, Ps2IconSys } from "./ps2-iconsys";
 import { buildIconSys, parseIconSys } from "./ps2-iconsys";
 import {
   CLUSTER_DATA_SIZE,
+  claimFatChain,
   clusterChain,
   FAT_ALLOCATED_BIT,
   FAT_EOF,
@@ -36,6 +38,7 @@ import {
   ROOT_CLUSTER,
   SELF_ENTRY,
   stripImageSpares,
+  walkFatChain,
   writeClusterData,
   writeDirEntry,
 } from "./ps2-pfs";
@@ -269,11 +272,19 @@ export class PS2MemoryCard {
   // Queries
   // -------------------------------------------------------------------
 
-  /** Existing save directories in the root, in on-card order. */
+  /** Existing save directories in the root, in on-card order (includes deleted). */
   getSaves(): Ps2SaveInfo[] {
     if (this.savesCache) return this.savesCache;
     const saves: Ps2SaveInfo[] = [];
-    for (const entry of readDirectory(this.raw, this.sb, ROOT_CLUSTER)) {
+    for (const entry of readDirectory(
+      this.raw,
+      this.sb,
+      ROOT_CLUSTER,
+      undefined,
+      {
+        includeDeleted: true,
+      },
+    )) {
       if (
         !entry.isDir ||
         entry.name === SELF_ENTRY ||
@@ -288,14 +299,9 @@ export class PS2MemoryCard {
   }
 
   getIconSys(saveName: string): Ps2IconSys | null {
-    const saveDir = this.getRootDirEntry(saveName);
+    const saveDir = this.getRootDirEntry(saveName, true);
     if (saveDir === null) return null;
-    for (const file of readDirectory(
-      this.raw,
-      this.sb,
-      saveDir.cluster,
-      saveDir.length,
-    )) {
+    for (const file of this.listSaveEntries(saveDir)) {
       if (file.isFile && file.name.toLowerCase() === "icon.sys") {
         try {
           return parseIconSys(this.readChainBytes(file));
@@ -309,16 +315,11 @@ export class PS2MemoryCard {
 
   /** File bytes of one file in one save (exact name match). */
   readFile(saveName: string, fileName: string): Uint8Array {
-    const saveDir = this.getRootDirEntry(saveName);
+    const saveDir = this.getRootDirEntry(saveName, true);
     if (saveDir === null) {
       throw new Error(`Save not found: ${saveName}`);
     }
-    for (const file of readDirectory(
-      this.raw,
-      this.sb,
-      saveDir.cluster,
-      saveDir.length,
-    )) {
+    for (const file of this.listSaveEntries(saveDir)) {
       if (file.isFile && file.name === fileName) {
         return this.readChainBytes(file);
       }
@@ -331,14 +332,9 @@ export class PS2MemoryCard {
    * else the largest file that is not icon.sys. Null when the save has none.
    */
   getSingleSaveBytes(saveName: string): Uint8Array | null {
-    const saveDir = this.getRootDirEntry(saveName);
+    const saveDir = this.getRootDirEntry(saveName, true);
     if (saveDir === null) return null;
-    const files = readDirectory(
-      this.raw,
-      this.sb,
-      saveDir.cluster,
-      saveDir.length,
-    ).filter((f) => f.isFile);
+    const files = this.listSaveEntries(saveDir).filter((f) => f.isFile);
     let picked: Ps2DirEntry | null = null;
     for (const file of files) {
       if (sameDirentName(file.name, saveName)) {
@@ -361,15 +357,10 @@ export class PS2MemoryCard {
 
   /** Every file in a save as name + bytes (container export input). */
   getSaveFiles(saveName: string): { name: string; data: Uint8Array }[] {
-    const saveDir = this.getRootDirEntry(saveName);
+    const saveDir = this.getRootDirEntry(saveName, true);
     if (saveDir === null) return [];
     const out: { name: string; data: Uint8Array }[] = [];
-    for (const entry of readDirectory(
-      this.raw,
-      this.sb,
-      saveDir.cluster,
-      saveDir.length,
-    )) {
+    for (const entry of this.listSaveEntries(saveDir)) {
       if (entry.isFile) {
         out.push({ name: entry.name, data: this.readChainBytes(entry) });
       }
@@ -506,6 +497,54 @@ export class PS2MemoryCard {
   }
 
   /**
+   * Inverse of {@link deleteSave}: set exists on the directory and inner
+   * files and reclaim leftover FAT next-links. Fails when the save is live,
+   * missing, nested, or its clusters have been reused.
+   */
+  public restoreSave(name: string): boolean {
+    const entry = this.getRootDirEntry(name, true);
+    if (entry === null || entry.exists) return false;
+    const inner = this.listSaveEntries(entry).filter(
+      (e) => e.name !== SELF_ENTRY && e.name !== PARENT_ENTRY,
+    );
+    if (inner.some((e) => e.isDir)) return false;
+    if (this.describeSave(entry).corrupted) return false;
+
+    const toRestore = [...inner, entry];
+    const touched: number[] = [];
+    for (const e of toRestore) {
+      touched.push(this.entryPage(e.relCluster, e.slot));
+      if (e.cluster !== FAT_EOF) {
+        for (const rel of walkFatChain(this.raw, this.sb, e.cluster, true)
+          .clusters) {
+          const fatPage = fatEntryPage(this.raw, this.sb, rel);
+          if (fatPage >= 0) touched.push(fatPage);
+        }
+      }
+    }
+    this.pushHistory(touched);
+
+    for (const e of toRestore) {
+      patchDirEntry(this.raw, this.sb, e.relCluster, e.slot, {
+        mode: e.mode | MODE_EXISTS,
+      });
+      claimFatChain(this.raw, this.sb, e.cluster);
+    }
+    this.changedFlag = true;
+    return true;
+  }
+
+  /**
+   * Soft-delete a live save, or restore a deleted one whose clusters are
+   * still free. Corrupted entries are left untouched.
+   */
+  public toggleDeleteSave(name: string): boolean {
+    const live = this.getRootDirEntry(name, false);
+    if (live !== null) return this.deleteSave(name);
+    return this.restoreSave(name);
+  }
+
+  /**
    * Clone an existing save (files, flags and all) under a new name. The
    * data file named after the source is renamed to the new save name,
    * keeping the "data file carries the save name" convention.
@@ -529,20 +568,23 @@ export class PS2MemoryCard {
    * be re-created elsewhere, e.g. moved to another card via the temp buffer.
    */
   public snapshotSave(name: string): Ps2SaveSnapshot | null {
-    const entry = this.getRootDirEntry(name);
+    const entry = this.getRootDirEntry(name, true);
     if (entry === null) return null;
     const files: FileSpec[] = [];
-    for (const e of readDirectory(
-      this.raw,
-      this.sb,
-      entry.cluster,
-      entry.length,
-    )) {
+    for (const e of this.listSaveEntries(entry)) {
       if (!e.isFile) continue;
-      files.push({ name: e.name, mode: e.mode, data: this.readChainBytes(e) });
+      files.push({
+        name: e.name,
+        mode: e.exists ? e.mode : e.mode | MODE_EXISTS,
+        data: this.readChainBytes(e),
+      });
     }
     if (files.length === 0) return null;
-    return { name, mode: entry.mode, files };
+    return {
+      name,
+      mode: entry.exists ? entry.mode : entry.mode | MODE_EXISTS,
+      files,
+    };
   }
 
   /** Re-create a snapshotted save under its original name. */
@@ -979,12 +1021,30 @@ export class PS2MemoryCard {
   // -------------------------------------------------------------------
 
   private describeSave(entry: Ps2DirEntry): Ps2SaveInfo {
-    const files = readDirectory(
-      this.raw,
-      this.sb,
-      entry.cluster,
-      entry.length,
-    ).filter((f) => f.isFile);
+    const deleted = !entry.exists;
+    const clusterOk =
+      entry.cluster !== 0 &&
+      entry.cluster !== FAT_EOF &&
+      entry.cluster < this.sb.allocEnd;
+    let corrupted = !clusterOk;
+    const inner = clusterOk ? this.listSaveEntries(entry) : [];
+    const files = inner.filter((f) => f.isFile);
+    if (clusterOk) {
+      if (this.chainIsCorrupt(entry.cluster, 0, deleted)) corrupted = true;
+      if (!inner.some((e) => e.name === SELF_ENTRY)) corrupted = true;
+      const firstFat = fatGet(this.raw, this.sb, entry.cluster);
+      if (deleted) {
+        if (firstFat & FAT_ALLOCATED_BIT) corrupted = true;
+      } else if ((firstFat & FAT_ALLOCATED_BIT) === 0 && firstFat !== FAT_EOF) {
+        corrupted = true;
+      }
+      for (const file of files) {
+        if (this.chainIsCorrupt(file.cluster, file.length, deleted)) {
+          corrupted = true;
+        }
+      }
+    }
+
     let icon: Ps2IconSys | null = null;
     for (const file of files) {
       if (file.name.toLowerCase() === "icon.sys") {
@@ -1045,11 +1105,62 @@ export class PS2MemoryCard {
             ambient: icon.lightAmbient,
           }
         : null,
+      deleted,
+      corrupted,
     };
   }
 
-  private getRootDirEntry(saveName: string): Ps2DirEntry | null {
-    for (const entry of readDirectory(this.raw, this.sb, ROOT_CLUSTER)) {
+  private listSaveEntries(entry: Ps2DirEntry): Ps2DirEntry[] {
+    const deleted = !entry.exists;
+    return readDirectory(this.raw, this.sb, entry.cluster, entry.length, {
+      includeDeleted: deleted,
+      released: deleted,
+    });
+  }
+
+  private chainIsCorrupt(
+    firstRel: number,
+    length: number,
+    released: boolean,
+  ): boolean {
+    if (firstRel === FAT_EOF) return length > 0;
+    if (firstRel >= this.sb.allocEnd) return true;
+    const walk = walkFatChain(this.raw, this.sb, firstRel, released);
+    if (
+      walk.stop === "reused" ||
+      walk.stop === "oob" ||
+      walk.stop === "cycle" ||
+      walk.stop === "bad"
+    ) {
+      return true;
+    }
+    const needed =
+      length <= 0 ? (released ? 1 : 0) : Math.ceil(length / CLUSTER_DATA_SIZE);
+    if (length > 0 && walk.clusters.length < needed) return true;
+    for (const rel of walk.clusters) {
+      const abs = this.sb.allocOffset + rel;
+      for (let slot = 0; slot < PAGES_PER_CLUSTER; slot++) {
+        const off = (abs * PAGES_PER_CLUSTER + slot) * PAGE_SIZE;
+        if (off + PAGE_SIZE > this.raw.length) return true;
+        if (checkPage(this.raw.subarray(off, off + PAGE_SIZE)) === "corrupt") {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private getRootDirEntry(
+    saveName: string,
+    includeDeleted = false,
+  ): Ps2DirEntry | null {
+    for (const entry of readDirectory(
+      this.raw,
+      this.sb,
+      ROOT_CLUSTER,
+      undefined,
+      { includeDeleted },
+    )) {
       if (entry.isDir && sameDirentName(entry.name, saveName)) {
         return entry;
       }

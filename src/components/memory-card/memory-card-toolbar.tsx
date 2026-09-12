@@ -37,6 +37,7 @@ interface MemoryCardToolbarProps {
   hasCopiedSave: boolean;
   isSlotEmpty: boolean;
   isDeletable: boolean;
+  isRestore: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -61,6 +62,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
   hasCopiedSave,
   isSlotEmpty,
   isDeletable,
+  isRestore,
   canUndo,
   canRedo,
   onUndo,
@@ -82,6 +84,8 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
   const targetSelected = isPs2
     ? selectedPs2Save !== null
     : selectedSlot !== null && isDeletable;
+  const canDelete = targetSelected && isDeletable;
+  const deleteLabel = isRestore ? "Restore save" : "Delete save";
 
   return (
     <div className="flex items-center justify-between border-b border-border bg-muted/80 p-2">
@@ -185,7 +189,7 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
                 onClick={onMove}
                 disabled={
                   isPs2
-                    ? selectedPs2Save === null
+                    ? selectedPs2Save === null || isRestore || !isDeletable
                     : selectedSlot === null || !isDeletable
                 }
                 aria-label="Move to buffer"
@@ -225,14 +229,14 @@ export const MemoryCardToolbar: React.FC<MemoryCardToolbarProps> = ({
                 variant="ghost"
                 size="icon"
                 onClick={onDelete}
-                disabled={!targetSelected}
-                aria-label="Delete save"
+                disabled={!canDelete}
+                aria-label={deleteLabel}
               >
                 <TrashIcon className="size-4" />
               </Button>
             )}
           />
-          <TooltipContent side="bottom">Delete save</TooltipContent>
+          <TooltipContent side="bottom">{deleteLabel}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger

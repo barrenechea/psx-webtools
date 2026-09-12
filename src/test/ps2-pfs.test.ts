@@ -5,6 +5,7 @@
 import { PS2_CONQUEST_MAGIC } from "@/lib/ps2/ps2-conquest";
 import { checkPage, ECC_ALL_FF_CODE } from "@/lib/ps2/ps2-ecc";
 import {
+  claimFatChain,
   CLUSTER_DATA_SIZE,
   clusterChain,
   clusterDataOffset,
@@ -30,8 +31,10 @@ import {
   readChainBytes,
   readDirectory,
   readDirEntry,
+  releaseFatChain,
   ROOT_CLUSTER,
   SELF_ENTRY,
+  walkFatChain,
   writeClusterData,
   writeDirEntry,
 } from "@/lib/ps2/ps2-pfs";
@@ -365,6 +368,30 @@ describe("allocation and chains", () => {
     ]);
     everyPageClean(raw);
   });
+
+  it("follows leftover next-links after release and claim restores them", () => {
+    const { raw, sb } = blankCard();
+    setChain(raw, sb, 1, [2, 3]);
+    expect(clusterChain(raw, sb, 1)).toEqual([1, 2, 3]);
+    releaseFatChain(raw, sb, 1);
+    expect(fatGet(raw, sb, 1) & FAT_ALLOCATED_BIT).toBe(0);
+    expect(walkFatChain(raw, sb, 1, true).clusters).toEqual([1, 2, 3]);
+    expect(clusterChain(raw, sb, 1)).toEqual([1]);
+    expect(claimFatChain(raw, sb, 1)).toBe(true);
+    expect(clusterChain(raw, sb, 1)).toEqual([1, 2, 3]);
+    expect(fatGet(raw, sb, 3)).toBe(FAT_EOF);
+  });
+
+  it("treats an allocated cluster as reused on a released walk", () => {
+    const { raw, sb } = blankCard();
+    setChain(raw, sb, 1, [2, 3]);
+    releaseFatChain(raw, sb, 1);
+    fatSet(raw, sb, 2, FAT_EOF);
+    const walk = walkFatChain(raw, sb, 1, true);
+    expect(walk.clusters).toEqual([1]);
+    expect(walk.stop).toBe("reused");
+    expect(claimFatChain(raw, sb, 1)).toBe(false);
+  });
 });
 
 describe("directory entries", () => {
@@ -449,6 +476,33 @@ describe("directory entries", () => {
       dirEntry: 0,
     });
     expect(readDirectory(raw, sb, erased)).toEqual([]);
+  });
+
+  it("lists deleted dirents when includeDeleted is set", () => {
+    const { raw, sb } = blankCard();
+    const rel = findFreeCluster(raw, sb)!;
+    dirEntry(raw, sb, rel, 0, {
+      name: "LIVESAVE",
+      mode: 0x8427,
+      length: 1,
+      cluster: 9,
+      dirEntry: 0,
+    });
+    dirEntry(raw, sb, rel, 1, {
+      name: "DEADSAVE",
+      mode: 0x427,
+      length: 1,
+      cluster: 10,
+      dirEntry: 1,
+    });
+    const dead = readDirEntry(raw, sb, rel, 1);
+    expect(dead.exists).toBe(false);
+    expect(dead.isDir).toBe(true);
+    expect(
+      readDirectory(raw, sb, rel, undefined, { includeDeleted: true }).map(
+        (e) => e.name,
+      ),
+    ).toEqual(["LIVESAVE", "DEADSAVE"]);
   });
 
   it("round-trips Shift-JIS dirent names", () => {

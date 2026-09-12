@@ -55,6 +55,16 @@ export interface Ps2SaveInfo {
    * OSDSYS ICOBYSYS for `_SCE8` / `B[IEA]DATA-SYSTEM`, otherwise ICOBFBRK.
    */
   iconModel: Ps2IconModel | null;
+  /**
+   * Exists bit is clear on the root dirent: the console (and this app) hide
+   * the save, but the name, leftover FAT next-links, and file bytes remain.
+   */
+  deleted: boolean;
+  /**
+   * Directory or file chain is not restorable as-is: reused clusters, a
+   * truncated FAT walk, missing `.`, or ECC-corrupt pages.
+   */
+  corrupted: boolean;
   /** icon.sys lighting for the 3D icon: three directional lights + ambient. */
   iconLighting: {
     dirs: number[][];

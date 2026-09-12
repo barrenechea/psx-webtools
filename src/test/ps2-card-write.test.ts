@@ -14,6 +14,7 @@ import {
   fatSet,
   findFreeCluster,
   format2,
+  PAGE_DATA_SIZE,
   PAGE_SIZE,
   PARENT_ENTRY,
   parseSuperblock,
@@ -485,7 +486,16 @@ describe("PS2MemoryCard deleteSave", () => {
     for (const f of innerFiles) {
       expect(readDirEntry(raw, sb, f.relCluster, f.slot).exists).toBe(false);
     }
-    expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0002"]);
+    expect(
+      card.getSaves().map((s) => [s.name, s.deleted, s.corrupted]),
+    ).toEqual([
+      ["SAVE-AAA0001", true, false],
+      ["SAVE-BBB0002", false, false],
+    ]);
+    expect(card.getSaves()[0].files.map((f) => f.name)).toEqual([
+      "icon.sys",
+      "SAVE-AAA0001",
+    ]);
     expect([...card.readFile("SAVE-BBB0002", "SAVE-BBB0002")]).toEqual([
       ...pattern(2000),
     ]);
@@ -495,9 +505,9 @@ describe("PS2MemoryCard deleteSave", () => {
     expect(card.deleteSave("NOPE")).toBe(false);
 
     expect(card.undo()).toBe(true);
-    expect(card.getSaves().map((s) => s.name)).toEqual([
-      "SAVE-AAA0001",
-      "SAVE-BBB0002",
+    expect(card.getSaves().map((s) => [s.name, s.deleted])).toEqual([
+      ["SAVE-AAA0001", false],
+      ["SAVE-BBB0002", false],
     ]);
     const restored = readDirEntry(
       card.getRawData(),
@@ -508,7 +518,10 @@ describe("PS2MemoryCard deleteSave", () => {
     expect(restored.exists).toBe(true);
     expect(restored.mode).toBe(0x8427);
     expect(card.redo()).toBe(true);
-    expect(card.getSaves().map((s) => s.name)).toEqual(["SAVE-BBB0002"]);
+    expect(card.getSaves().map((s) => [s.name, s.deleted])).toEqual([
+      ["SAVE-AAA0001", true],
+      ["SAVE-BBB0002", false],
+    ]);
     everyPageClean(card.getRawData());
   });
 
@@ -553,6 +566,73 @@ describe("PS2MemoryCard deleteSave", () => {
         Array(0x1c).fill(0x33),
       );
     }
+  });
+});
+
+describe("PS2MemoryCard toggleDeleteSave", () => {
+  it("restores a soft-deleted save's exists bits, FAT chain, and bytes", () => {
+    const card = PS2MemoryCard.format(8192);
+    const data = pattern(2500);
+    card.importSingleSave("SAVE-AAA0001", data, { title: "Recover Me" });
+    expect(card.toggleDeleteSave("SAVE-AAA0001")).toBe(true);
+    const deleted = card.getSaves()[0];
+    expect(deleted.deleted).toBe(true);
+    expect(deleted.corrupted).toBe(false);
+    expect(deleted.title).toBe("Recover Me");
+    expect([...card.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...data,
+    ]);
+
+    expect(card.toggleDeleteSave("SAVE-AAA0001")).toBe(true);
+    const live = card.getSaves()[0];
+    expect(live.deleted).toBe(false);
+    expect(live.corrupted).toBe(false);
+    const raw = card.getRawData();
+    const sb = card.getSuperblock();
+    const root = readDirEntry(raw, sb, 1, 0);
+    expect(root.name).toBe("SAVE-AAA0001");
+    expect(root.exists).toBe(true);
+    expect(fatGet(raw, sb, live.dataCluster) & FAT_ALLOCATED_BIT).not.toBe(0);
+    expect([...card.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
+      ...data,
+    ]);
+    everyPageClean(raw);
+  });
+
+  it("marks a deleted save corrupted when its first cluster is reused", () => {
+    const card = PS2MemoryCard.format(8192);
+    card.importSingleSave("SAVE-AAA0001", pattern(1000));
+    expect(card.deleteSave("SAVE-AAA0001")).toBe(true);
+    const sb = card.getSuperblock();
+    const raw = card.getRawData();
+    const gone = readDirEntry(raw, sb, 1, 0);
+    fatSet(raw, sb, gone.cluster, FAT_EOF);
+    card.loadFromRawData(raw);
+    const save = card.getSaves()[0];
+    expect(save.deleted).toBe(true);
+    expect(save.corrupted).toBe(true);
+    expect(card.restoreSave("SAVE-AAA0001")).toBe(false);
+    expect(card.toggleDeleteSave("SAVE-AAA0001")).toBe(false);
+  });
+
+  it("marks a live save corrupted when a data page ECC no longer matches", () => {
+    const card = PS2MemoryCard.format(8192);
+    card.importSingleSave("SAVE-AAA0001", pattern(1000));
+    const sb = card.getSuperblock();
+    const raw = card.getRawData();
+    const save = card.getSaves()[0];
+    const dataFile = readDirectory(
+      raw,
+      sb,
+      save.dataCluster,
+      save.entryCount,
+    ).find((e) => e.isFile && e.name === "SAVE-AAA0001");
+    expect(dataFile).toBeDefined();
+    const page = (sb.allocOffset + dataFile!.cluster) * 2 * PAGE_SIZE;
+    raw[page + PAGE_DATA_SIZE] ^= 0x01;
+    card.loadFromRawData(raw);
+    expect(card.getSaves()[0].corrupted).toBe(true);
+    expect(card.getSaves()[0].deleted).toBe(false);
   });
 });
 
@@ -801,8 +881,10 @@ describe("PS2MemoryCard temp-buffer snapshot/insert/replace", () => {
     expect(card.getSaves()[0].hidden).toBe(true);
     // replaceSave is delete + insert: two undo steps.
     expect(card.undoCount).toBe(undoBefore + 2);
-    expect(card.undo()).toBe(true); // revert insert -> no save present
-    expect(card.getSaves().map((s) => s.name)).toEqual([]);
+    expect(card.undo()).toBe(true); // revert insert -> deleted original remains
+    expect(card.getSaves().map((s) => [s.name, s.deleted])).toEqual([
+      ["SAVE-AAA0001", true],
+    ]);
     expect(card.undo()).toBe(true); // revert delete -> original restored
     expect([...card.readFile("SAVE-AAA0001", "SAVE-AAA0001")]).toEqual([
       ...before,

@@ -52,6 +52,8 @@ function ps2Save(overrides: Partial<Ps2SaveInfo> = {}): Ps2SaveInfo {
     viewIcon: "",
     iconModel: null,
     iconLighting: null,
+    deleted: false,
+    corrupted: false,
     ...overrides,
   };
 }
