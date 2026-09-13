@@ -10,6 +10,7 @@ import {
   pageSpare,
 } from "./ps2-ecc";
 import { encodeDirentName } from "./ps2-sjis";
+import { scanSpareMarkedEraseBlocks } from "./ps2-spare-scan";
 import type { Ps2DateTime } from "./ps2-types";
 
 export const PAGE_SIZE = ECC_PAGE_SIZE; // 528
@@ -952,37 +953,6 @@ function nextGoodAbs(
   return abs;
 }
 
-function pageSpareHasNonFF(raw: Uint8Array, page: number): boolean {
-  const off = page * PAGE_SIZE + PAGE_DATA_SIZE;
-  const end = off + (PAGE_SIZE - PAGE_DATA_SIZE);
-  if (end > raw.length) return false;
-  for (let i = off; i < end; i++) {
-    if (raw[i] !== 0xff) return true;
-  }
-  return false;
-}
-
-/**
- * Scan erase blocks 1 … n-1 (not 0), at most 14 hits. A block is bad if
- * page 0 or page 1 has any spare byte ≠ 0xFF. Block 0 is skipped so a
- * programmed superblock Hamming spare is not treated as a defect.
- */
-function scanBadEraseBlocks(
-  raw: Uint8Array,
-  clustersPerCard: number,
-): number[] {
-  const list = new Array<number>(BAD_BLOCK_SLOTS).fill(0xffffffff);
-  const blocks = (clustersPerCard * PAGES_PER_CLUSTER) / PAGES_PER_BLOCK;
-  let hits = 0;
-  for (let b = 1; b < blocks && hits < 14; b++) {
-    const page0 = b * PAGES_PER_BLOCK;
-    if (pageSpareHasNonFF(raw, page0) || pageSpareHasNonFF(raw, page0 + 1)) {
-      list[hits++] = b;
-    }
-  }
-  return list;
-}
-
 function readOnDiskBadBlockList(raw: Uint8Array): number[] {
   const list: number[] = [];
   for (let i = 0; i < BAD_BLOCK_SLOTS; i++) {
@@ -1058,7 +1028,11 @@ export function format2(
   } else if (superblockMagicMatches(raw)) {
     list = readOnDiskBadBlockList(raw);
   } else {
-    list = scanBadEraseBlocks(raw, clustersPerCard);
+    list = packBadBlockList(
+      scanSpareMarkedEraseBlocks(eraseBlockCount(clustersPerCard), (page) =>
+        raw.subarray(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+      ),
+    );
   }
   let backupBlock1 = blocks - 1;
   while (isListedEraseBlock(list, backupBlock1)) backupBlock1--;

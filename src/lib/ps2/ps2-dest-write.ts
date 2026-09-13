@@ -1,7 +1,6 @@
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import {
-  BAD_BLOCK_SLOTS,
   eraseBlockCount,
   format2,
   occupiedBadBlocks,
@@ -11,6 +10,7 @@ import {
   readBadBlockListFromPage,
   sameOccupiedBadBlocks,
 } from "@/lib/ps2/ps2-pfs";
+import { scanSpareMarkedEraseBlocksAsync } from "@/lib/ps2/ps2-spare-scan";
 import type { Ps2CardImageResult, Ps2CardSpecs } from "@/lib/ps2/ps2-types";
 
 export type Ps2DestNand = {
@@ -19,79 +19,15 @@ export type Ps2DestNand = {
   eraseBlock: (block: number) => Promise<boolean>;
 };
 
-type Ps2Page0Guard =
-  | { ok: true; page0: Uint8Array }
-  | { ok: false; result: Ps2CardImageResult };
-
-type Ps2SkipSurvey =
-  | { ok: true; skip: number[] }
-  | { ok: false; result: Ps2CardImageResult };
-
-type Ps2DestSeed =
-  | { ok: true; seed: number[] }
-  | { ok: false; result: Ps2CardImageResult };
-
-type Ps2ImageBuild =
-  | { ok: true; image: Uint8Array }
+type DestResult<T extends object> =
+  | ({ ok: true } & T)
   | { ok: false; result: Ps2CardImageResult };
 
 export type PreparePs2ImageResult =
-  | { ok: true; image: Uint8Array }
+  | { ok: true; image: Uint8Array; blocks: number[] }
   | { ok: false; message: string };
 
-/** Occupied dest skip list from page 0's superblock `0xD0` slots. */
-export function destOccupiedSkip(
-  page0: Uint8Array,
-  blockCount: number,
-): number[] {
-  return occupiedBadBlocks(readBadBlockListFromPage(page0) ?? [], blockCount);
-}
-
-/**
- * Relocate a dump onto the destination card's live bad-block list. Same list
- * keeps the source bytes. An unparseable image is only writable when the dest
- * list is empty (1:1 program of every block).
- */
-export function preparePs2ImageForDest(
-  image: Uint8Array,
-  destBad: readonly number[],
-): PreparePs2ImageResult {
-  const card = PS2MemoryCard.tryFromBytes(image);
-  if (card === null) {
-    if (destBad.length === 0) return { ok: true, image };
-    return {
-      ok: false,
-      message:
-        "The card image is not a PS2 filesystem, so it cannot be relocated around the card's bad blocks.",
-    };
-  }
-  const blocks = eraseBlockCount(card.getSuperblock().clustersPerCard);
-  const want = occupiedBadBlocks(destBad, blocks);
-  const have = occupiedBadBlocks(card.getSuperblock().badBlockList, blocks);
-  if (sameOccupiedBadBlocks(want, have)) return { ok: true, image };
-  const remapped = card.remapToBadBlocks(want);
-  if (remapped === null) {
-    return {
-      ok: false,
-      message: "The saves do not fit on this card with its bad-block list.",
-    };
-  }
-  return { ok: true, image: remapped.getCardImage(true) };
-}
-
-export function ps2SkipListTooLong(
-  skip: readonly number[],
-): Ps2CardImageResult | null {
-  if (skip.length <= BAD_BLOCK_SLOTS) return null;
-  return {
-    status: "error",
-    message: `The PS2 card has ${skip.length} bad erase blocks; the filesystem can list at most ${BAD_BLOCK_SLOTS}.`,
-  };
-}
-
-export function ps2DestGeometryError(
-  specs: Ps2CardSpecs,
-): Ps2CardImageResult | null {
+function ps2DestGeometryError(specs: Ps2CardSpecs): Ps2CardImageResult | null {
   if (specs.pageSize !== 512) {
     return {
       status: "error",
@@ -107,14 +43,120 @@ export function ps2DestGeometryError(
   return null;
 }
 
+function pageIsErased(image: Uint8Array, page: number): boolean {
+  const start = page * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  for (let i = start; i < end; i++) {
+    if (image[i] !== 0xff) return false;
+  }
+  return true;
+}
+
+function blockHasProgrammedPage(image: Uint8Array, block: number): boolean {
+  const first = block * PAGES_PER_BLOCK;
+  for (let page = first; page < first + PAGES_PER_BLOCK; page++) {
+    if (!pageIsErased(image, page)) return true;
+  }
+  return false;
+}
+
+function superblockLast(blocks: readonly number[]): number[] {
+  const rest = blocks.filter((b) => b !== 0);
+  return blocks.includes(0) ? [...rest, 0] : rest;
+}
+
+/** Unlisted erase-block indices in card order (block 0 first when present). */
+export function unlistedEraseBlocks(
+  blockCount: number,
+  skip: readonly number[],
+): number[] {
+  const skipSet = new Set(skip);
+  const out: number[] = [];
+  for (let block = 0; block < blockCount; block++) {
+    if (!skipSet.has(block)) out.push(block);
+  }
+  return out;
+}
+
+/**
+ * Every unlisted erase block, with block 0 last. Used for an unparseable 1:1
+ * dump restore.
+ */
+export function destAllBlocks(
+  blockCount: number,
+  skip: readonly number[],
+): number[] {
+  return superblockLast(unlistedEraseBlocks(blockCount, skip));
+}
+
+/**
+ * Erase-block indices that must be programmed from `image`. Listed dest
+ * blocks are omitted. A block is picked when any of its pages is not 0xFF.
+ * Block 0 is last so the superblock is written after IFC/FAT/root.
+ */
+export function destWriteBlocks(
+  image: Uint8Array,
+  skip: readonly number[],
+): number[] {
+  const blockCount = image.length / PAGE_SIZE / PAGES_PER_BLOCK;
+  return superblockLast(
+    unlistedEraseBlocks(blockCount, skip).filter((block) =>
+      blockHasProgrammedPage(image, block),
+    ),
+  );
+}
+
+/**
+ * Relocate a dump onto the destination card's bad-block list. Same list keeps
+ * the source bytes. An unparseable image is only writable when the dest list
+ * is empty (1:1 program of every block). The dest write-block list is chosen
+ * in this same pass as the parse.
+ */
+export function preparePs2ImageForDest(
+  image: Uint8Array,
+  destBad: readonly number[],
+): PreparePs2ImageResult {
+  const card = PS2MemoryCard.tryFromBytes(image);
+  if (card === null) {
+    if (destBad.length === 0) {
+      const blockCount = image.length / PAGE_SIZE / PAGES_PER_BLOCK;
+      return {
+        ok: true,
+        image,
+        blocks: destAllBlocks(blockCount, destBad),
+      };
+    }
+    return {
+      ok: false,
+      message:
+        "The card image is not a PS2 filesystem, so it cannot be relocated around the card's bad blocks.",
+    };
+  }
+  const cardBlocks = eraseBlockCount(card.getSuperblock().clustersPerCard);
+  const want = occupiedBadBlocks(destBad, cardBlocks);
+  const have = occupiedBadBlocks(card.getSuperblock().badBlockList, cardBlocks);
+  if (sameOccupiedBadBlocks(want, have)) {
+    return { ok: true, image, blocks: destWriteBlocks(image, destBad) };
+  }
+  const remapped = card.remapToBadBlocks(want);
+  if (remapped === null) {
+    return {
+      ok: false,
+      message: "The saves do not fit on this card with its bad-block list.",
+    };
+  }
+  const out = remapped.getCardImage(true);
+  return { ok: true, image: out, blocks: destWriteBlocks(out, destBad) };
+}
+
 // Conquest guard, before the first erase packet. Arcade SoulCalibur II
 // Conquest cards have no PFS filesystem; the firmware erases on request, so
 // the host must refuse here. The guard is fail-closed: a page-0 read that
 // does not return a page cannot prove the card is not Conquest, so refuse
 // too (erasing an unreadable Conquest card would destroy it).
-export async function readPs2Page0ForDestructive(
+async function readPs2Page0ForDestructive(
   nand: Pick<Ps2DestNand, "readPage">,
-): Promise<Ps2Page0Guard> {
+): Promise<DestResult<{ page0: Uint8Array }>> {
   const page0 = await nand.readPage(0);
   if (page0 === null) {
     return {
@@ -139,56 +181,34 @@ export async function readPs2Page0ForDestructive(
   return { ok: true, page0 };
 }
 
-async function destSeedFromPage0(
+/**
+ * Keep the on-disk `0xD0` list when page 0 is formatted; otherwise spare-scan
+ * erase blocks 1 … n−1 (at most 14 hits).
+ */
+async function destSkipList(
   nand: Pick<Ps2DestNand, "readPage">,
   specs: Ps2CardSpecs,
-): Promise<Ps2DestSeed> {
+): Promise<DestResult<{ skip: number[] }>> {
   const page0r = await readPs2Page0ForDestructive(nand);
   if (!page0r.ok) return page0r;
-  return {
-    ok: true,
-    seed: destOccupiedSkip(page0r.page0, specs.pageCount / PAGES_PER_BLOCK),
-  };
-}
-
-/**
- * Skip `seed` (those blocks are not erased) and any live `'f'`. Block 0 erase
- * failure is fatal. Growing past {@link BAD_BLOCK_SLOTS} aborts. `onBlock` is
- * called after each erase-block index is decided.
- */
-export async function surveyPs2EraseBlocks(
-  nand: Pick<Ps2DestNand, "eraseBlock">,
-  blockCount: number,
-  seed: readonly number[],
-  onBlock: (block: number, blockCount: number) => void,
-): Promise<Ps2SkipSurvey> {
-  const skip = new Set(occupiedBadBlocks(seed, blockCount));
-  const cap = ps2SkipListTooLong([...skip]);
-  if (cap) return { ok: false, result: cap };
-
-  for (let block = 0; block < blockCount; block++) {
-    if (skip.has(block)) {
-      onBlock(block, blockCount);
-      continue;
-    }
-    const erased = await nand.eraseBlock(block);
-    if (!erased) {
-      if (block === 0) {
-        return {
-          ok: false,
-          result: {
-            status: "error",
-            message: `Failed to erase block 0 of ${blockCount}.`,
-          },
-        };
-      }
-      skip.add(block);
-      const grown = ps2SkipListTooLong([...skip]);
-      if (grown) return { ok: false, result: grown };
-    }
-    onBlock(block, blockCount);
+  const blockCount = specs.pageCount / PAGES_PER_BLOCK;
+  const list = readBadBlockListFromPage(page0r.page0);
+  if (list !== null) {
+    return { ok: true, skip: occupiedBadBlocks(list, blockCount) };
   }
-  return { ok: true, skip: occupiedBadBlocks([...skip], blockCount) };
+  const scanned = await scanSpareMarkedEraseBlocksAsync(blockCount, (page) =>
+    nand.readPage(page),
+  );
+  if (!scanned.ok) {
+    return {
+      ok: false,
+      result: {
+        status: "error",
+        message: `Page ${scanned.page} could not be read, so the spare scan could not finish.`,
+      },
+    };
+  }
+  return { ok: true, skip: scanned.hits };
 }
 
 async function programPs2Block(
@@ -196,7 +216,7 @@ async function programPs2Block(
   image: Uint8Array,
   block: number,
   specs: Ps2CardSpecs,
-  onPage: (page: number) => void,
+  onPage: () => void,
 ): Promise<Ps2CardImageResult | null> {
   const blockStart = block * PAGES_PER_BLOCK;
   const blockEnd = blockStart + PAGES_PER_BLOCK;
@@ -211,63 +231,89 @@ async function programPs2Block(
         message: `Failed to write page ${page} of ${specs.pageCount}.`,
       };
     }
-    onPage(page);
+    onPage();
   }
   return null;
 }
 
-async function programPs2SkippedImage(
-  nand: Pick<Ps2DestNand, "writePage">,
+function eraseFailed(block: number, blockCount: number): Ps2CardImageResult {
+  return {
+    status: "error",
+    message: `Failed to erase block ${block} of ${blockCount}.`,
+  };
+}
+
+function destProgress(
+  stepCount: number,
+  onProgress: (progress: number) => void,
+): () => void {
+  let step = 0;
+  return () => {
+    step++;
+    onProgress(step / stepCount);
+  };
+}
+
+async function eraseBlocks(
+  nand: Pick<Ps2DestNand, "eraseBlock">,
+  blocks: readonly number[],
+  specs: Ps2CardSpecs,
+  onStep: () => void,
+): Promise<Ps2CardImageResult | null> {
+  const blockCount = specs.pageCount / PAGES_PER_BLOCK;
+  for (const block of blocks) {
+    const erased = await nand.eraseBlock(block);
+    if (!erased) return eraseFailed(block, blockCount);
+    onStep();
+  }
+  return null;
+}
+
+/** Erase `toErase`, then program `toProgram` from `image`. */
+async function eraseThenProgram(
+  nand: Ps2DestNand,
   image: Uint8Array,
-  skip: readonly number[],
+  toErase: readonly number[],
+  toProgram: readonly number[],
+  specs: Ps2CardSpecs,
+  onProgress: (progress: number) => void,
+): Promise<Ps2CardImageResult | null> {
+  const tick = destProgress(
+    toErase.length + toProgram.length * PAGES_PER_BLOCK,
+    onProgress,
+  );
+  const erased = await eraseBlocks(nand, toErase, specs, tick);
+  if (erased) return erased;
+  for (const block of toProgram) {
+    const fail = await programPs2Block(nand, image, block, specs, tick);
+    if (fail) return fail;
+  }
+  return null;
+}
+
+async function eraseAndProgramBlocks(
+  nand: Ps2DestNand,
+  image: Uint8Array,
+  blocks: readonly number[],
   specs: Ps2CardSpecs,
   onProgress: (progress: number) => void,
 ): Promise<Ps2CardImageResult | null> {
   const blockCount = specs.pageCount / PAGES_PER_BLOCK;
-  const skipSet = new Set(skip);
-  const steps = blockCount * 2;
-  for (let block = 0; block < blockCount; block++) {
-    if (!skipSet.has(block)) {
-      const fail = await programPs2Block(nand, image, block, specs, (page) => {
-        onProgress((blockCount + (page + 1) / PAGES_PER_BLOCK) / steps);
-      });
-      if (fail) return fail;
-    }
-    onProgress((blockCount + block + 1) / steps);
+  const tick = destProgress(blocks.length * (1 + PAGES_PER_BLOCK), onProgress);
+  for (const block of blocks) {
+    const erased = await nand.eraseBlock(block);
+    if (!erased) return eraseFailed(block, blockCount);
+    tick();
+    const fail = await programPs2Block(nand, image, block, specs, tick);
+    if (fail) return fail;
   }
   return null;
-}
-
-async function eraseThenProgram(
-  nand: Ps2DestNand,
-  specs: Ps2CardSpecs,
-  seed: readonly number[],
-  build: (skip: readonly number[]) => Ps2ImageBuild,
-  onProgress: (progress: number) => void,
-): Promise<Ps2CardImageResult> {
-  const blockCount = specs.pageCount / PAGES_PER_BLOCK;
-  const steps = blockCount * 2;
-  const surveyed = await surveyPs2EraseBlocks(nand, blockCount, seed, (block) =>
-    onProgress((block + 1) / steps),
-  );
-  if (!surveyed.ok) return surveyed.result;
-  const built = build(surveyed.skip);
-  if (!built.ok) return built.result;
-  const programmed = await programPs2SkippedImage(
-    nand,
-    built.image,
-    surveyed.skip,
-    specs,
-    onProgress,
-  );
-  if (programmed) return programmed;
-  return { status: "ok", image: built.image, specs };
 }
 
 function format2Image(
   specs: Ps2CardSpecs,
   skip: readonly number[],
-): Ps2ImageBuild {
+): DestResult<{ image: Uint8Array }> {
   const clusters = specs.pageCount / PAGES_PER_CLUSTER;
   try {
     return { ok: true, image: format2(clusters, PS2MemoryCard.nowJst(), skip) };
@@ -282,16 +328,7 @@ function format2Image(
   }
 }
 
-/**
- * Survey erase, build format2 with the skip list, then program good blocks.
- * Listed bad blocks are left listed and not erased. Block 0 erase failure
- * is fatal. Other `'f'` results join the skip list.
- */
-export async function formatPs2DestCard(
-  nand: Ps2DestNand,
-  specs: Ps2CardSpecs,
-  onProgress: (progress: number) => void,
-): Promise<Ps2CardImageResult> {
+function formatGeometryError(specs: Ps2CardSpecs): Ps2CardImageResult | null {
   const geo = ps2DestGeometryError(specs);
   if (geo) return geo;
   const clusters = specs.pageCount / PAGES_PER_CLUSTER;
@@ -307,20 +344,47 @@ export async function formatPs2DestCard(
         "The PS2 card geometry is not block-aligned, so the formatted image would not match the card; refusing to format.",
     };
   }
-  const seedr = await destSeedFromPage0(nand, specs);
-  if (!seedr.ok) return seedr.result;
-  return eraseThenProgram(
-    nand,
-    specs,
-    seedr.seed,
-    (skip) => format2Image(specs, skip),
-    onProgress,
-  );
+  return null;
 }
 
 /**
- * Dest skip list wins. Fit-check against page 0 before erase; if skip grows
- * during survey, remap again. Same list keeps the source bytes.
+ * Keep the on-disk `0xD0` list when page 0 is formatted; otherwise spare-scan.
+ * Build format2 with that list. Quick programs only filesystem erase blocks,
+ * like the PS3 Utility. Full erases every unlisted block first. An erase `'f'`
+ * aborts (the list is not updated).
+ */
+export async function formatPs2DestCard(
+  nand: Ps2DestNand,
+  specs: Ps2CardSpecs,
+  onProgress: (progress: number) => void,
+  quick: boolean,
+): Promise<Ps2CardImageResult> {
+  const geo = formatGeometryError(specs);
+  if (geo) return geo;
+  const listr = await destSkipList(nand, specs);
+  if (!listr.ok) return listr.result;
+  const built = format2Image(specs, listr.skip);
+  if (!built.ok) return built.result;
+  const writeBlocks = destWriteBlocks(built.image, listr.skip);
+  const toErase = quick
+    ? writeBlocks
+    : unlistedEraseBlocks(specs.pageCount / PAGES_PER_BLOCK, listr.skip);
+  const fail = await eraseThenProgram(
+    nand,
+    built.image,
+    toErase,
+    writeBlocks,
+    specs,
+    onProgress,
+  );
+  if (fail) return fail;
+  return { status: "ok", image: built.image, specs };
+}
+
+/**
+ * Dest list wins. Remap live saves onto it (same list keeps the source bytes).
+ * Program only pages the prepared image actually wrote, except an unparseable
+ * dump onto an empty dest list which is 1:1 of every unlisted block.
  */
 export async function writePs2DestCard(
   nand: Ps2DestNand,
@@ -336,26 +400,17 @@ export async function writePs2DestCard(
       message: "The PS2 card image size does not match the card in the slot.",
     };
   }
-  const seedr = await destSeedFromPage0(nand, specs);
-  if (!seedr.ok) return seedr.result;
-  const pre = preparePs2ImageForDest(image, seedr.seed);
-  if (!pre.ok) return { status: "error", message: pre.message };
-  return eraseThenProgram(
+  const listr = await destSkipList(nand, specs);
+  if (!listr.ok) return listr.result;
+  const prepared = preparePs2ImageForDest(image, listr.skip);
+  if (!prepared.ok) return { status: "error", message: prepared.message };
+  const fail = await eraseAndProgramBlocks(
     nand,
+    prepared.image,
+    prepared.blocks,
     specs,
-    seedr.seed,
-    (skip) => {
-      const prepared = sameOccupiedBadBlocks(skip, seedr.seed)
-        ? pre
-        : preparePs2ImageForDest(image, skip);
-      if (!prepared.ok) {
-        return {
-          ok: false,
-          result: { status: "error", message: prepared.message },
-        };
-      }
-      return { ok: true, image: prepared.image };
-    },
     onProgress,
   );
+  if (fail) return fail;
+  return { status: "ok", image: prepared.image, specs };
 }

@@ -137,7 +137,7 @@ async function withBusy<T>(
 type MgPendingOp =
   | { kind: "read" }
   | { kind: "write"; card: PS1MemoryCard | PS2MemoryCard }
-  | { kind: "format" };
+  | { kind: "format"; choice: FormatChoice };
 
 // Save-dialog format lists. PS1 entries derive from the PS1 extension maps so
 // the generalized dialogs keep their exact previous options; PS2 is a single
@@ -357,7 +357,7 @@ export const MemoryCardManager: React.FC = () => {
   const [isWriteDialogOpen, setIsWriteDialogOpen] = useState(false);
   const [isFormatDialogOpen, setIsFormatDialogOpen] = useState(false);
   // The slot kind probed when the format dialog opens, so it can offer the right
-  // options (PS2 is a full NAND erase, no quick/full).
+  // quick/full copy (PS2 quick is the PS3 Utility path).
   const [formatCardKind, setFormatCardKind] = useState<"ps1" | "ps2">("ps1");
   // Card family detected in the device slot via the 0x83 interrupt edges;
   // drives the slot preview. Null when the slot is empty or not yet probed
@@ -699,7 +699,7 @@ export const MemoryCardManager: React.FC = () => {
       try {
         if (op.kind === "read") await performRead(keyset);
         else if (op.kind === "write") await performWrite(op.card, keyset);
-        else await performFormat({ kind: "ps2" }, keyset);
+        else await performFormat(op.choice, keyset);
       } catch (err) {
         handleMgAuthError(err, op);
       }
@@ -730,8 +730,8 @@ export const MemoryCardManager: React.FC = () => {
     );
   };
 
-  // Probe the slot so the format dialog can hide quick/full for a PS2 card. A
-  // PocketStation is PS1-compatible, so it offers the PS1 quick/full options.
+  // Probe the slot so the format dialog can show PS1 vs PS2 quick/full copy. A
+  // PocketStation is PS1-compatible, so it offers the PS1 frame options.
   const handleFormatClick = async () => {
     setError(null);
     const kind = await checkCard();
@@ -749,7 +749,7 @@ export const MemoryCardManager: React.FC = () => {
     try {
       await performFormat(choice);
     } catch (err) {
-      handleMgAuthError(err, { kind: "format" });
+      handleMgAuthError(err, { kind: "format", choice });
     }
   };
 

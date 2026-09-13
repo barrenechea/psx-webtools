@@ -35,9 +35,12 @@ export enum SupportedFeatures {
 // slot (same PS1 frame path) detected via the PocketStation ID command.
 export type SlotCardKind = "ps1" | "ps2" | "pocketstation";
 
-// What the format dialog confirmed. PS2 is a full NAND rebuild; PS1 keeps the
-// quick (64-frame) vs full (1024-frame) choice.
-export type FormatChoice = { kind: "ps1"; quick: boolean } | { kind: "ps2" };
+// What the format dialog confirmed. Both families keep a quick vs full choice;
+// PS2 quick is the PS3 Utility path (filesystem pages only).
+export type FormatChoice = {
+  kind: "ps1" | "ps2";
+  quick: boolean;
+};
 
 // Card-presence edges the PS3 MC Adaptor reports on interrupt IN `0x83`:
 // `01` is a PS1 insert, `02` is a remove, and `03` is a PS2 insert.
@@ -212,11 +215,14 @@ export abstract class HardwareInterface {
     });
   }
 
-  // Format a PS2 card in the slot (dest-skip survey + format2). Only hardware
-  // that probes the slot (the PS3 MC Adaptor) supports it; the default reports
-  // that it is unavailable so a PS2 slot on another interface fails clearly.
+  // Format a PS2 card in the slot (spare-scan / keep 0xD0, then format2).
+  // `quick` programs filesystem pages only, like the PS3 Utility; full erases
+  // every unlisted block first. Only hardware that probes the slot (the PS3
+  // MC Adaptor) supports it; the default reports that it is unavailable so a
+  // PS2 slot on another interface fails clearly.
   formatPS2Card(
     _onProgress: (progress: number) => void,
+    _quick: boolean,
     _keyset?: Ps2MgKeyset,
   ): Promise<Ps2CardImageResult> {
     return Promise.resolve({

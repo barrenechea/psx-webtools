@@ -243,9 +243,9 @@ export function useDeviceManager(onCardEvent?: (ev: CardEvent) => void) {
     return result.kind;
   };
 
-  // Format the card in the slot (PS2 format2 from Get Specs, or PS1 quick/full
-  // frames). Throws if the device is missing or the format fails. The blank
-  // image stays on the hardware.
+  // Format the card in the slot (PS1 or PS2 quick/full). PS2 keeps the on-disk
+  // list (or spare-scans) and builds format2. Throws if the device is missing
+  // or the format fails. The blank image stays on the hardware.
   const formatCard = async (
     choice: FormatChoice,
     keyset?: Ps2MgKeyset,

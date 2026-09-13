@@ -286,9 +286,9 @@ export function useHardwareConnection(
   };
 
   // Format the card in the slot. PS1 writes 64 (quick) or 1024 (full) frames
-  // through writeMemoryCard. PS2 surveys erase (skipping listed bad blocks
-  // and any live `'f'`), builds format2 with that skip list, then programs
-  // good blocks.
+  // through writeMemoryCard. PS2 keeps the on-disk bad-block list (or
+  // spare-scans an unformatted card) and builds format2; quick programs
+  // filesystem pages only, full erases every unlisted block first.
   const formatMemoryCard = async (
     choice: FormatChoice,
     onProgress?: (progress: number) => void,
@@ -308,9 +308,13 @@ export function useHardwareConnection(
           "The card in the slot is PS2, but a PS1 format was requested.",
         );
       }
-      const result = await device.formatPS2Card((progress) => {
-        onProgress?.(progress);
-      }, keyset);
+      const result = await device.formatPS2Card(
+        (progress) => {
+          onProgress?.(progress);
+        },
+        choice.quick,
+        keyset,
+      );
       if (result.status === "needs-auth") {
         throw new Ps2CardError(
           "This PS2 card needs MagicGate authentication, but no key set is set.",

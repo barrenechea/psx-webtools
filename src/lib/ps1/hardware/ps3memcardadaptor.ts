@@ -694,18 +694,19 @@ export class PS3MemCardAdaptor extends HardwareInterface {
   }
 
   /**
-   * Survey erase, build format2 with the skip list, then program good blocks.
-   * Listed bad blocks are left listed and not erased. Block 0 erase failure
-   * is fatal. Other `'f'` results join the skip list.
+   * Keep the on-disk bad-block list (or spare-scan if unformatted), build
+   * format2, and program filesystem erase blocks. `quick` is the PS3 Utility
+   * path; full erases every unlisted block first.
    */
   override async formatPS2Card(
     onProgress: (progress: number) => void,
+    quick: boolean,
     keyset?: Ps2MgKeyset,
   ): Promise<Ps2CardImageResult> {
     const specsResult = await this.ps2GetSpecsAuth(keyset);
     if (specsResult.status !== "ok") return specsResult;
     const specs = specsResult.specs;
-    return formatPs2DestCard(this.ps2DestNand(specs), specs, onProgress);
+    return formatPs2DestCard(this.ps2DestNand(specs), specs, onProgress, quick);
   }
 
   override async writePS2CardImage(

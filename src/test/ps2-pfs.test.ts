@@ -30,7 +30,9 @@ import {
   parseSuperblock,
   patchDirEntry,
   PS2_FORMAT_VERSION,
+  PS2_MAGIC,
   type Ps2Superblock,
+  readBadBlockListFromPage,
   readChainBytes,
   readDirectory,
   readDirEntry,
@@ -316,6 +318,30 @@ describe("format2 geometry", () => {
     expect(sameOccupiedBadBlocks([800], [816])).toBe(false);
   });
 
+  it("reads occupied 0xD0 slots from a formatted page 0", () => {
+    const page = new Uint8Array(PAGE_SIZE).fill(0xff);
+    page.set(new TextEncoder().encode(PS2_MAGIC), 0);
+    const listed = [800, 816];
+    for (let i = 0; i < 32; i++) {
+      const o = 0xd0 + i * 4;
+      const b = i < listed.length ? listed[i] >>> 0 : 0xffffffff;
+      page[o] = b & 0xff;
+      page[o + 1] = (b >>> 8) & 0xff;
+      page[o + 2] = (b >>> 16) & 0xff;
+      page[o + 3] = (b >>> 24) & 0xff;
+    }
+    const list = readBadBlockListFromPage(page);
+    expect(list).not.toBeNull();
+    if (list === null) return;
+    expect(occupiedBadBlocks(list, 1024)).toEqual([800, 816]);
+  });
+
+  it("returns null when page 0 is not formatted", () => {
+    expect(
+      readBadBlockListFromPage(new Uint8Array(PAGE_SIZE).fill(0xff)),
+    ).toBeNull();
+  });
+
   it("refuses more occupied bad blocks than the superblock can list", () => {
     const tooMany = Array.from(
       { length: BAD_BLOCK_SLOTS + 1 },
@@ -353,6 +379,28 @@ describe("format2 geometry", () => {
     expect(sb.badBlockList[1]).toBe(0xffffffff);
     expect(sb.backupBlock1).toBe(6);
     expect(sb.backupBlock2).toBe(5);
+  });
+
+  it("lists a block when page 1 spare is marked and ignores block 0", () => {
+    const erased = new Uint8Array(64 * 2 * PAGE_SIZE).fill(0xff);
+    erased[PAGE_DATA_SIZE] = 0x00;
+    erased[(4 * PAGES_PER_BLOCK + 1) * PAGE_SIZE + PAGE_DATA_SIZE] = 0x00;
+    const raw = format2(64, FRESH_ROOT_TIME, { fromRaw: erased });
+    const sb = parseSuperblock(raw);
+    expect(occupiedBadBlocks(sb.badBlockList, 8)).toEqual([4]);
+  });
+
+  it("spare-scan of unformatted fromRaw stops at 14 listed blocks", () => {
+    const clusters = 256;
+    const erased = new Uint8Array(clusters * 2 * PAGE_SIZE).fill(0xff);
+    for (let block = 1; block <= 20; block++) {
+      erased[block * PAGES_PER_BLOCK * PAGE_SIZE + PAGE_DATA_SIZE] = 0x00;
+    }
+    const raw = format2(clusters, FRESH_ROOT_TIME, { fromRaw: erased });
+    const sb = parseSuperblock(raw);
+    expect(occupiedBadBlocks(sb.badBlockList, 32)).toEqual(
+      Array.from({ length: 14 }, (_, i) => i + 1),
+    );
   });
 
   it("keeps the existing bad-block list on reformat", () => {
