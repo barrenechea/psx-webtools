@@ -24,10 +24,13 @@ const MEMORY_CARD_SLOT_ITEMS = [
   { value: "1", label: "Slot 2" },
 ];
 
-interface UniromConnectDialogProps {
+interface SlotConnectDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnect: (cardSlot: number, saveSettings: boolean) => Promise<void>;
+  title: string;
+  storageKey: string;
+  note: string;
+  onConnect: (cardSlot: number) => Promise<void>;
 }
 
 interface SavedSettings {
@@ -40,12 +43,12 @@ const DEFAULT_SETTINGS: SavedSettings = {
   saveSettings: false,
 };
 
-const loadSavedSettings = (): SavedSettings => {
+const loadSavedSettings = (storageKey: string): SavedSettings => {
   if (typeof window === "undefined") {
     return DEFAULT_SETTINGS;
   }
 
-  const savedSettings = window.localStorage.getItem("uniromSettings");
+  const savedSettings = window.localStorage.getItem(storageKey);
   if (!savedSettings) {
     return DEFAULT_SETTINGS;
   }
@@ -61,35 +64,40 @@ const loadSavedSettings = (): SavedSettings => {
   }
 };
 
-export const UniromConnectDialog: React.FC<UniromConnectDialogProps> = ({
+export const SlotConnectDialog: React.FC<SlotConnectDialogProps> = ({
   isOpen,
   onOpenChange,
+  title,
+  storageKey,
+  note,
   onConnect,
 }) => {
   const [cardSlot, setCardSlot] = useState<number>(
-    () => loadSavedSettings().cardSlot,
+    () => loadSavedSettings(storageKey).cardSlot,
   );
   const [saveSettings, setSaveSettings] = useState(
-    () => loadSavedSettings().saveSettings,
+    () => loadSavedSettings(storageKey).saveSettings,
   );
 
   const handleConnect = async () => {
-    await onConnect(cardSlot, saveSettings);
+    await onConnect(cardSlot);
     if (saveSettings) {
       localStorage.setItem(
-        "uniromSettings",
+        storageKey,
         JSON.stringify({ cardSlot, saveSettings }),
       );
     } else {
-      localStorage.removeItem("uniromSettings");
+      localStorage.removeItem(storageKey);
     }
   };
+
+  const saveId = `${storageKey}-saveSettings`;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Connect to Unirom</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             Select the memory card slot to read from or write to.
           </DialogDescription>
@@ -117,20 +125,15 @@ export const UniromConnectDialog: React.FC<UniromConnectDialogProps> = ({
             </Select>
           </div>
 
-          <p className="text-sm text-muted-foreground">
-            Note: Unirom connects at a fixed 115200 baud rate. Make sure the
-            Unirom firmware is running on your console.
-          </p>
+          <p className="text-sm text-muted-foreground">{note}</p>
 
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="saveSettings"
+              id={saveId}
               checked={saveSettings}
               onCheckedChange={(checked) => setSaveSettings(checked)}
             />
-            <Label htmlFor="saveSettings">
-              Save settings for next connection
-            </Label>
+            <Label htmlFor={saveId}>Save settings for next connection</Label>
           </div>
         </div>
         <DialogFooter>

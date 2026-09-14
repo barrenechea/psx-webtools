@@ -5,12 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type {
-  IconPalette,
-  SaveInfo,
-  SlotIconData,
-} from "@/lib/ps1-memory-card";
-import type { Ps2SaveInfo } from "@/lib/ps2/ps2-types";
+import type { TempBuffer } from "@/hooks/use-memory-card-workspace";
 
 import { Ps2IconView } from "./ps2-icon-view";
 
@@ -20,13 +15,7 @@ interface CardContentHeaderProps {
   kind: "ps1" | "ps2";
   source: string;
   checksum: string;
-  copiedSlots: SaveInfo[];
-  copiedIcon: {
-    data: SlotIconData;
-    palette: IconPalette;
-    frameCount: number;
-  } | null;
-  copiedPs2: Ps2SaveInfo | null;
+  tempBuffer: TempBuffer;
   badBlocks?: number[];
 }
 
@@ -36,28 +25,27 @@ export const CardContentHeader: React.FC<CardContentHeaderProps> = ({
   kind,
   source,
   checksum,
-  copiedSlots,
-  copiedIcon,
-  copiedPs2,
+  tempBuffer,
   badBlocks = [],
 }) => {
-  // The save currently staged in the temp buffer (PS2 icon or PS1 block icon).
+  const ps1Buffer = tempBuffer?.kind === "ps1" ? tempBuffer : null;
+  const ps2Buffer = tempBuffer?.kind === "ps2" ? tempBuffer : null;
   const bufferedIcon =
     kind === "ps2"
-      ? copiedPs2 && (
-          <Ps2IconView save={copiedPs2} className="size-8 rounded-sm" />
+      ? ps2Buffer && (
+          <Ps2IconView save={ps2Buffer.info} className="size-8 rounded-sm" />
         )
-      : copiedSlots.length > 0 &&
-        copiedIcon && (
+      : ps1Buffer &&
+        ps1Buffer.slots.length > 0 && (
           <>
             <PS1BlockIcon
-              iconData={copiedIcon.data}
-              iconPalette={copiedIcon.palette}
-              iconFrameCount={copiedIcon.frameCount}
+              iconData={ps1Buffer.icon.data}
+              iconPalette={ps1Buffer.icon.palette}
+              iconFrameCount={ps1Buffer.icon.frameCount}
             />
-            {copiedSlots.length > 1 && (
+            {ps1Buffer.slots.length > 1 && (
               <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                {copiedSlots.length}
+                {ps1Buffer.slots.length}
               </span>
             )}
           </>

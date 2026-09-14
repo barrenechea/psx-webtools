@@ -10,6 +10,22 @@ import type {
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import { Ps2CardError, type Ps2MgKeyset } from "@/lib/ps2/ps2-mechacon";
+import type { Ps2CardImageResult } from "@/lib/ps2/ps2-types";
+
+function throwIfPs2AuthResult(
+  result: Ps2CardImageResult,
+): asserts result is Extract<Ps2CardImageResult, { status: "ok" }> {
+  if (result.status === "needs-auth") {
+    throw new Ps2CardError(
+      "This PS2 card needs MagicGate authentication, but no key set is set.",
+      undefined,
+      true,
+    );
+  }
+  if (result.status === "error") {
+    throw new Ps2CardError(result.message, result.step);
+  }
+}
 
 export interface HardwareStartConfig {
   deviceType: string;
@@ -28,6 +44,7 @@ export function useHardwareConnection(
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [firmwareVersion, setFirmwareVersion] = useState<string | null>(null);
+  const connectionGenRef = useRef(0);
 
   const onDeviceDisconnectedRef = useRef(onDeviceDisconnected);
   useEffect(() => {
@@ -48,6 +65,7 @@ export function useHardwareConnection(
   // OS-reported unplug: drop the connection without calling stop() (the
   // device is already gone) and let the caller clear its own UI state.
   const handleDeviceDisconnected = () => {
+    connectionGenRef.current += 1;
     setDevice(null);
     setIsConnected(false);
     setFirmwareVersion(null);
@@ -60,11 +78,12 @@ export function useHardwareConnection(
     startConfig: HardwareStartConfig,
     onStatusUpdate: (status: string) => void,
   ) => {
+    const gen = connectionGenRef.current;
     hardware.onDisconnected = handleDeviceDisconnected;
     hardware.onCardEvent = handleCardEvent;
 
-    let result: string | null;
-
+    let result: string | null = null;
+    let startError: unknown = null;
     try {
       onStatusUpdate(
         `Attempting connection at ${startConfig.baudRate} baud...`,
@@ -76,13 +95,23 @@ export function useHardwareConnection(
         onStatusUpdate,
       );
     } catch (err) {
-      setError((err as Error).message);
-      throw err;
+      startError = err;
+    }
+    if (startError !== null) {
+      setError((startError as Error).message);
+      throw startError;
     }
 
     if (result !== null) {
       setError(result);
       throw new Error(result);
+    }
+
+    if (connectionGenRef.current !== gen) {
+      setDevice(null);
+      setIsConnected(false);
+      setFirmwareVersion(null);
+      throw new Error("Device disconnected.");
     }
 
     setDevice(hardware);
@@ -92,11 +121,14 @@ export function useHardwareConnection(
     onStatusUpdate("Connected successfully.");
   };
 
-  const disconnect = async (onStatusUpdate: (status: string) => void) => {
-    if (device) {
+  const disconnect = async (
+    hardware: HardwareInterface | null,
+    onStatusUpdate: (status: string) => void,
+  ) => {
+    if (hardware) {
       try {
         onStatusUpdate("Closing connection...");
-        await device.stop();
+        await hardware.stop();
         onStatusUpdate("Disconnected successfully.");
         setDevice(null);
         setIsConnected(false);
@@ -108,33 +140,24 @@ export function useHardwareConnection(
     }
   };
 
+  // Slot I/O and user disconnect take the hardware handle from the caller
+  // (session hardwareRef). React `device` lags a commit behind unplug/connect
+  // and is not the kill switch.
   const readMemoryCard = async (
+    hardware: HardwareInterface,
     onProgress?: (progress: number) => void,
     fixData = false,
     keyset?: Ps2MgKeyset,
   ): Promise<PS1MemoryCard | PS2MemoryCard | null> => {
-    if (!device) {
-      setError("Device not connected");
-      return null;
-    }
-    const cardCheck = await device.checkCard();
+    const cardCheck = await hardware.checkCard();
     if (!cardCheck.present) {
       throw new Error(cardCheck.message);
     }
     if (cardCheck.kind === "ps2") {
-      const result = await device.readPS2CardImage((progress) => {
+      const result = await hardware.readPS2CardImage((progress) => {
         onProgress?.(progress);
       }, keyset);
-      if (result.status === "needs-auth") {
-        throw new Ps2CardError(
-          "This PS2 card needs MagicGate authentication, but no key set is set.",
-          undefined,
-          true,
-        );
-      }
-      if (result.status === "error") {
-        throw new Ps2CardError(result.message, result.step);
-      }
+      throwIfPs2AuthResult(result);
       const card = PS2MemoryCard.tryFromBytes(result.image);
       if (!card) {
         // A Conquest dump is not a PFS card and must not fall through to the
@@ -157,7 +180,7 @@ export function useHardwareConnection(
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       for (let i = 0; i < 1024; i++) {
-        const frame = await device.readMemoryCardFrame(i);
+        const frame = await hardware.readMemoryCardFrame(i);
         if (frame === null) {
           setError(`Failed to read frame ${i}`);
           return null;
@@ -178,17 +201,14 @@ export function useHardwareConnection(
   };
 
   const writeMemoryCard = async (
+    hardware: HardwareInterface,
     card: PS1MemoryCard | PS2MemoryCard,
     onProgress?: (progress: number) => void,
     verify = false,
     frameCount = 1024,
     keyset?: Ps2MgKeyset,
   ): Promise<boolean> => {
-    if (!device) {
-      setError("Device not connected");
-      return false;
-    }
-    const cardCheck = await device.checkCard();
+    const cardCheck = await hardware.checkCard();
     if (!cardCheck.present) {
       throw new Error(cardCheck.message);
     }
@@ -199,7 +219,7 @@ export function useHardwareConnection(
         );
       }
       const raw = card.getRawData();
-      const result = await device.writePS2CardImage(
+      const result = await hardware.writePS2CardImage(
         raw,
         (progress) => {
           onProgress?.(progress);
@@ -207,16 +227,7 @@ export function useHardwareConnection(
         verify,
         keyset,
       );
-      if (result.status === "needs-auth") {
-        throw new Ps2CardError(
-          "This PS2 card needs MagicGate authentication, but no key set is set.",
-          undefined,
-          true,
-        );
-      }
-      if (result.status === "error") {
-        throw new Ps2CardError(result.message, result.step);
-      }
+      throwIfPs2AuthResult(result);
       return true;
     }
 
@@ -240,7 +251,7 @@ export function useHardwareConnection(
 
       for (let i = 0; i < frameCount; i++) {
         const frame = card.getRawData(i * frameSize, frameSize);
-        const success = await device.writeMemoryCardFrame(i, frame);
+        const success = await hardware.writeMemoryCardFrame(i, frame);
         if (!success) {
           failure = `Failed to write frame ${i}`;
           break;
@@ -254,7 +265,7 @@ export function useHardwareConnection(
       if (!failure && verify) {
         const readback = new Uint8Array(frameCount * frameSize);
         for (let i = 0; i < frameCount; i++) {
-          const frame = await device.readMemoryCardFrame(i);
+          const frame = await hardware.readMemoryCardFrame(i);
           if (frame === null) {
             failure = `Failed to verify frame ${i}`;
             break;
@@ -290,15 +301,12 @@ export function useHardwareConnection(
   // spare-scans an unformatted card) and builds format2; quick programs
   // filesystem pages only, full erases every unlisted block first.
   const formatMemoryCard = async (
+    hardware: HardwareInterface,
     choice: FormatChoice,
     onProgress?: (progress: number) => void,
     keyset?: Ps2MgKeyset,
   ): Promise<void> => {
-    if (!device) {
-      setError("Device not connected");
-      throw new Error("Device not connected");
-    }
-    const cardCheck = await device.checkCard();
+    const cardCheck = await hardware.checkCard();
     if (!cardCheck.present) {
       throw new Error(cardCheck.message);
     }
@@ -308,23 +316,14 @@ export function useHardwareConnection(
           "The card in the slot is PS2, but a PS1 format was requested.",
         );
       }
-      const result = await device.formatPS2Card(
+      const result = await hardware.formatPS2Card(
         (progress) => {
           onProgress?.(progress);
         },
         choice.quick,
         keyset,
       );
-      if (result.status === "needs-auth") {
-        throw new Ps2CardError(
-          "This PS2 card needs MagicGate authentication, but no key set is set.",
-          undefined,
-          true,
-        );
-      }
-      if (result.status === "error") {
-        throw new Ps2CardError(result.message, result.step);
-      }
+      throwIfPs2AuthResult(result);
       return;
     }
     if (choice.kind !== "ps1") {
@@ -333,6 +332,7 @@ export function useHardwareConnection(
     const blank = new PS1MemoryCard();
     blank.formatCard();
     const success = await writeMemoryCard(
+      hardware,
       blank,
       onProgress,
       false,

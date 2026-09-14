@@ -88,73 +88,11 @@ export const RAW_EXTENSIONS: string[] = [
   ".sav",
 ];
 
-// All known PS1 card / single-save extensions. Derived from the format maps
-// above so every extension the UI can produce is also stripped by
-// withSingleExtension (prevents stacked names like "card.mci.mcd").
-const KNOWN_FILE_EXTENSIONS = Array.from(
-  new Set([
-    ...Object.values(CardExtensions),
-    ...Object.values(SingleSaveExtensions),
-    ...RAW_EXTENSIONS,
-    // Additional raw/import variants accepted on load but not tied to a
-    // specific save format.
-    ".ps1",
-    ".mem",
-    ".mc1",
-    ".mc2",
-    ".pda",
-    ".psx",
-    // PS2 image / single-save / container extensions (shared save-file plumbing).
-    ".ps2",
-    ".sdt",
-    ".psu",
-    ".max",
-    ".sps",
-    ".xps",
-    ".cbs",
-    ".npo",
-  ]),
-);
-
-/**
- * Strips any stacked known extensions from a file name and appends the target
- * extension exactly once, so the result always ends with a single, correct
- * extension (e.g. "card.mcr.mcr" + ".gme" -> "card.gme").
- */
-export function withSingleExtension(
-  fileName: string,
-  targetExtension: string,
-): string {
-  let name = fileName.trim();
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const lower = name.toLowerCase();
-    for (const ext of KNOWN_FILE_EXTENSIONS) {
-      if (lower.endsWith(ext)) {
-        name = name.slice(0, name.length - ext.length);
-        changed = true;
-        break;
-      }
-    }
-  }
-  if (!name.toLowerCase().endsWith(targetExtension.toLowerCase())) {
-    name += targetExtension;
-  }
-  return name;
-}
-
-export function hasFileExtension(name: string): boolean {
-  const base = name.split("/").pop() ?? name;
-  const lastDot = base.lastIndexOf(".");
-  return lastDot > 0 && lastDot < base.length - 1;
-}
-
-export function getFileExtension(name: string): string {
-  const base = name.split("/").pop() ?? name;
-  const lastDot = base.lastIndexOf(".");
-  if (lastDot <= 0 || lastDot >= base.length - 1) return "";
-  return base.slice(lastDot).toLowerCase();
+function withTypeExtension(fileName: string, extension: string): string {
+  const name = fileName.trim();
+  return name.toLowerCase().endsWith(extension.toLowerCase())
+    ? name
+    : `${name}${extension}`;
 }
 
 export interface SaveInfo {
@@ -1183,9 +1121,7 @@ class PS1MemoryCard {
 
     try {
       const extension = this.getExtensionForType(cardType);
-      const fileNameWithExt = hasFileExtension(fileName)
-        ? fileName
-        : withSingleExtension(fileName, extension);
+      const fileNameWithExt = withTypeExtension(fileName, extension);
 
       const blob = new Blob([new Uint8Array(outputData)], {
         type: "application/octet-stream",
@@ -1304,7 +1240,7 @@ class PS1MemoryCard {
 
     try {
       const extension = SingleSaveExtensions[saveType] || ".mcs";
-      const fileNameWithExt = withSingleExtension(fileName, extension);
+      const fileNameWithExt = withTypeExtension(fileName, extension);
 
       const blob = new Blob([new Uint8Array(outputData)], {
         type: "application/octet-stream",

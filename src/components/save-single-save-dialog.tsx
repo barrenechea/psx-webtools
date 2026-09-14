@@ -16,7 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import useSaveFileForm, {
+import {
+  useSaveFileForm,
   type SaveFormatOption,
 } from "@/hooks/use-save-file-form";
 
@@ -105,5 +106,3 @@ export const SaveSingleSaveDialog = <T extends number>({
     </Dialog>
   );
 };
-
-export default SaveSingleSaveDialog;

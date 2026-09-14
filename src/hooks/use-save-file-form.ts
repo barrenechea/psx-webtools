@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { getFileExtension, withSingleExtension } from "@/lib/ps1-memory-card";
+import { getFileExtension, withSingleExtension } from "@/lib/save-file-name";
 
 interface UseSaveFileFormOptions<T extends number> {
   defaultFileName: string;
@@ -86,5 +86,3 @@ export function useSaveFileForm<T extends number>({
     hasExtensionPicker: currentExtensions.length > 1,
   };
 }
-
-export default useSaveFileForm;

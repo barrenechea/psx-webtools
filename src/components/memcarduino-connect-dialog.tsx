@@ -22,11 +22,7 @@ import {
 interface MemcarduinoConnectDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnect: (
-    deviceType: string,
-    connectionMode: string,
-    saveSettings: boolean,
-  ) => Promise<void>;
+  onConnect: (deviceType: string, connectionMode: string) => Promise<void>;
 }
 
 interface SavedSettings {
@@ -93,7 +89,7 @@ export const MemcarduinoConnectDialog: React.FC<
 
   const handleConnect = async () => {
     if (deviceType && connectionMode) {
-      await onConnect(deviceType, connectionMode, saveSettings);
+      await onConnect(deviceType, connectionMode);
       if (saveSettings) {
         localStorage.setItem(
           "memcarduinoSettings",

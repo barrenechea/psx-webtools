@@ -29,6 +29,8 @@ export enum SupportedFeatures {
   TcpMode = 1,
   RealtimeMode = 1 << 1,
   PocketStation = 1 << 2,
+  // Classifies the card in the slot (checkCard + insert/remove events).
+  SlotProbe = 1 << 3,
 }
 
 // Card family currently in a device's slot. "pocketstation" is a PS1-compatible
@@ -65,8 +67,8 @@ export abstract class HardwareInterface {
   onDisconnected: (() => void) | null = null;
 
   // Called for each card-presence edge on interrupt IN `0x83` (insert/remove).
-  // The app registers it before start(); only the PS3 MC Adaptor, which runs an
-  // interrupt listener, invokes it.
+  // The app registers it before start(); only hardware with SlotProbe, which
+  // runs an interrupt listener, invokes it.
   onCardEvent: ((ev: CardEvent) => void) | null = null;
 
   private _type: Types;
@@ -182,7 +184,7 @@ export abstract class HardwareInterface {
 
   // Check whether a usable memory card is in the slot. Most interfaces only
   // surface a missing card as a failed frame read, so the default assumes a
-  // present PS1 card; the PS3 MC Adaptor overrides this to probe the slot.
+  // present PS1 card; SlotProbe hardware overrides this to classify the slot.
   checkCard(): Promise<CardCheck> {
     return Promise.resolve({ present: true, kind: "ps1" });
   }

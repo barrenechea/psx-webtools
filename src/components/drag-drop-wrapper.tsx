@@ -25,6 +25,12 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
     event.dataTransfer.dropEffect = "copy";
   };
 
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget as Node | null;
+    if (next && event.currentTarget.contains(next)) return;
+    setIsDragging(false);
+  };
+
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -35,41 +41,29 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
     }
   };
 
-  const handleOverlayDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.target === event.currentTarget) {
-      setIsDragging(false);
-    }
-  };
-
   return (
     <div
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className="relative flex h-full w-full justify-center"
     >
       {children}
       <div
         aria-hidden={!isDragging}
-        onDragLeave={handleOverlayDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
         className={cn(
-          "absolute inset-0 z-50 flex items-center justify-center backdrop-blur-xs transition-opacity duration-200",
-          isDragging
-            ? "bg-background/80 opacity-100"
-            : "pointer-events-none invisible opacity-0",
+          "pointer-events-none absolute inset-0 z-50 flex items-center justify-center backdrop-blur-xs transition-opacity duration-200",
+          isDragging ? "bg-background/80 opacity-100" : "invisible opacity-0",
         )}
       >
-        <div className="pointer-events-none rounded-lg border-2 border-dashed border-primary p-8 text-center">
+        <div className="rounded-lg border-2 border-dashed border-primary p-8 text-center">
           <p className="text-lg font-semibold">
             Drop your memory card files here
           </p>
           <p className="text-sm text-muted-foreground">
-            Supported formats: .mcr, .mcd, .gme, .vgs, .vmp, .psm, .ps1, .bin,
-            .mem, .psx, .pda, .mc, .ddf, .mc1, .mc2, .srm
+            PS1 (.mcr, .gme, .vgs, .vmp, .mcs) and PS2 (.ps2, .mcd, .sdt, .psu)
+            images
           </p>
         </div>
       </div>

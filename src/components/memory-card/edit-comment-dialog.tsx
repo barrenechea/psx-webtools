@@ -59,5 +59,3 @@ export const EditCommentDialog: React.FC<EditCommentDialogProps> = ({
     </Dialog>
   );
 };
-
-export default EditCommentDialog;

@@ -22,9 +22,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { MemoryCard } from "@/hooks/use-memory-card-workspace";
 
 import { CardListItem } from "./card-list-item";
-import type { MemoryCard } from "./types";
 
 interface CardSidebarProps {
   cards: MemoryCard[];
@@ -46,6 +46,7 @@ interface CardSidebarProps {
   onFixCorruptedChange: (value: boolean) => void;
   isConnected: boolean;
   connectedDevice: string | null;
+  canPocketStation: boolean;
   onDisconnect: () => void;
   onRead: () => void;
   onWrite: () => void;
@@ -72,6 +73,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
   onFixCorruptedChange,
   isConnected,
   connectedDevice,
+  canPocketStation,
   onDisconnect,
   onRead,
   onWrite,
@@ -136,7 +138,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
             Open from file
           </DropdownMenuItem>
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger disabled={isConnected}>
               <MemoryStickIcon />
               Connect a device
             </DropdownMenuSubTrigger>
@@ -148,7 +150,10 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
                     USB Devices
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuItem onClick={onConnectPS3MCA}>
+                <DropdownMenuItem
+                  disabled={isConnected}
+                  onClick={onConnectPS3MCA}
+                >
                   PS3 MC Adaptor
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -160,16 +165,28 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
                     Serial Devices
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuItem onClick={onConnectDexDrive}>
+                <DropdownMenuItem
+                  disabled={isConnected}
+                  onClick={onConnectDexDrive}
+                >
                   DexDrive
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onConnectMemcarduino}>
+                <DropdownMenuItem
+                  disabled={isConnected}
+                  onClick={onConnectMemcarduino}
+                >
                   MemCARDuino
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onConnectPS1CardLink}>
+                <DropdownMenuItem
+                  disabled={isConnected}
+                  onClick={onConnectPS1CardLink}
+                >
                   PS1CardLink
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onConnectUnirom}>
+                <DropdownMenuItem
+                  disabled={isConnected}
+                  onClick={onConnectUnirom}
+                >
                   Unirom
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -217,8 +234,7 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
           >
             Format {connectedDevice ?? "device"}
           </Button>
-          {(connectedDevice === "MemCARDuino" ||
-            connectedDevice === "PS3 MC Adaptor") && (
+          {canPocketStation && (
             <Button
               variant="ghost"
               className="w-full justify-start hover:bg-card/80"

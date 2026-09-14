@@ -168,5 +168,3 @@ export const PocketStationDialog: React.FC<PocketStationDialogProps> = ({
     </Dialog>
   );
 };
-
-export default PocketStationDialog;

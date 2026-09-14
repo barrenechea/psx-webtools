@@ -19,7 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import useSaveFileForm, {
+import {
+  useSaveFileForm,
   type SaveFormatOption,
 } from "@/hooks/use-save-file-form";
 
@@ -73,9 +74,9 @@ export const SaveDialog = <T extends number>({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Save Game Data</DialogTitle>
+          <DialogTitle>Save memory card</DialogTitle>
           <DialogDescription>
-            Choose a file name and format for your save data.
+            Choose a file name and format for the card image.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -159,5 +160,3 @@ export const SaveDialog = <T extends number>({
     </Dialog>
   );
 };
-
-export default SaveDialog;

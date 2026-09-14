@@ -3,11 +3,14 @@ import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 import {
+  gameDataTargetsFromCards,
   gameDataTargetsFromPs2Saves,
   gameDataTargetsFromSaves,
   usePrefetchGameData,
 } from "@/hooks/use-game-data";
+import { type MemoryCard } from "@/hooks/use-memory-card-workspace";
 import { type SaveInfo, SlotTypes } from "@/lib/ps1-memory-card";
+import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 import type { Ps2SaveInfo } from "@/lib/ps2/ps2-types";
 import {
   fetchGameData,
@@ -16,6 +19,8 @@ import {
   isGameSerial,
   regionOfProductCode,
 } from "@/lib/query";
+
+import { newCard } from "./psx-helpers";
 
 function save(overrides: Partial<SaveInfo> = {}): SaveInfo {
   return {
@@ -191,6 +196,21 @@ describe("gameDataTargetsFromPs2Saves", () => {
         ps2Save({ name: "BASCES-00001RIDGE", ps1: true }),
       ]),
     ).toEqual([{ platform: "ps1", region: "Europe", gameId: "SCES-00001" }]);
+  });
+});
+
+describe("gameDataTargetsFromCards", () => {
+  it("joins PS1 and PS2 targets from the card list", () => {
+    const ps1 = newCard();
+    const ps2 = PS2MemoryCard.format(8192);
+    const cards: MemoryCard[] = [
+      { id: 1, name: "a", type: "new", source: "", card: ps1 },
+      { id: 2, name: "b", type: "new", source: "", card: ps2 },
+    ];
+    expect(gameDataTargetsFromCards(cards)).toEqual([
+      ...gameDataTargetsFromSaves(ps1.getSaves()),
+      ...gameDataTargetsFromPs2Saves(ps2.getSaves()),
+    ]);
   });
 });
 

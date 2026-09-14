@@ -1,13 +1,10 @@
 import {
   CardExtensions,
   CardTypes,
-  getFileExtension,
-  hasFileExtension,
   RAW_EXTENSIONS,
   SingleSaveExtensions,
   SingleSaveTypes,
   SlotTypes,
-  withSingleExtension,
 } from "@/lib/ps1-memory-card";
 import {
   PS2_RAW_EXTENSIONS,
@@ -15,6 +12,7 @@ import {
   Ps2CardFormats,
   Ps2SingleSaveTypes,
 } from "@/lib/ps2/ps2-types";
+import { getFileExtension, withSingleExtension } from "@/lib/save-file-name";
 
 describe("Contracts. enums & extension maps", () => {
   it("CardTypes values are stable", () => {
@@ -83,13 +81,19 @@ describe("free functions: extension handling", () => {
     expect(withSingleExtension("save.sdt", ".psu")).toBe("save.psu");
     expect(withSingleExtension("save.psu", ".sdt")).toBe("save.sdt");
     expect(withSingleExtension("save.max", ".psu")).toBe("save.psu");
+    expect(withSingleExtension("card.ps1", ".mcr")).toBe("card.mcr");
   });
 
-  it("hasFileExtension", () => {
-    expect(hasFileExtension("card.mcr")).toBe(true);
-    expect(hasFileExtension("card")).toBe(false);
-    expect(hasFileExtension(".hidden")).toBe(false);
-    expect(hasFileExtension("card.")).toBe(false);
+  it("withSingleExtension strips every mapped card and single-save suffix", () => {
+    for (const ext of Object.values(CardExtensions)) {
+      expect(withSingleExtension(`name${ext}`, ".gme")).toBe("name.gme");
+    }
+    for (const ext of Object.values(SingleSaveExtensions)) {
+      expect(withSingleExtension(`name${ext}`, ".mcs")).toBe("name.mcs");
+    }
+    for (const ext of RAW_EXTENSIONS) {
+      expect(withSingleExtension(`name${ext}`, ".mcr")).toBe("name.mcr");
+    }
   });
 
   it("getFileExtension", () => {

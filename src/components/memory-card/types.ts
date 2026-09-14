@@ -1,15 +1,58 @@
-import type PS1MemoryCard from "@/lib/ps1-memory-card";
-import type { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+export type MemoryCardToolbarCaps = {
+  canUndo: boolean;
+  canRedo: boolean;
+  canHistory: boolean;
+  canCopy: boolean;
+  canMove: boolean;
+  canPaste: boolean;
+  canDelete: boolean;
+  canExport: boolean;
+  canImport: boolean;
+  canSave: boolean;
+  deleteLabel: string;
+  history: string[];
+  historyIndex: number;
+};
 
-export type MemoryCardKind = "ps1" | "ps2";
+export type FamilyToolbarCaps = Pick<
+  MemoryCardToolbarCaps,
+  | "canCopy"
+  | "canMove"
+  | "canPaste"
+  | "canDelete"
+  | "canExport"
+  | "canImport"
+  | "canSave"
+  | "deleteLabel"
+>;
 
-export interface MemoryCard {
-  id: number;
-  name: string;
-  type: "file" | "device" | "new";
-  source: string;
-  card: PS1MemoryCard | PS2MemoryCard;
-}
+export const EMPTY_FAMILY_CAPS: FamilyToolbarCaps = {
+  canCopy: false,
+  canMove: false,
+  canPaste: false,
+  canDelete: false,
+  canExport: false,
+  canImport: false,
+  canSave: false,
+  deleteLabel: "Delete save",
+};
 
-export const isPs2Card = (card: MemoryCard["card"]): card is PS2MemoryCard =>
-  card.kind === "ps2";
+export type FamilyToolbarHandlers = {
+  copy: () => void;
+  move: () => void;
+  paste: () => void;
+  deleteSave: () => void;
+  importSave: () => void;
+  saveCard: () => void;
+  exportSave: () => void;
+};
+
+export const NOOP_FAMILY_HANDLERS: FamilyToolbarHandlers = {
+  copy: () => {},
+  move: () => {},
+  paste: () => {},
+  deleteSave: () => {},
+  importSave: () => {},
+  saveCard: () => {},
+  exportSave: () => {},
+};

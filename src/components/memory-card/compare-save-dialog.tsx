@@ -29,6 +29,13 @@ function diffBytes(a: Uint8Array, b: Uint8Array): DiffByte[] {
   return out;
 }
 
+export type CompareSaveData = {
+  save1Name: string;
+  save1Bytes: Uint8Array;
+  save2Name: string;
+  save2Bytes: Uint8Array;
+};
+
 interface CompareSaveDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -103,5 +110,3 @@ export const CompareSaveDialog: React.FC<CompareSaveDialogProps> = ({
     </Dialog>
   );
 };
-
-export default CompareSaveDialog;

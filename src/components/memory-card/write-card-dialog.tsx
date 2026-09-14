@@ -18,6 +18,7 @@ interface WriteCardDialogProps {
   deviceName: string;
   verify: boolean;
   onVerifyChange: (value: boolean) => void;
+  verifyHint: string;
   onConfirm: () => void;
 }
 
@@ -29,6 +30,7 @@ export const WriteCardDialog: React.FC<WriteCardDialogProps> = ({
   deviceName,
   verify,
   onVerifyChange,
+  verifyHint,
   onConfirm,
 }) => (
   <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -57,10 +59,7 @@ export const WriteCardDialog: React.FC<WriteCardDialogProps> = ({
           />
           <div className="grid gap-1">
             <Label htmlFor="verify-after-write">Verify after write</Label>
-            <p className="text-sm text-muted-foreground">
-              Re-read the card and confirm the raw checksum still matches. GME
-              comments are not part of this check.
-            </p>
+            <p className="text-sm text-muted-foreground">{verifyHint}</p>
           </div>
         </div>
       </div>

@@ -486,7 +486,9 @@ describe("N. PS3 MC Adaptor (WebUSB)", () => {
     const a = new PS3MemCardAdaptor();
     expect(a.name()).toBe("PS3 MC Adaptor");
     expect(a.features()).toBe(
-      SupportedFeatures.RealtimeMode | SupportedFeatures.PocketStation,
+      SupportedFeatures.RealtimeMode |
+        SupportedFeatures.PocketStation |
+        SupportedFeatures.SlotProbe,
     );
     expect(a.type).toBe(Types.PS3MCA);
   });

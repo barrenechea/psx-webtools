@@ -134,7 +134,11 @@ export class PS3MemCardAdaptor extends HardwareInterface {
   }
 
   override features(): SupportedFeatures {
-    return SupportedFeatures.RealtimeMode | SupportedFeatures.PocketStation;
+    return (
+      SupportedFeatures.RealtimeMode |
+      SupportedFeatures.PocketStation |
+      SupportedFeatures.SlotProbe
+    );
   }
 
   override async start(

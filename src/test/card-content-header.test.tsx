@@ -12,9 +12,7 @@ function renderHeader(badBlocks: number[]) {
         kind="ps2"
         source="PS3 MCA"
         checksum="DEADBEEF"
-        copiedSlots={[]}
-        copiedIcon={null}
-        copiedPs2={null}
+        tempBuffer={null}
         badBlocks={badBlocks}
       />
     </TooltipProvider>,

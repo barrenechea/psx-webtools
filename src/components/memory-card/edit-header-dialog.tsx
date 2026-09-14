@@ -112,5 +112,3 @@ export const EditHeaderDialog: React.FC<EditHeaderDialogProps> = ({
     </Dialog>
   );
 };
-
-export default EditHeaderDialog;
