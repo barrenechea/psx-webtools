@@ -13,6 +13,7 @@ import {
   NOOP_FAMILY_HANDLERS,
 } from "@/components/memory-card/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { snapshotMemoryCard } from "@/hooks/memory-card-view";
 import { SlotTypes } from "@/lib/ps1-memory-card";
 
 import { makeSavePayload, newCard } from "./psx-helpers";
@@ -50,6 +51,7 @@ function renderPane(options?: {
       <TooltipProvider>
         <Ps1CardPane
           card={card}
+          view={snapshotMemoryCard(card)}
           cardId={1}
           cardName="Card"
           cardType="new"

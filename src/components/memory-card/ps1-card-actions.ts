@@ -4,7 +4,7 @@ import {
   type CardCommitAsync,
   type TempBuffer,
 } from "@/hooks/use-memory-card-workspace";
-import PS1MemoryCard, { SlotTypes } from "@/lib/ps1-memory-card";
+import PS1MemoryCard, { SlotTypes, type SaveInfo } from "@/lib/ps1-memory-card";
 
 function copyPs1Save(
   card: PS1MemoryCard,
@@ -29,24 +29,25 @@ function formatPs1Save(card: PS1MemoryCard, slot: number): void {
   card.formatSave(card.getMasterLinkForSlot(slot));
 }
 
-function slotIsEmpty(card: PS1MemoryCard, slot: number | null): boolean {
+function slotIsEmpty(saves: SaveInfo[], slot: number | null): boolean {
   if (slot === null) return false;
-  return card.getSaves()[slot].slotType === SlotTypes.Formatted;
+  return saves[slot].slotType === SlotTypes.Formatted;
 }
 
-function slotIsDeletable(card: PS1MemoryCard, slot: number | null): boolean {
+function slotIsDeletable(saves: SaveInfo[], slot: number | null): boolean {
   if (slot === null) return false;
-  const type = card.getSaves()[slot].slotType;
+  const type = saves[slot].slotType;
   return type === SlotTypes.Initial || type === SlotTypes.DeletedInitial;
 }
 
-function slotIsRestore(card: PS1MemoryCard, slot: number | null): boolean {
+function slotIsRestore(saves: SaveInfo[], slot: number | null): boolean {
   if (slot === null) return false;
-  return card.getSaves()[slot].slotType === SlotTypes.DeletedInitial;
+  return saves[slot].slotType === SlotTypes.DeletedInitial;
 }
 
 interface Ps1CardActionsArgs {
   card: PS1MemoryCard;
+  saves: SaveInfo[];
   cardId: number;
   selectedSlot: number | null;
   tempBuffer: TempBuffer;
@@ -59,6 +60,7 @@ interface Ps1CardActionsArgs {
 
 export function ps1CardActions({
   card,
+  saves,
   cardId,
   selectedSlot,
   tempBuffer,
@@ -68,9 +70,9 @@ export function ps1CardActions({
   setTempBuffer,
   setError,
 }: Ps1CardActionsArgs) {
-  const isDeletable = slotIsDeletable(card, selectedSlot);
-  const isRestore = slotIsRestore(card, selectedSlot);
-  const isEmpty = slotIsEmpty(card, selectedSlot);
+  const isDeletable = slotIsDeletable(saves, selectedSlot);
+  const isRestore = slotIsRestore(saves, selectedSlot);
+  const isEmpty = slotIsEmpty(saves, selectedSlot);
   const hasCopied = tempBuffer?.kind === "ps1";
 
   const caps: FamilyToolbarCaps = {
@@ -110,7 +112,7 @@ export function ps1CardActions({
 
   const deleteSave = () => {
     if (selectedSlot === null) return;
-    const restore = slotIsRestore(card, selectedSlot);
+    const restore = slotIsRestore(saves, selectedSlot);
     commit(cardId, restore ? "Save restored" : "Save deleted", () => {
       card.toggleDeleteSave(selectedSlot);
     });

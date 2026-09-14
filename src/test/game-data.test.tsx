@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
+import { snapshotMemoryCard } from "@/hooks/memory-card-view";
 import {
   gameDataTargetsFromCards,
   gameDataTargetsFromPs2Saves,
@@ -204,8 +205,22 @@ describe("gameDataTargetsFromCards", () => {
     const ps1 = newCard();
     const ps2 = PS2MemoryCard.format(8192);
     const cards: MemoryCard[] = [
-      { id: 1, name: "a", type: "new", source: "", card: ps1 },
-      { id: 2, name: "b", type: "new", source: "", card: ps2 },
+      {
+        id: 1,
+        name: "a",
+        type: "new",
+        source: "",
+        card: ps1,
+        view: snapshotMemoryCard(ps1),
+      },
+      {
+        id: 2,
+        name: "b",
+        type: "new",
+        source: "",
+        card: ps2,
+        view: snapshotMemoryCard(ps2),
+      },
     ];
     expect(gameDataTargetsFromCards(cards)).toEqual([
       ...gameDataTargetsFromSaves(ps1.getSaves()),

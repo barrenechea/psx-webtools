@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useDeviceManager } from "@/hooks/use-device-manager";
-import type { MemoryCard } from "@/hooks/use-memory-card-workspace";
+import type {
+  MemoryCard,
+  MemoryCardDraft,
+} from "@/hooks/use-memory-card-workspace";
 import { usePersistentState } from "@/hooks/use-persistent-state";
 import PS1MemoryCard from "@/lib/ps1-memory-card";
 import type { FormatChoice, SlotCardKind } from "@/lib/ps1/hardware/core";
@@ -132,7 +135,7 @@ function useMgAuthFlow() {
 }
 
 interface UseMemoryCardDeviceOpsArgs {
-  addCard: (entry: Omit<MemoryCard, "id">) => number;
+  addCard: (entry: MemoryCardDraft) => number;
   selectCard: (id: number | null) => void;
   selectedEntry: MemoryCard | undefined;
   fixCorrupted: boolean;
@@ -367,8 +370,8 @@ export function useMemoryCardDeviceOps({
       handleMgKeySelect,
       detectedCard,
       writeCardName: selectedEntry?.name ?? "memory card",
-      writeChecksum: selectedEntry?.card.getRawChecksum() ?? "",
-      writeKind: selectedEntry?.card.kind === "ps2" ? "ps2" : "ps1",
+      writeChecksum: selectedEntry?.view.checksum ?? "",
+      writeKind: selectedEntry?.view.kind ?? "ps1",
       deviceName: connectedDevice ?? "device",
     } satisfies MemoryCardDeviceDialogsProps,
   };

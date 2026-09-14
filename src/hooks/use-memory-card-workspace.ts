@@ -1,5 +1,10 @@
 import { useRef, useState } from "react";
 
+import {
+  snapshotMemoryCard,
+  type Ps1CardView,
+  type Ps2CardView,
+} from "@/hooks/memory-card-view";
 import PS1MemoryCard, {
   type IconPalette,
   type SaveInfo,
@@ -9,16 +14,38 @@ import { PS2MemoryCard, type Ps2SaveSnapshot } from "@/lib/ps2/ps2-card";
 import { isPs2ConquestCard } from "@/lib/ps2/ps2-conquest";
 import type { Ps2SaveInfo } from "@/lib/ps2/ps2-types";
 
-export interface MemoryCard {
-  id: number;
+export type MemoryCardDraft = {
   name: string;
   type: "file" | "device" | "new";
   source: string;
   card: PS1MemoryCard | PS2MemoryCard;
-}
+};
+
+export type MemoryCard =
+  | {
+      id: number;
+      name: string;
+      type: MemoryCardDraft["type"];
+      source: string;
+      card: PS1MemoryCard;
+      view: Ps1CardView;
+    }
+  | {
+      id: number;
+      name: string;
+      type: MemoryCardDraft["type"];
+      source: string;
+      card: PS2MemoryCard;
+      view: Ps2CardView;
+    };
 
 export const isPs2Card = (card: MemoryCard["card"]): card is PS2MemoryCard =>
   card.kind === "ps2";
+
+export const isPs2Entry = (
+  entry: MemoryCard,
+): entry is Extract<MemoryCard, { card: PS2MemoryCard }> =>
+  entry.card.kind === "ps2";
 
 export type CardCommit = (
   cardId: number,
@@ -44,12 +71,14 @@ export type TempBuffer =
   | null;
 
 function cardStatus(entry: MemoryCard | undefined): string {
-  if (entry === undefined) return "No memory card selected";
-  if (isPs2Card(entry.card)) {
-    const n = entry.card.getSaves().length;
-    return `${n} ${n === 1 ? "save" : "saves"}`;
+  return entry?.view.status ?? "No memory card selected";
+}
+
+function withView(entry: MemoryCardDraft & { id: number }): MemoryCard {
+  if (entry.card.kind === "ps2") {
+    return { ...entry, card: entry.card, view: snapshotMemoryCard(entry.card) };
   }
-  return "15 slots";
+  return { ...entry, card: entry.card, view: snapshotMemoryCard(entry.card) };
 }
 
 let lastCardId = 0;
@@ -96,7 +125,7 @@ export function useMemoryCardWorkspace() {
   };
 
   const bump = () => {
-    replaceCards([...cardsRef.current]);
+    replaceCards(cardsRef.current.map(withView));
   };
 
   const recordCommit = (
@@ -141,18 +170,17 @@ export function useMemoryCardWorkspace() {
     return afterMutate(cardId, label, card.undoCount, await mutate());
   };
 
-  const addCard = (entry: Omit<MemoryCard, "id">): number => {
+  const addCard = (entry: MemoryCardDraft): number => {
     const id = nextCardId();
-    replaceCards([...cardsRef.current, { ...entry, id }]);
+    replaceCards([...cardsRef.current, withView({ ...entry, id })]);
     return id;
   };
 
-  const addCards = (entries: Omit<MemoryCard, "id">[]): number | null => {
+  const addCards = (entries: MemoryCardDraft[]): number | null => {
     if (entries.length === 0) return null;
-    const opened: MemoryCard[] = entries.map((entry) => ({
-      ...entry,
-      id: nextCardId(),
-    }));
+    const opened = entries.map((entry) =>
+      withView({ ...entry, id: nextCardId() }),
+    );
     replaceCards([...cardsRef.current, ...opened]);
     return opened[opened.length - 1].id;
   };
@@ -195,7 +223,7 @@ export function useMemoryCardWorkspace() {
     fixCorrupted: boolean,
   ): Promise<string | null> => {
     if (files.length === 0) return null;
-    const opened: Omit<MemoryCard, "id">[] = [];
+    const opened: MemoryCardDraft[] = [];
     const errors: string[] = [];
 
     for (const file of files) {

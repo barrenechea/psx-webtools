@@ -5,11 +5,8 @@ import PS1MemoryCard, {
   type SlotIconData,
 } from "@/lib/ps1-memory-card";
 
-// Card-derived display data for one slot, built by derivePs1SlotRows and passed
-// to the list so it stays a pure function of its props. The PS1 pane rebuilds
-// this array every render, so it stays fresh after undo/redo even though the
-// card is mutated in place (the React Compiler would otherwise memoize a card
-// read on the stable card reference).
+// Card-derived display data for one slot, built when the workspace snapshots
+// the card after an in-place edit so compiled panes receive a new `view`.
 export interface Ps1SlotRow {
   index: number;
   save: SaveInfo;

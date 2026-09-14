@@ -5,6 +5,14 @@ import userEvent from "@testing-library/user-event";
 import { MemoryCardManager } from "@/components/memory-card/memory-card-manager";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LoadingDialogProvider } from "@/contexts/loading-dialog-context";
+import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
+
+import {
+  TOTAL_CARD_SIZE,
+  makeSavePayload,
+  newCard,
+  toFile,
+} from "./psx-helpers";
 
 function renderManager() {
   const client = new QueryClient({
@@ -26,6 +34,30 @@ async function openFromMenu(label: string) {
   await user.click(screen.getByRole("button", { name: /open/i }));
   await user.click(await screen.findByRole("menuitem", { name: label }));
   return user;
+}
+
+async function openCardFile(file: File) {
+  const user = userEvent.setup();
+  const input = document.querySelector(
+    "input[type='file'][multiple]",
+  ) as HTMLInputElement | null;
+  expect(input).not.toBeNull();
+  await user.upload(input!, file);
+  return user;
+}
+
+function ps1CardFile() {
+  const card = newCard();
+  card.setSaveBytes(0, makeSavePayload(1));
+  return toFile(card.getRawData(0, TOTAL_CARD_SIZE), "card.mcd");
+}
+
+function ps2CardFile() {
+  const card = PS2MemoryCard.format(8192);
+  card.importSingleSave("SAVE-AAA0001", new Uint8Array([1, 2, 3]), {
+    title: "Recover Me",
+  });
+  return toFile(card.getRawData(), "card.ps2");
 }
 
 describe("MemoryCardManager", () => {
@@ -113,5 +145,33 @@ describe("MemoryCardManager", () => {
     );
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Save memory card")).toBeInTheDocument();
+  });
+
+  it("deleting a PS1 save shows the Deleted badge on the slot", async () => {
+    renderManager();
+    await openCardFile(ps1CardFile());
+    expect(await screen.findByText("Hiro")).toBeInTheDocument();
+    await userEvent.click(document.querySelector("[data-slot-index='0']")!);
+    await userEvent.click(screen.getByRole("button", { name: "Delete save" }));
+    expect(await screen.findByText("Deleted")).toBeInTheDocument();
+    expect(screen.getByLabelText("Unsaved changes")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore save" })).toBeEnabled();
+  });
+
+  it("deleting a PS2 save badges the row and shows recoverable in the sidebar", async () => {
+    renderManager();
+    await openCardFile(ps2CardFile());
+    const title = await screen.findByText("Recover Me");
+    await userEvent.click(title);
+    expect(
+      screen.queryByText("This save has been deleted but can be recovered."),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete save" }));
+    expect(await screen.findByText("Deleted")).toBeInTheDocument();
+    expect(
+      screen.getByText("This save has been deleted but can be recovered."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Unsaved changes")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore save" })).toBeEnabled();
   });
 });

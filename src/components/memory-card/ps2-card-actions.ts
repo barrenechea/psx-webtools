@@ -52,6 +52,7 @@ function ps2SaveIsRestore(save: Ps2SaveInfo | undefined): boolean {
 
 interface Ps2CardActionsArgs {
   card: PS2MemoryCard;
+  saves: Ps2SaveInfo[];
   cardId: number;
   selectedSave: string | null;
   tempBuffer: TempBuffer;
@@ -64,6 +65,7 @@ interface Ps2CardActionsArgs {
 
 export function ps2CardActions({
   card,
+  saves,
   cardId,
   selectedSave,
   tempBuffer,
@@ -75,7 +77,7 @@ export function ps2CardActions({
 }: Ps2CardActionsArgs) {
   const selectedInfo =
     selectedSave !== null
-      ? card.getSaves().find((s) => s.name === selectedSave)
+      ? saves.find((s) => s.name === selectedSave)
       : undefined;
   const isDeletable = ps2SaveIsDeletable(selectedInfo);
   const isRestore = ps2SaveIsRestore(selectedInfo);
@@ -122,7 +124,7 @@ export function ps2CardActions({
   const paste = () => {
     if (tempBuffer?.kind !== "ps2") return;
     const name = tempBuffer.snapshot.name;
-    if (card.getSaves().some((s) => s.name === name)) {
+    if (saves.some((s) => s.name === name)) {
       setPendingReplace(true);
       return;
     }
@@ -146,7 +148,7 @@ export function ps2CardActions({
 
   const deleteSave = () => {
     if (selectedSave === null) return;
-    const save = card.getSaves().find((s) => s.name === selectedSave);
+    const save = saves.find((s) => s.name === selectedSave);
     if (save === undefined || save.corrupted) return;
     const ok = commit(
       cardId,

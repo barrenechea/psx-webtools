@@ -17,7 +17,7 @@ import {
 } from "@/hooks/use-game-data";
 import { useMemoryCardDeviceOps } from "@/hooks/use-memory-card-device-ops";
 import {
-  isPs2Card,
+  isPs2Entry,
   useMemoryCardWorkspace,
 } from "@/hooks/use-memory-card-workspace";
 import { usePersistentState } from "@/hooks/use-persistent-state";
@@ -108,7 +108,7 @@ export const MemoryCardManager: React.FC = () => {
   const handleCloseCard = (id: number) => {
     const card = memoryCards.find((c) => c.id === id);
     if (!card) return;
-    if (card.card.changed) {
+    if (card.view.changed) {
       setPendingClose(id);
       setCloseConfirmOpen(true);
     } else {
@@ -130,15 +130,16 @@ export const MemoryCardManager: React.FC = () => {
   const cardHistory = selectedEntry
     ? (historyLabels[selectedEntry.id] ?? [selectedEntry.name])
     : [];
-  const historyIndex = selectedEntry?.card.undoCount ?? 0;
+  const undoCount = selectedEntry?.view.undoCount ?? 0;
+  const redoCount = selectedEntry?.view.redoCount ?? 0;
 
   const toolbarCaps: MemoryCardToolbarCaps = {
     ...familyCaps,
-    canUndo: (selectedEntry?.card.undoCount ?? 0) > 0,
-    canRedo: (selectedEntry?.card.redoCount ?? 0) > 0,
+    canUndo: undoCount > 0,
+    canRedo: redoCount > 0,
     canHistory: selectedCard !== null,
     history: cardHistory,
-    historyIndex,
+    historyIndex: undoCount,
   };
 
   return (
@@ -188,10 +189,11 @@ export const MemoryCardManager: React.FC = () => {
                       Open a memory card file or connect a device to get started
                     </p>
                   </div>
-                ) : isPs2Card(selectedEntry.card) ? (
+                ) : isPs2Entry(selectedEntry) ? (
                   <Ps2CardPane
                     key={selectedEntry.id}
                     card={selectedEntry.card}
+                    view={selectedEntry.view}
                     cardId={selectedEntry.id}
                     cardName={selectedEntry.name}
                     cardType={selectedEntry.type}
@@ -209,6 +211,7 @@ export const MemoryCardManager: React.FC = () => {
                   <Ps1CardPane
                     key={selectedEntry.id}
                     card={selectedEntry.card}
+                    view={selectedEntry.view}
                     cardId={selectedEntry.id}
                     cardName={selectedEntry.name}
                     cardType={selectedEntry.type}

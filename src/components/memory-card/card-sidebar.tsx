@@ -87,8 +87,8 @@ export const CardSidebar: React.FC<CardSidebarProps> = ({
             key={card.id}
             name={card.name}
             type={card.type}
-            kind={card.card.kind}
-            changed={card.card.changed}
+            kind={card.view.kind}
+            changed={card.view.changed}
             isSelected={selectedCard === card.id}
             onClick={() => onSelectCard(card.id)}
             onClose={() => onCloseCard(card.id)}

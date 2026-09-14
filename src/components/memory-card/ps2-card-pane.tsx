@@ -20,6 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { type Ps2CardView } from "@/hooks/memory-card-view";
 import {
   type CardCommit,
   type MemoryCard,
@@ -41,6 +42,7 @@ import { useFamilyToolbarPublish } from "./use-family-toolbar-publish";
 
 interface Ps2CardPaneProps {
   card: PS2MemoryCard;
+  view: Ps2CardView;
   cardId: number;
   cardName: string;
   cardType: MemoryCard["type"];
@@ -57,6 +59,7 @@ interface Ps2CardPaneProps {
 
 export const Ps2CardPane: React.FC<Ps2CardPaneProps> = ({
   card,
+  view,
   cardId,
   cardName,
   cardType,
@@ -78,7 +81,7 @@ export const Ps2CardPane: React.FC<Ps2CardPaneProps> = ({
   const [pendingReplace, setPendingReplace] = useState(false);
   const [isSaveOpen, setIsSaveOpen] = useState(false);
   const [isSingleOpen, setIsSingleOpen] = useState(false);
-  const saves = card.getSaves();
+  const saves = view.saves;
   const ps2Buffer = tempBuffer?.kind === "ps2" ? tempBuffer : null;
   const selectedInfo =
     selectedSave !== null
@@ -89,6 +92,7 @@ export const Ps2CardPane: React.FC<Ps2CardPaneProps> = ({
 
   const actions = ps2CardActions({
     card,
+    saves,
     cardId,
     selectedSave,
     tempBuffer,
@@ -191,9 +195,9 @@ export const Ps2CardPane: React.FC<Ps2CardPaneProps> = ({
           type={cardType}
           kind="ps2"
           source={cardSource}
-          checksum={card.getRawChecksum()}
+          checksum={view.checksum}
           tempBuffer={tempBuffer}
-          badBlocks={card.getOccupiedBadBlocks()}
+          badBlocks={view.badBlocks}
         />
         <Ps2SaveList
           saves={saves}
@@ -226,13 +230,13 @@ export const Ps2CardPane: React.FC<Ps2CardPaneProps> = ({
         }}
       />
       <SaveDialog
-        key={`${isSaveOpen ? "open" : "closed"}-${card.getLoadedEcc() ? "ecc" : "noecc"}`}
+        key={`${isSaveOpen ? "open" : "closed"}-${view.ecc ? "ecc" : "noecc"}`}
         isOpen={isSaveOpen}
         onOpenChange={setIsSaveOpen}
         defaultFileName={cardName}
         formats={PS2_CARD_FORMATS}
         defaultFormat={Ps2CardFormats.Raw}
-        ecc={{ default: card.getLoadedEcc() }}
+        ecc={{ default: view.ecc }}
         onSave={handleSaveConfirm}
       />
       <SaveSingleSaveDialog

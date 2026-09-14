@@ -1,7 +1,7 @@
 import { noop, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { isPs2Card, type MemoryCard } from "@/hooks/use-memory-card-workspace";
+import { type MemoryCard } from "@/hooks/use-memory-card-workspace";
 import { type SaveInfo, SlotTypes } from "@/lib/ps1-memory-card";
 import { ps2SaveProductCode, ps2SaveRegion } from "@/lib/ps2/ps2-dirname";
 import type { Ps2SaveInfo } from "@/lib/ps2/ps2-types";
@@ -82,9 +82,9 @@ export function gameDataTargetsFromCards(
 ): GameDataTarget[] {
   const ps1: SaveInfo[] = [];
   const ps2: Ps2SaveInfo[] = [];
-  for (const { card } of cards) {
-    if (isPs2Card(card)) ps2.push(...card.getSaves());
-    else ps1.push(...card.getSaves());
+  for (const { view } of cards) {
+    if (view.kind === "ps2") ps2.push(...view.saves);
+    else ps1.push(...view.saves);
   }
   return [
     ...gameDataTargetsFromSaves(ps1),

@@ -6,16 +6,19 @@ import {
   NOOP_FAMILY_HANDLERS,
 } from "@/components/memory-card/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { snapshotMemoryCard } from "@/hooks/memory-card-view";
 import { PS2MemoryCard } from "@/lib/ps2/ps2-card";
 
 describe("Ps2CardPane", () => {
   it("unmounts local save dialogs and resets the toolbar bridge", async () => {
     const onFamilyCapsChange = vi.fn();
     const familyHandlersRef = { current: NOOP_FAMILY_HANDLERS };
+    const card = PS2MemoryCard.format(8192);
     const { unmount } = render(
       <TooltipProvider>
         <Ps2CardPane
-          card={PS2MemoryCard.format(8192)}
+          card={card}
+          view={snapshotMemoryCard(card)}
           cardId={1}
           cardName="Card"
           cardType="new"

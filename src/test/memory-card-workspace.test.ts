@@ -51,6 +51,7 @@ describe("useMemoryCardWorkspace", () => {
       });
     });
     expect(result.current.historyLabels[id]).toEqual(["Card", "Save deleted"]);
+    expect(result.current.selectedEntry!.view.changed).toBe(true);
     const opened = result.current.selectedEntry?.card;
     expect(
       opened && !isPs2Card(opened) ? opened.getSaves()[0].slotType : undefined,
@@ -194,5 +195,33 @@ describe("useMemoryCardWorkspace", () => {
     expect(isPs2Card(result.current.selectedEntry!.card)).toBe(true);
     expect(result.current.selectedEntry!.card.getSaves()).toEqual([]);
     expect(result.current.selectedStatus).toBe("0 saves");
+  });
+
+  it("PS2 save-count status follows a commit", () => {
+    const { result } = renderHook(() => useMemoryCardWorkspace());
+    const card = PS2MemoryCard.format(8192);
+    let id = 0;
+    act(() => {
+      id = result.current.addCard({
+        name: "Card",
+        type: "new",
+        source: "",
+        card,
+      });
+      result.current.selectCard(id);
+    });
+    expect(result.current.selectedStatus).toBe("0 saves");
+    act(() => {
+      result.current.commit(id, "Imported save", () => {
+        card.importSingleSave("SAVE-AAA0001", new Uint8Array([1, 2, 3]), {
+          title: "T",
+        });
+      });
+    });
+    expect(result.current.selectedStatus).toBe("1 save");
+    expect(result.current.selectedEntry!.view.kind).toBe("ps2");
+    if (result.current.selectedEntry!.view.kind === "ps2") {
+      expect(result.current.selectedEntry!.view.saves).toHaveLength(1);
+    }
   });
 });

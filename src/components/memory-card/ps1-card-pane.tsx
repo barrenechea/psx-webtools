@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { type Ps1CardView } from "@/hooks/memory-card-view";
 import {
   type CardCommit,
   type CardCommitAsync,
@@ -33,13 +34,13 @@ import { EditHeaderDialog } from "./edit-header-dialog";
 import { ps1CardActions } from "./ps1-card-actions";
 import type { Ps1SlotAction } from "./ps1-slot";
 import { Ps1SlotList } from "./ps1-slot-list";
-import { derivePs1SlotRows } from "./ps1-slot-rows";
 import { PS1_CARD_FORMATS, PS1_SINGLE_SAVE_FORMATS } from "./save-formats";
 import type { FamilyToolbarCaps, FamilyToolbarHandlers } from "./types";
 import { useFamilyToolbarPublish } from "./use-family-toolbar-publish";
 
 interface Ps1CardPaneProps {
   card: PS1MemoryCard;
+  view: Ps1CardView;
   cardId: number;
   cardName: string;
   cardType: MemoryCard["type"];
@@ -59,6 +60,7 @@ interface Ps1CardPaneProps {
 
 export const Ps1CardPane: React.FC<Ps1CardPaneProps> = ({
   card,
+  view,
   cardId,
   cardName,
   cardType,
@@ -84,17 +86,17 @@ export const Ps1CardPane: React.FC<Ps1CardPaneProps> = ({
   const [pendingErase, setPendingErase] = useState<number | null>(null);
   const [isSaveOpen, setIsSaveOpen] = useState(false);
   const [isSingleOpen, setIsSingleOpen] = useState(false);
-  const slots = derivePs1SlotRows(card);
+  const slots = view.slots;
   const ps1Buffer = tempBuffer?.kind === "ps1" ? tempBuffer : null;
   const selectedSave =
-    selectedSlot !== null ? card.getSaves()[selectedSlot] : undefined;
-  const dialogSave =
-    dialogSlot !== null ? card.getSaves()[dialogSlot] : undefined;
+    selectedSlot !== null ? view.saves[selectedSlot] : undefined;
+  const dialogSave = dialogSlot !== null ? view.saves[dialogSlot] : undefined;
   const eraseChain =
-    pendingErase !== null ? card.getSaveLinks(pendingErase) : [];
+    pendingErase !== null ? (view.slots[pendingErase]?.linkedSlots ?? []) : [];
 
   const actions = ps1CardActions({
     card,
+    saves: view.saves,
     cardId,
     selectedSlot,
     tempBuffer,
@@ -179,7 +181,7 @@ export const Ps1CardPane: React.FC<Ps1CardPaneProps> = ({
     if (files.length === 0) return;
     void (async () => {
       if (files.length === 1 && selectedSlot !== null) {
-        if (card.getSaves()[selectedSlot].slotType !== SlotTypes.Formatted) {
+        if (view.saves[selectedSlot].slotType !== SlotTypes.Formatted) {
           onError("The selected slot is not empty");
           return;
         }
@@ -218,7 +220,7 @@ export const Ps1CardPane: React.FC<Ps1CardPaneProps> = ({
           type={cardType}
           kind="ps1"
           source={cardSource}
-          checksum={card.getRawChecksum()}
+          checksum={view.checksum}
           tempBuffer={tempBuffer}
         />
         <div
@@ -241,8 +243,8 @@ export const Ps1CardPane: React.FC<Ps1CardPaneProps> = ({
           region={selectedSave.region}
           saveName={selectedSave.name}
           icon={{
-            data: card.getIconData(selectedSlot),
-            palette: card.getIconPalette(selectedSlot),
+            data: view.slots[selectedSlot].iconData,
+            palette: view.slots[selectedSlot].iconPalette,
             frameCount: selectedSave.iconFrameCount,
           }}
           onClose={() => setSidebarOpen(false)}
@@ -267,7 +269,7 @@ export const Ps1CardPane: React.FC<Ps1CardPaneProps> = ({
         onOpenChange={setIsSaveOpen}
         defaultFileName={cardName}
         formats={PS1_CARD_FORMATS}
-        defaultFormat={card.getCardType()}
+        defaultFormat={view.cardType}
         onSave={handleSaveConfirm}
       />
       <SaveSingleSaveDialog

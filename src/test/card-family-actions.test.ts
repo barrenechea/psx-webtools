@@ -20,6 +20,7 @@ function ps1Caps(
 ) {
   return ps1CardActions({
     card,
+    saves: card.getSaves(),
     cardId: 1,
     selectedSlot,
     tempBuffer: null,
@@ -34,6 +35,7 @@ function ps1Caps(
 function ps2Caps(card: PS2MemoryCard, selectedSave: string | null) {
   return ps2CardActions({
     card,
+    saves: card.getSaves(),
     cardId: 1,
     selectedSave,
     tempBuffer: null,
@@ -67,6 +69,7 @@ describe("PS1 card action caps", () => {
     const copied: { buffer: TempBuffer } = { buffer: null };
     ps1CardActions({
       card: src,
+      saves: src.getSaves(),
       cardId: 1,
       selectedSlot: 0,
       tempBuffer: null,
@@ -83,6 +86,7 @@ describe("PS1 card action caps", () => {
     const dst = newCard();
     const pasted = ps1CardActions({
       card: dst,
+      saves: dst.getSaves(),
       cardId: 2,
       selectedSlot: 0,
       tempBuffer: copied.buffer,
@@ -109,6 +113,7 @@ describe("PS1 card action caps", () => {
     const labels: Array<string | readonly string[]> = [];
     const actions = ps1CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSlot: 0,
       tempBuffer: null,
@@ -141,6 +146,7 @@ describe("PS1 card action caps", () => {
     const selected: Array<number | null> = [];
     ps1CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSlot: 0,
       tempBuffer: null,
@@ -183,6 +189,7 @@ describe("PS2 save helpers", () => {
     const copied: { buffer: TempBuffer } = { buffer: null };
     ps2CardActions({
       card: src,
+      saves: src.getSaves(),
       cardId: 1,
       selectedSave: "SAVE-AAA0001",
       tempBuffer: null,
@@ -199,6 +206,7 @@ describe("PS2 save helpers", () => {
     const dst = PS2MemoryCard.format(8192);
     const pasted = ps2CardActions({
       card: dst,
+      saves: dst.getSaves(),
       cardId: 2,
       selectedSave: null,
       tempBuffer: copied.buffer,
@@ -227,6 +235,7 @@ describe("PS2 save helpers", () => {
     const errors: string[] = [];
     ps2CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSave: "SAVE-AAA0001",
       tempBuffer: null,
@@ -258,6 +267,7 @@ describe("PS2 save helpers", () => {
     const errors: string[] = [];
     ps2CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSave: "SAVE-AAA0001",
       tempBuffer: null,
@@ -283,6 +293,7 @@ describe("PS2 save helpers", () => {
     const copied: { buffer: TempBuffer } = { buffer: null };
     ps2CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSave: "SAVE-AAA0001",
       tempBuffer: null,
@@ -298,6 +309,7 @@ describe("PS2 save helpers", () => {
     let pending = false;
     const actions = ps2CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSave: "SAVE-AAA0001",
       tempBuffer: copied.buffer,
@@ -327,6 +339,7 @@ describe("PS2 save helpers", () => {
     const selected: string[] = [];
     const actions = ps2CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSave: null,
       tempBuffer: null,
@@ -365,6 +378,7 @@ describe("PS2 save helpers", () => {
     const card = PS2MemoryCard.format(8192);
     const actions = ps2CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSave: null,
       tempBuffer: null,
@@ -384,6 +398,7 @@ describe("PS2 save helpers", () => {
     const errors: string[] = [];
     const actions = ps2CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSave: null,
       tempBuffer: null,
@@ -409,6 +424,7 @@ describe("PS1 card actions", () => {
     const file = new File([new Uint8Array([0x51, 0])], "save.mcs");
     const actions = ps1CardActions({
       card,
+      saves: card.getSaves(),
       cardId: 1,
       selectedSlot: 0,
       tempBuffer: null,
