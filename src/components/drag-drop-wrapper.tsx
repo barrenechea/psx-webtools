@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,12 @@ export const DragDropWrapper: React.FC<DragDropWrapperProps> = ({
   children,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const reset = () => setIsDragging(false);
+    window.addEventListener("drop", reset, { capture: true });
+    return () => window.removeEventListener("drop", reset, { capture: true });
+  }, []);
 
   const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();

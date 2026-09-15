@@ -54,6 +54,30 @@ describe("DragDropWrapper", () => {
     ]);
   });
 
+  it("hides the overlay when a nested drop zone consumes the drop", () => {
+    const onFileDrop = vi.fn();
+    const onChildDrop = vi.fn((event: React.DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    render(
+      <DragDropWrapper onFileDrop={onFileDrop}>
+        <div data-testid="child" onDrop={onChildDrop} />
+      </DragDropWrapper>,
+    );
+
+    const child = screen.getByTestId("child");
+    fireEvent.dragEnter(child.parentElement!, dropData([cardFile()]));
+    const overlay = screen.getByText("Drop your memory card files here")
+      .parentElement?.parentElement;
+    expect(overlay).toHaveClass("opacity-100");
+
+    fireEvent.drop(child, dropData([cardFile()]));
+    expect(onChildDrop).toHaveBeenCalledTimes(1);
+    expect(onFileDrop).not.toHaveBeenCalled();
+    expect(overlay).toHaveClass("opacity-0");
+  });
+
   it("hides the overlay when the drag leaves the wrapper", () => {
     const { container } = render(
       <div>
