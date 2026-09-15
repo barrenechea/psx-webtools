@@ -27,10 +27,6 @@ function Index() {
               <h2 className="text-2xl font-semibold">Features:</h2>
               <ul className="list-inside list-disc space-y-2 text-muted-foreground">
                 <li>
-                  MemCARDuino Flasher: Update the firmware to your MemCARDuino
-                  device directly from your browser.
-                </li>
-                <li>
                   Memory Card Manager: View, edit, and organize your PS1 memory
                   card saves. MemCARDuino support included!
                 </li>
@@ -44,15 +40,6 @@ function Index() {
             <div className="space-y-4">
               <h2 className="text-2xl font-semibold">Get Started:</h2>
               <div className="flex space-x-4">
-                <Button
-                  nativeButton={false}
-                  render={(props) => (
-                    <Link to="/memcarduino-flasher" {...props}>
-                      Open MemCARDuino Flasher
-                      <ArrowRightIcon className="size-4" />
-                    </Link>
-                  )}
-                />
                 <Button
                   nativeButton={false}
                   render={(props) => (

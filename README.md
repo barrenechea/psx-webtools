@@ -10,7 +10,6 @@ PSX WebTools is a modern, web-based toolkit designed to enhance your PlayStation
 
 ## Features
 
-- **MemCARDuino Flasher**: Flash firmware to your MemCARDuino device directly from your browser.
 - **Memory Card Manager**: View, edit, and organize your PS1 memory card saves. MemCARDuino support included!
 - **Web-based**: No installation required, use it directly in your browser.
 

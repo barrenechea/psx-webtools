@@ -1,5 +1,5 @@
 import { Link, useMatchRoute } from "@tanstack/react-router";
-import { CpuIcon, Home, MemoryStickIcon } from "lucide-react";
+import { Home, MemoryStickIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
 import PSLogo from "@/assets/ps-logo.svg?react";
@@ -20,11 +20,6 @@ import {
 
 const navItems = [
   { to: "/", icon: Home, label: "Home" },
-  {
-    to: "/memcarduino-flasher",
-    icon: CpuIcon,
-    label: "MemCARDuino Flasher",
-  },
   {
     to: "/memory-card-manager",
     icon: MemoryStickIcon,
